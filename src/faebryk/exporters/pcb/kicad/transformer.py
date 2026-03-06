@@ -1399,6 +1399,24 @@ class PCB_Transformer:
         LEFT = auto()
         RIGHT = auto()
 
+    @staticmethod
+    def get_new_footprints(
+        original: kicad.pcb.KicadPcb,
+        current: kicad.pcb.KicadPcb,
+    ) -> list[KiCadPCBFootprint]:
+        """Return footprints in *current* whose atopile_address is not in *original*."""
+        original_addrs = {
+            addr
+            for fp in original.footprints
+            if (addr := Property.try_get_property(fp.propertys, "atopile_address"))
+        }
+        return [
+            fp
+            for fp in current.footprints
+            if (addr := Property.try_get_property(fp.propertys, "atopile_address"))
+            and addr not in original_addrs
+        ]
+
     def hide_all_designators(
         self,
     ) -> None:
@@ -1408,54 +1426,135 @@ class PCB_Transformer:
             for txt in [txt for txt in fp.fp_texts if txt.text == "${REFERENCE}"]:
                 txt.effects.hide = True
 
-    def set_designator_position(
+    def set_designator_positions(
         self,
-        offset: float,
+        offset: float | None = None,
         displacement: kicad.pcb.Xy = kicad.pcb.Xy(x=0, y=0),
         rotation: Optional[float] = None,
-        offset_side: Side = Side.BOTTOM,
+        offset_side: Side = Side.LEFT,
         layer: Optional[str] = None,
         font: Optional[kicad.pcb.Font] = None,
         knockout: "Optional[kicad.pcb.E_knockout]" = None,
         justify: "kicad.pcb.Justify | None" = None,
+        footprints: Optional[list[KiCadPCBFootprint]] = None,
+        center_when_possible: bool = True,
     ):
+        DEFAULT_MARGIN = 0.1  # mm
+
+        # Justify mapping: anchor text toward the component for a given side.
+        _JUSTIFY_FOR_SIDE = {
+            self.Side.TOP: kicad.pcb.E_justify.BOTTOM,
+            self.Side.BOTTOM: kicad.pcb.E_justify.TOP,
+            self.Side.LEFT: kicad.pcb.E_justify.RIGHT,
+            self.Side.RIGHT: kicad.pcb.E_justify.LEFT,
+        }
+        # The layout server applies keep-upright (flip text by 180° when
+        # rotation is in (90°, 270°]) without adjusting justify.  Pre-swap
+        # the justify so it renders correctly after the flip.
+        _JUSTIFY_SWAP = {
+            kicad.pcb.E_justify.LEFT: kicad.pcb.E_justify.RIGHT,
+            kicad.pcb.E_justify.RIGHT: kicad.pcb.E_justify.LEFT,
+            kicad.pcb.E_justify.TOP: kicad.pcb.E_justify.BOTTOM,
+            kicad.pcb.E_justify.BOTTOM: kicad.pcb.E_justify.TOP,
+        }
         if knockout:
             raise NotImplementedError("knockout not supported")
 
-        for _, fp in self.get_all_kicad_pcb_footprints():
+        if footprints is not None:
+            fps = [(None, fp) for fp in footprints]
+        else:
+            fps = self.get_all_kicad_pcb_footprints()
+
+        for _, fp in fps:
             reference = Property.get_property_obj(fp.propertys, "Reference")
             reference.layer = (
                 layer if layer else "F.SilkS" if fp.layer.startswith("F") else "B.SilkS"
             )
+
+            # reference.at.r is absolute: match footprint rotation so text
+            # follows the component
+            fp_angle = fp.at.r or 0
+            rot = rotation if rotation is not None else fp_angle
+
+            # Compute justify: anchor text on the side closest to the component
+            if justify is not None:
+                effective_justify = justify
+            else:
+                j = _JUSTIFY_FOR_SIDE[offset_side]
+                # Pre-compensate for keep-upright 180° flip
+                norm = rot % 360
+                if 90 < norm <= 270:
+                    j = _JUSTIFY_SWAP[j]
+                effective_justify = kicad.pcb.Justify(
+                    justify1=j, justify2=None, justify3=None
+                )
+
             if reference.effects:
                 if font:
                     reference.effects.font = font
-                if justify:
-                    reference.effects.justify = justify
-
-            rot = rotation if rotation else reference.at.r
+                reference.effects.justify = effective_justify
 
             footprint_bbox = self.get_bounding_box(fp, {"F.SilkS", "B.SilkS"})
             if not footprint_bbox:
                 continue
             max_coord = kicad.pcb.Xy(x=footprint_bbox[1][0], y=footprint_bbox[1][1])
             min_coord = kicad.pcb.Xy(x=footprint_bbox[0][0], y=footprint_bbox[0][1])
+            bbox_width = max_coord.x - min_coord.x
+            bbox_height = max_coord.y - min_coord.y
 
+            # Estimate designator text size from font
+            ref_font = reference.effects.font if reference.effects else None
+            char_w = ref_font.size.w if ref_font and ref_font.size else 1.0
+            char_h = (
+                ref_font.size.h
+                if ref_font and ref_font.size and ref_font.size.h
+                else char_w
+            )
+            text_len = len(reference.value) if reference.value else 1
+            designator_w = char_w * text_len
+            designator_h = char_h
+
+            margin = offset if offset is not None else DEFAULT_MARGIN
+
+            # If the footprint is large enough to fit the designator inside
+            # with margin, center it at the origin
+            if center_when_possible and (
+                bbox_width >= designator_w + margin * 2
+                and bbox_height >= designator_h + margin * 2
+            ):
+                reference.at = kicad.pcb.Xyr(x=0, y=0, r=rot)
+                if reference.effects:
+                    reference.effects.justify = None
+                continue
+
+            bbox_center_x = (min_coord.x + max_coord.x) / 2
+            bbox_center_y = (min_coord.y + max_coord.y) / 2
+
+            # Position in unrotated footprint-local frame (same as fp_lines/bbox).
+            # KiCad applies the footprint rotation when rendering.
             if offset_side == self.Side.BOTTOM:
                 reference.at = kicad.pcb.Xyr(
-                    x=displacement.x, y=max_coord.y + offset - displacement.y, r=rot
+                    x=bbox_center_x + displacement.x,
+                    y=max_coord.y + margin + displacement.y,
+                    r=rot,
                 )
             elif offset_side == self.Side.TOP:
                 reference.at = kicad.pcb.Xyr(
-                    x=displacement.x, y=min_coord.y - offset - displacement.y, r=rot
+                    x=bbox_center_x + displacement.x,
+                    y=min_coord.y - margin - displacement.y,
+                    r=rot,
                 )
             elif offset_side == self.Side.LEFT:
                 reference.at = kicad.pcb.Xyr(
-                    x=min_coord.x - offset - displacement.x, y=displacement.y, r=rot
+                    x=min_coord.x - margin - displacement.x,
+                    y=bbox_center_y + displacement.y,
+                    r=rot,
                 )
             elif offset_side == self.Side.RIGHT:
                 reference.at = kicad.pcb.Xyr(
-                    x=max_coord.x + offset + displacement.x, y=displacement.y, r=rot
+                    x=max_coord.x + margin + displacement.x,
+                    y=bbox_center_y + displacement.y,
+                    r=rot,
                 )
 
     def add_git_version(
@@ -1478,8 +1577,8 @@ class PCB_Transformer:
                 git.InvalidGitRepositoryError,
                 git.NoSuchPathError,
                 git.GitCommandError,
-            ):
-                logger.warning("Cannot get git project version")
+            ) as e:
+                logger.warning(f"Cannot get git project version: {e}")
                 git_human_version = "Cannot get git project version"
         except ImportError:
             # Fall back to direct string if git executable is not available
@@ -1862,8 +1961,14 @@ class PCB_Transformer:
                 )
             pcb_obj = pcb_objs.get(ident)
             if pcb_obj:
+                # Preserve following properties from the PCB object
                 if hasattr(lib_obj, "hide"):
                     lib_obj_attrs["hide"] = pcb_obj.hide
+                if attr == "propertys":
+                    if "at" in lib_obj_attrs:
+                        lib_obj_attrs["at"] = pcb_obj.at
+                    if "effects" in lib_obj_attrs and hasattr(pcb_obj, "effects"):
+                        lib_obj_attrs["effects"] = pcb_obj.effects
 
             # update
             if ident in pcb_objs:

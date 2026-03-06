@@ -48,6 +48,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_svg,
     githash_layout,
 )
+from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
@@ -362,8 +363,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()
@@ -825,9 +830,25 @@ def update_pcb(ctx: BuildStepContext) -> None:
     # This will overwrite user settings in the KiCad PCB file!
     ensure_board_appearance(pcb.pcb_file.kicad_pcb)
 
+    # Detect new footprints for setting designator positions
+    new_fps = PCB_Transformer.get_new_footprints(
+        original_pcb.kicad_pcb, pcb.pcb_file.kicad_pcb
+    )
+
+    # Determine whether to standardize designators
+    # None = auto (run on new footprints only)
+    # True = always run, False = never run
+    should_standardize = config.build.standardize_designators is True or (
+        config.build.standardize_designators is None and bool(new_fps)
+    )
+
     # set layout
     if config.build.hide_designators:
         pcb.transformer.hide_all_designators()
+    if should_standardize:
+        # In auto mode, only update new footprints; explicit mode updates all
+        fps = new_fps if config.build.standardize_designators is None else None
+        pcb.transformer.set_designator_positions(footprints=fps)
 
     # Backup layout
     backup_dir = config.build.paths.output_base.parent / "backups"
