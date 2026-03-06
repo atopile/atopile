@@ -13,6 +13,8 @@ let g_selectedTargets: Build[] = [];
 
 // Current project root (for running commands)
 let g_projectRoot: string | undefined;
+const onProjectRootChangedEvent = new vscode.EventEmitter<string | undefined>();
+export const onProjectRootChanged: vscode.Event<string | undefined> = onProjectRootChangedEvent.event;
 
 export function setSelectedTargets(targets: Build[]) {
     const changed = !arraysEqual(g_selectedTargets, targets);
@@ -44,7 +46,11 @@ export function toggleTarget(target: Build): void {
 }
 
 export function setProjectRoot(root: string | undefined) {
+    const changed = g_projectRoot !== root;
     g_projectRoot = root;
+    if (changed) {
+        onProjectRootChangedEvent.fire(root);
+    }
 }
 
 export function getProjectRoot(): string | undefined {

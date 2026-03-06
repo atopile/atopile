@@ -30,11 +30,12 @@ set(ZIG_OUT_LIB_SEXP "${ZIG_WORKDIR}/zig-out/lib/${PYZIG_SEXP_NAME}")
 
 # macOS cross-arch setup -------------------------------------------------------
 # Determine target architecture for cross-compilation. Priority:
-# 1. CMAKE_OSX_ARCHITECTURES if set (from cibuildwheel/scikit-build for cross-compile)
+# 1. CMAKE_OSX_ARCHITECTURES if set (e.g. from multi-arch build tooling)
 # 2. Fall back to Python interpreter's architecture (for local dev builds)
 set(ZIG_ENV_PREFIX "")
 set(ZIG_TARGET_ARG "")
 set(_TARGET_ARCH_FOR_STAMP "native")  # Default for non-Apple platforms
+set(_CPU_TARGET_FOR_STAMP "native")
 
 if (APPLE)
   if (CMAKE_OSX_ARCHITECTURES)
@@ -77,29 +78,20 @@ if (APPLE)
   set(ZIG_TARGET_ARG -Dtarget=${_ZIG_ARCH}-macos.${_MAC_DEPLOY})
 endif()
 
-# Linux portable-binary mode ----------------------------------------------------
-# Inside cibuildwheel (CIBUILDWHEEL=1) the host CPU may have features (AVX-512,
-# etc.) absent on deployment targets. Target baseline arch so the resulting
-# wheels (and Docker images built from them) run on any x86_64/aarch64 machine.
-# Local dev builds keep the default (native) for maximum performance.
-if (UNIX AND NOT APPLE AND DEFINED ENV{CIBUILDWHEEL})
-    execute_process(
-      COMMAND "${Python3_EXECUTABLE}" -c "import platform; print(platform.machine())"
-      OUTPUT_VARIABLE _LINUX_ARCH
-      OUTPUT_STRIP_TRAILING_WHITESPACE)
-    # Detect musl vs glibc from Python sysconfig
-    execute_process(
-      COMMAND "${Python3_EXECUTABLE}" -c "import sysconfig; print('musl' if 'musl' in (sysconfig.get_config_var('HOST_GNU_TYPE') or '') else 'gnu')"
-      OUTPUT_VARIABLE _LINUX_ABI
-      OUTPUT_STRIP_TRAILING_WHITESPACE)
-    set(_TARGET_ARCH_FOR_STAMP "${_LINUX_ARCH}")
-    set(ZIG_TARGET_ARG "-Dtarget=${_LINUX_ARCH}-linux-${_LINUX_ABI}")
-    message(STATUS "cibuildwheel: targeting ${_LINUX_ARCH}-linux-${_LINUX_ABI} for portable binary")
+# CPU feature level (portability) ------------------------------------------------
+# Set ATOPILE_ZIG_CPU to override the default "native" CPU target.
+# Use "baseline" for portable x86_64 builds (no AVX-512, etc.)
+set(ZIG_CPU_ARG "")
+if(DEFINED ENV{ATOPILE_ZIG_CPU})
+  set(ZIG_CPU_ARG -Dcpu=$ENV{ATOPILE_ZIG_CPU})
+  set(_CPU_TARGET_FOR_STAMP "$ENV{ATOPILE_ZIG_CPU}")
+  string(REGEX REPLACE "[^A-Za-z0-9_.-]" "_" _CPU_TARGET_FOR_STAMP "${_CPU_TARGET_FOR_STAMP}")
+  message(STATUS "Zig CPU target: $ENV{ATOPILE_ZIG_CPU}")
 endif()
 
-# Stamp file includes target architecture to ensure different arch builds in the same
-# source checkout (e.g., cibuildwheel building x86_64 and arm64) don't skip each other.
-set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_TARGET_ARCH_FOR_STAMP}.build.stamp")
+# Stamp file includes target architecture and CPU target to keep separate
+# outputs for different build variants in the same source checkout.
+set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_TARGET_ARCH_FOR_STAMP}.${_CPU_TARGET_FOR_STAMP}.build.stamp")
 
 # CI cache support: use pre-built zig artifacts from external directory --------
 set(_use_prebuilt FALSE)
@@ -130,7 +122,7 @@ else()
     COMMAND ${ZIG_ENV_PREFIX} "${Python3_EXECUTABLE}" -m ziglang build python-ext
             -Doptimize=ReleaseFast
             -Dpython-include=${PY_INCLUDE}
-            ${ZIG_TARGET_ARG} ${ZIG_PY_LIB_NAME_ARG} ${ZIG_PY_LIB_DIR_ARG_USE}
+            ${ZIG_TARGET_ARG} ${ZIG_CPU_ARG} ${ZIG_PY_LIB_NAME_ARG} ${ZIG_PY_LIB_DIR_ARG_USE}
     COMMAND ${CMAKE_COMMAND} -E touch "${ZIG_BUILD_STAMP}"
     WORKING_DIRECTORY "${ZIG_WORKDIR}"
     BYPRODUCTS "${ZIG_OUT_LIB}" "${ZIG_OUT_LIB_SEXP}"

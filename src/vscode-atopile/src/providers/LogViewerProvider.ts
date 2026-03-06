@@ -10,18 +10,37 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
+import { WebviewProxyBridge } from '../common/webview-bridge';
+import {
+  getWebviewBridgeRuntimePath,
+  serializeWebviewBridgeConfig,
+  WEBVIEW_BRIDGE_CONFIG_ELEMENT_ID,
+} from '../common/webview-bridge-runtime';
+import { renderTemplate, serializeJsonForHtml } from '../common/template';
+// @ts-ignore
+import * as _logViewerTemplateText from './log-viewer.hbs';
+// @ts-ignore
+import * as _notBuiltTemplateText from './webview-not-built.hbs';
+
+const logViewerTemplateText: string = (_logViewerTemplateText as any).default || _logViewerTemplateText;
+const notBuiltTemplateText: string = (_notBuiltTemplateText as any).default || _notBuiltTemplateText;
 
 export class LogViewerProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'atopile.logViewer';
-  private static readonly PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
+  private static readonly PROD_LOCAL_RESOURCE_ROOTS = ['resources', 'resources/webviews', 'webviews/dist'];
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
   private _hasHtml = false;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
+  private _bridge: WebviewProxyBridge;
 
   constructor(private readonly _extensionUri: vscode.Uri) {
+    this._bridge = new WebviewProxyBridge({
+      postToWebview: (msg) => this._view?.webview.postMessage(msg),
+      logTag: 'LogViewer',
+    });
     this._disposables.push(
       backendServer.onStatusChange((connected) => {
         if (connected) {
@@ -36,6 +55,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
       d.dispose();
     }
     this._disposables = [];
+    this._bridge.dispose();
   }
 
   private _refreshWebview(): void {
@@ -69,6 +89,15 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
+
+    // Handle proxy messages from the webview via the shared bridge
+    webviewView.webview.onDidReceiveMessage((message) => {
+      if (!message || !message.type) return;
+      this._bridge.handleMessage(message);
+    }, null, this._disposables);
+
+    // Set HTML only after message handlers are attached so early
+    // bootstrap wsProxy messages are not dropped.
     this._refreshWebview();
   }
 
@@ -88,79 +117,52 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
       return this._getNotBuiltHtml();
     }
 
-    const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
+    const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath)).toString();
+    const bridgeRuntimeUri = webview.asWebviewUri(
+      vscode.Uri.file(getWebviewBridgeRuntimePath(extensionPath))
+    ).toString();
     const cssUri = fs.existsSync(cssPath)
-      ? webview.asWebviewUri(vscode.Uri.file(cssPath))
+      ? webview.asWebviewUri(vscode.Uri.file(cssPath)).toString()
       : null;
     const baseCssUri = fs.existsSync(baseCssPath)
-      ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
+      ? webview.asWebviewUri(vscode.Uri.file(baseCssPath)).toString()
       : null;
 
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
+    const bridgeConfigJson = serializeWebviewBridgeConfig({
+      apiUrl,
+      fetchMode: 'global',
+    });
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    style-src ${webview.cspSource} 'unsafe-inline';
-    script-src ${webview.cspSource} 'nonce-${nonce}';
-    font-src ${webview.cspSource};
-    img-src ${webview.cspSource} data: https: http:;
-    connect-src ${apiUrl} ${wsOrigin};
-  ">
-  <title>atopile Logs</title>
-  ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
-  ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
-  <script nonce="${nonce}">
-    window.__ATOPILE_API_URL__ = '${apiUrl}';
-    window.__ATOPILE_WS_URL__ = '${wsOrigin}';
-  </script>
-</head>
-<body>
-  <div id="root"></div>
-  <script nonce="${nonce}" type="module" src="${jsUri}"></script>
-</body>
-</html>`;
+    const csp = [
+      "default-src 'none'",
+      `style-src ${webview.cspSource} 'unsafe-inline'`,
+      `script-src ${webview.cspSource} 'nonce-${nonce}'`,
+      `font-src ${webview.cspSource}`,
+      `img-src ${webview.cspSource} data: https: http:`,
+      `connect-src ${apiUrl} ${wsOrigin} ws: wss:`,
+    ].join('; ');
+
+    return renderTemplate(logViewerTemplateText, {
+      csp,
+      nonce,
+      baseCssLink: baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : '',
+      cssLink: cssUri ? `<link rel="stylesheet" href="${cssUri}">` : '',
+      apiUrlJson: serializeJsonForHtml(apiUrl),
+      wsOriginJson: serializeJsonForHtml(wsOrigin),
+      bridgeConfigElementId: WEBVIEW_BRIDGE_CONFIG_ELEMENT_ID,
+      bridgeConfigJson,
+      bridgeRuntimeUri,
+      jsUri,
+    });
   }
 
   private _getNotBuiltHtml(): string {
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      background: var(--vscode-sideBar-background);
-      color: var(--vscode-foreground);
-      font-family: var(--vscode-font-family);
-      text-align: center;
-      padding: 16px;
-    }
-    code {
-      background: var(--vscode-textCodeBlock-background);
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 12px;
-    }
-  </style>
-</head>
-<body>
-  <div>
-    <p>Webview not built.</p>
-    <p>Run <code>npm run build</code> in the webviews directory.</p>
-  </div>
-</body>
-</html>`;
+    return renderTemplate(notBuiltTemplateText, {
+      buildCommand: 'npm run build',
+    });
   }
 }

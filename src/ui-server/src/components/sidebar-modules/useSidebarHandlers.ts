@@ -41,16 +41,11 @@ export function useSidebarHandlers({
   };
 
   const handleSelectProject = (projectRoot: string | null) => {
-    const project = state?.projects?.find((p: any) => p.root === projectRoot);
-    const defaultTarget = project?.targets?.[0]?.name ?? null;
-    const targetNames = defaultTarget ? [defaultTarget] : [];
     useStore.getState().selectProject(projectRoot);
-    useStore.getState().setSelectedTargets(targetNames);
   };
 
-  const handleSelectTarget = (projectRoot: string, targetName: string) => {
-    useStore.getState().selectProject(projectRoot);
-    useStore.getState().setSelectedTargets([targetName]);
+  const handleSelectTarget = (projectRoot: string, targetName: string, targetRoot?: string) => {
+    useStore.getState().selectTarget(projectRoot, targetName, targetRoot);
   };
 
   const handleBuild = (level: 'project' | 'build' | 'symbol', id: string, label: string) => {

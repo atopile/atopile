@@ -222,9 +222,9 @@ async def get_last_test_run(
     This allows viewing the last run's logs when clicking a test in the explorer.
     """
     try:
-        from atopile.logging import LoggerForTest
+        from atopile.logging import AtoLogger
 
-        db_path = LoggerForTest.get_log_db()
+        db_path = AtoLogger.get_test_log_db()
         if not db_path.exists():
             return LastRunResponse(found=False)
 

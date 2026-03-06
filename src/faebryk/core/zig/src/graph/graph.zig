@@ -18,9 +18,35 @@ var attrs_initialized: bool = false;
 
 fn ensureAttrsInitialized() void {
     if (!attrs_initialized) {
-        const mem = base_allocator.alloc(DynamicAttributes, ATTRS_CAPACITY) catch @panic("Failed to allocate DynamicAttributes pool");
-        Attrs = mem;
+        var low: usize = 1;
+        var high: usize = ATTRS_CAPACITY;
+        var best: ?[]DynamicAttributes = null;
+
+        while (low <= high) {
+            const mid = low + (high - low) / 2;
+            const candidate = base_allocator.alloc(DynamicAttributes, mid) catch {
+                if (mid == 0) break;
+                high = mid - 1;
+                continue;
+            };
+
+            if (best) |prev| {
+                base_allocator.free(prev);
+            }
+            best = candidate;
+            low = mid + 1;
+        }
+
+        Attrs = best orelse @panic("Failed to allocate DynamicAttributes pool");
         attrs_initialized = true;
+
+        if (Attrs.len < ATTRS_CAPACITY) {
+            const mib = (Attrs.len * @sizeOf(DynamicAttributes)) / (1024 * 1024);
+            std.log.warn(
+                "DynamicAttributes pool capped at {d}/{d} entries ({d} MiB)",
+                .{ Attrs.len, ATTRS_CAPACITY, mib },
+            );
+        }
     }
 }
 

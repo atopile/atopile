@@ -10,6 +10,7 @@ import { window } from 'vscode';
 import { Build, getBuilds, loadBuilds } from '../common/manifest';
 import { getAtoBin, onDidChangeAtoBinInfo, runAtoCommandInTerminal } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
+import { isWebIdeUi } from '../common/environment';
 import { openPcb } from '../common/kicad';
 import { openAtoShell } from '../common/vscode-menu';
 import { glob } from 'glob';
@@ -96,9 +97,15 @@ registerButton('folder', cmdChooseProject, 'Select project folder', 'Select proj
 
 /**
  * Get button metadata for the sidebar.
+ * Filters out buttons that don't apply to the current environment.
  */
 export function getButtons(): ButtonInfo[] {
-    return buttonInfos;
+    const isWebIde = isWebIdeUi();
+    return buttonInfos.filter(b => {
+        // KiCad can't run in the web IDE (no display); KiCanvas handles preview instead
+        if (isWebIde && b.id === 'atopile.launch_kicad') return false;
+        return true;
+    });
 }
 
 function _getSelectedBuilds(): Build[] {

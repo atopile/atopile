@@ -14,6 +14,7 @@ const resetStore = () => {
     isConnected: false,
     projects: [],
     selectedProjectRoot: null,
+    selectedTargetRoot: null,
     selectedTargetNames: [],
     builds: [],
     queuedBuilds: [],
@@ -176,9 +177,23 @@ describe('Zustand Store', () => {
     it('can select project', () => {
       useStore.getState().selectProject('/projects/test-project');
       expect(useStore.getState().selectedProjectRoot).toBe('/projects/test-project');
+      expect(useStore.getState().selectedTargetRoot).toBe('/projects/test-project');
 
       useStore.getState().selectProject(null);
       expect(useStore.getState().selectedProjectRoot).toBeNull();
+      expect(useStore.getState().selectedTargetRoot).toBeNull();
+    });
+
+    it('can select a nested target root', () => {
+      useStore.getState().selectTarget(
+        '/projects/test-project',
+        'default',
+        '/projects/test-project/packages/rp2040'
+      );
+
+      expect(useStore.getState().selectedProjectRoot).toBe('/projects/test-project');
+      expect(useStore.getState().selectedTargetRoot).toBe('/projects/test-project/packages/rp2040');
+      expect(useStore.getState().selectedTargetNames).toEqual(['default']);
     });
 
     it('can toggle target selection', () => {
