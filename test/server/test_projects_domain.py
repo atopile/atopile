@@ -76,7 +76,7 @@ builds:
     assert package_ato["paths"]["layout"] == "./layouts"
 
 
-def test_create_local_package_writes_file_dependency_identifier(tmp_path: Path):
+def test_create_local_package_writes_project_dependency_identifier(tmp_path: Path):
     project_root = tmp_path / "demo"
     project_root.mkdir()
     (project_root / "ato.yaml").write_text(
@@ -99,14 +99,14 @@ builds:
 
     assert project_ato["dependencies"] == [
         {
-            "type": "file",
+            "type": "project",
             "path": "./packages/Raspberry_Pi_RP2040",
             "identifier": "local/raspberry-pi-rp2040",
         }
     ]
 
 
-def test_create_local_package_backfills_existing_file_dependency_identifier(
+def test_create_local_package_backfills_existing_dependency_identifier(
     tmp_path: Path,
 ):
     project_root = tmp_path / "demo"
@@ -134,11 +134,39 @@ dependencies:
 
     assert project_ato["dependencies"] == [
         {
-            "type": "file",
+            "type": "project",
             "path": "./packages/Raspberry_Pi_RP2040",
             "identifier": "local/raspberry-pi-rp2040",
         }
     ]
+
+
+def test_get_dependencies_prefers_project_source_path(tmp_path: Path):
+    project_root = tmp_path / "demo"
+    project_root.mkdir()
+    (project_root / "ato.yaml").write_text(
+        """
+requires-atopile: ^0.14.0
+paths:
+  src: ./
+  layout: ./layouts
+builds:
+  default:
+    entry: main.ato:App
+""".strip()
+    )
+
+    package = projects_domain.create_local_package(project_root, "rp2040", "RP2040")
+    response = projects_domain.handle_get_dependencies(str(project_root))
+
+    assert response is not None
+    assert len(response.dependencies) == 1
+    dep = response.dependencies[0]
+    assert dep.identifier == "local/rp2040"
+    assert dep.dependency_type == "project"
+    assert dep.source_path == package["path"]
+    assert dep.installed_path is None
+    assert dep.status == "source"
 
 
 def test_create_local_package_can_build_dist_without_repository(tmp_path: Path):

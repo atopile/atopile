@@ -120,6 +120,8 @@ export interface ProjectDependency {
   hasUpdate?: boolean;
   isDirect?: boolean;
   via?: string[];
+  dependencyType?: string;
+  sourcePath?: string;  // Absolute canonical source path for local/project dependencies
   installedPath?: string;  // Absolute path where dependency is installed (null if not installed)
   summary?: string;  // Package summary/description from ato.yaml
   usageContent?: string;  // Content of usage.ato if it exists

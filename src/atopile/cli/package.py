@@ -130,7 +130,7 @@ class _PackageValidators:
 
         if len(unpublishable_deps) > 0:
             raise UserBadParameterError(
-                "Packages can not be published with github or file dependencies: "
+                "Packages can not be published with non-registry dependencies: "
                 + ", ".join([f"{dep.identifier}" for dep in unpublishable_deps])
             )
 

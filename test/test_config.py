@@ -4,9 +4,11 @@ from textwrap import dedent
 import semver
 from pydantic.networks import HttpUrl
 
+from atopile import config as atopile_config
 from atopile.config import (
     PROJECT_CONFIG_FILENAME,
     FileDependencySpec,
+    ProjectDependencySpec,
     RegistryDependencySpec,
     config,
 )
@@ -82,3 +84,10 @@ def test_update_project_config(tmp_path: Path):
     assert config.project.dependencies[4].release == "v0.0.1"
     assert isinstance(config.project.dependencies[5], FileDependencySpec)
     assert config.project.dependencies[5].path == Path("../esp32-s3")
+
+
+def test_project_dependency_spec_from_string() -> None:
+    spec = atopile_config.DependencySpec.from_str("project://./packages/rp2040")
+
+    assert isinstance(spec, ProjectDependencySpec)
+    assert spec.path == Path("./packages/rp2040")

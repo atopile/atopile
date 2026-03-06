@@ -695,6 +695,9 @@ class DependencyInfo(CamelModel):
     has_update: bool = False
     is_direct: bool = False
     via: Optional[list[str]] = None
+    dependency_type: Optional[str] = None
+    source_path: Optional[str] = None
+    installed_path: Optional[str] = None
     status: Optional[str] = None
 
 

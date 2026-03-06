@@ -176,7 +176,20 @@ class ProjectDependency:
         return self.dist.manifest
 
     @property
-    def target_path(self) -> Path:
+    def source_path(self) -> Path | None:
+        if isinstance(
+            self.spec, (config.FileDependencySpec, config.ProjectDependencySpec)
+        ):
+            path = self.spec.path
+            if not path.is_absolute():
+                path = self.pcfg.paths.root / path
+            return path.resolve()
+        return self.installed_path
+
+    @property
+    def installed_path(self) -> Path | None:
+        if isinstance(self.spec, config.ProjectDependencySpec):
+            return None
         # TODO don't really like using identifier as import path
         # would be nicer to use source name and indirect imports
         return self.gcfg.project.paths.modules / self.identifier
@@ -196,9 +209,25 @@ class ProjectDependency:
             return
         # TODO implement cache
         temp_dir = self.cache_dir
+        if isinstance(self.spec, config.ProjectDependencySpec):
+            path = self.source_path
+            assert path is not None
+            if not path.exists():
+                raise errors.UserFileNotFoundError(
+                    f"Project dependency path {path} does not exist", markdown=False
+                )
+            self.cfg = config.ProjectConfig.from_path(path)
+            if self.cfg is None:
+                raise errors.UserFileNotFoundError(
+                    f"Project dependency config not found at {path}", markdown=False
+                )
+            if self.spec.identifier is None and self.cfg.package is not None:
+                self.spec.identifier = self.cfg.package.identifier
+            return
         if isinstance(self.spec, (config.FileDependencySpec, config.GitDependencySpec)):
             if isinstance(self.spec, config.FileDependencySpec):
-                path = self.spec.path
+                path = self.source_path
+                assert path is not None
                 if not path.exists():
                     raise errors.UserFileNotFoundError(
                         f"Local dependency path {path} does not exist", markdown=False
@@ -259,11 +288,12 @@ class ProjectDependency:
     def try_load(self):
         if self.cfg:
             return
-        if not self.target_path:
+        source_path = self.source_path
+        if source_path is None:
             return
-        if not self.target_path.exists():
+        if not source_path.exists():
             return
-        self.cfg = config.ProjectConfig.from_path(self.target_path)
+        self.cfg = config.ProjectConfig.from_path(source_path)
 
     def get_package_source(self) -> PackageSource:
         """Create a PackageSource from this dependency's spec."""
@@ -284,13 +314,16 @@ class ProjectDependency:
         elif isinstance(self.spec, config.FileDependencySpec):
             return PackageSource(
                 type="file",
-                path=str(self.spec.path),
+                path=str(self.source_path or self.spec.path),
             )
         else:
             return PackageSource(type="unknown")
 
     def __str__(self) -> str:
-        return f"{type(self).__name__}(spec={self.spec}, path={self.target_path})"
+        return (
+            f"{type(self).__name__}(spec={self.spec}, "
+            f"source_path={self.source_path}, installed_path={self.installed_path})"
+        )
 
     def __repr__(self) -> str:
         return str(self)
@@ -360,13 +393,19 @@ class ProjectDependencies:
 
     @property
     def not_installed_dependencies(self) -> set[ProjectDependency]:
-        return {dep for dep in self.all_deps if not dep.cfg}
+        return {
+            dep
+            for dep in self.all_deps
+            if dep.installed_path is not None and not dep.cfg
+        }
 
     def install_missing_dependencies(self):
         for dep in self.not_installed_dependencies:
             assert dep.dist is not None
             _log_add_package(dep.identifier, dep.dist.version)
-            dep.dist.install(dep.target_path, source=dep.get_package_source())
+            installed_path = dep.installed_path
+            assert installed_path is not None
+            dep.dist.install(installed_path, source=dep.get_package_source())
 
     def clean_unmanaged_directories(self):
         module_dir = self.pcfg.paths.modules
@@ -384,7 +423,9 @@ class ProjectDependencies:
                 local_dep_dirs.add(dep_dir.relative_to(module_dir))
 
         dep_dirs = {
-            not_none(dep.target_path).relative_to(module_dir) for dep in self.all_deps
+            not_none(dep.installed_path).relative_to(module_dir)
+            for dep in self.all_deps
+            if dep.installed_path is not None
         }
         # Get the first two parts of the path (owner/repo) to use as prefixes
         dep_dir_prefixes = {Path(*dep_dir.parts[:2]) for dep_dir in dep_dirs}
@@ -563,16 +604,25 @@ class ProjectDependencies:
                         f"Use --upgrade to install anyway."
                     )
 
-        target_path = dep.target_path
-        if target_path.exists():
+        target_path = dep.installed_path
+        if target_path is not None and target_path.exists():
             robustly_rm_dir(target_path)
 
         dep.load_dist()
-        assert dep.dist is not None
-
-        dep.dist.install(target_path, source=dep.get_package_source())
+        if dep.installed_path is not None:
+            assert dep.dist is not None
+            dep.dist.install(dep.installed_path, source=dep.get_package_source())
         dep.add_to_manifest()
-        _log_add_package(dep.identifier, dep.dist.version)
+        version_str = (
+            dep.dist.version
+            if dep.dist is not None
+            else (
+                dep.cfg.package.version
+                if dep.cfg is not None and dep.cfg.package is not None
+                else "source"
+            )
+        )
+        _log_add_package(dep.identifier, version_str)
 
     def add_dependencies(self, *specs: config.DependencySpec, upgrade: bool = False):
         # Load specs and fetch dists if needed
@@ -650,8 +700,9 @@ class ProjectDependencies:
             _log_remove_package(dep.identifier, dep.dist.version if dep.dist else None)
 
         for dep in uninstall:
-            if dep.target_path.exists():
-                robustly_rm_dir(dep.target_path)
+            installed_path = dep.installed_path
+            if installed_path is not None and installed_path.exists():
+                robustly_rm_dir(installed_path)
 
         # reload and clean orphaned packages
         self.reload()
@@ -677,7 +728,8 @@ class ProjectDependencies:
             if dep.dist.version == installed_version and not force_reinstall:
                 return False
 
-            target_path = dep.target_path
+            target_path = dep.installed_path
+            assert target_path is not None
             if target_path.exists():
                 _log_remove_package(dep.identifier, installed_version)
                 robustly_rm_dir(target_path)
@@ -692,10 +744,12 @@ class ProjectDependencies:
                 case "registry":
                     spec = cast(config.RegistryDependencySpec, dep.spec)
                     desired_version = spec.release
+                    target_path = dep.installed_path
+                    assert target_path is not None
 
                     # Use metadata-based state checking
                     state, meta, modified_files = get_package_state(
-                        dep.target_path,
+                        target_path,
                         expected_version=desired_version,
                         check_integrity=True,
                     )
@@ -736,7 +790,7 @@ class ProjectDependencies:
                                 raise PackageModifiedError(
                                     dep.identifier,
                                     modified_files,
-                                    package_path=dep.target_path,
+                                    package_path=target_path,
                                 )
 
                         case PackageState.INSTALLED_NO_META:
@@ -763,7 +817,7 @@ class ProjectDependencies:
                                     dep, installed_version, force_reinstall=True
                                 )
 
-                case "file" | "git":
+                case "project" | "file" | "git":
                     logger.warning(
                         f"Ignoring possible changes to {dep.identifier} "
                         f"({dep.spec.type} dependency)"

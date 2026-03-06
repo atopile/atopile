@@ -355,7 +355,7 @@ def _normalize_package_file_stem(name: str) -> str:
     return stem
 
 
-def _ensure_file_dependency(
+def _ensure_project_dependency(
     project_root: Path, dependency_path: Path, identifier: str
 ) -> None:
     data, ato_file = load_ato_yaml(project_root)
@@ -365,17 +365,19 @@ def _ensure_file_dependency(
 
     rel_path = f"./{dependency_path.relative_to(project_root).as_posix()}"
     for dep in dependencies:
-        if (
-            isinstance(dep, dict)
-            and dep.get("type") == "file"
-            and dep.get("path") == rel_path
-        ):
+        if isinstance(dep, dict) and dep.get("path") == rel_path:
+            changed = False
+            if dep.get("type") != "project":
+                dep["type"] = "project"
+                changed = True
             if dep.get("identifier") != identifier:
                 dep["identifier"] = identifier
+                changed = True
+            if changed:
                 save_ato_yaml(ato_file, data)
             return
 
-    dependencies.append({"type": "file", "path": rel_path, "identifier": identifier})
+    dependencies.append({"type": "project", "path": rel_path, "identifier": identifier})
     save_ato_yaml(ato_file, data)
 
 
@@ -422,7 +424,7 @@ def create_local_package(
     module_lines.extend([f"module {entry_module.strip()}:", "    pass", ""])
     ato_path.write_text("\n".join(module_lines), encoding="utf-8")
 
-    _ensure_file_dependency(project_root, package_dir, package_identifier)
+    _ensure_project_dependency(project_root, package_dir, package_identifier)
 
     return {
         "path": str(package_dir),
@@ -801,12 +803,34 @@ def _read_project_config_dependencies(
     return [dep for dep in config_obj.dependencies if dep.identifier]
 
 
+def _resolve_dependency_source_path(
+    project_path: Path, spec: config.DependencySpec
+) -> Path | None:
+    if isinstance(spec, (config.FileDependencySpec, config.ProjectDependencySpec)):
+        path = spec.path
+        if not path.is_absolute():
+            path = project_path / path
+        return path.resolve()
+
+    if spec.identifier:
+        return (project_path / ".ato" / "modules" / spec.identifier).resolve()
+
+    return None
+
+
+def _resolve_dependency_installed_path(
+    project_path: Path, spec: config.DependencySpec
+) -> Path | None:
+    if isinstance(spec, config.ProjectDependencySpec) or not spec.identifier:
+        return None
+    return (project_path / ".ato" / "modules" / spec.identifier).resolve()
+
+
 def _read_module_package_info(
-    modules_root: Path, identifier: str
+    package_root: Path,
 ) -> tuple[str | None, str | None]:
-    module_path = modules_root / identifier
     try:
-        config_obj = config.ProjectConfig.from_path(module_path, validate_builds=False)
+        config_obj = config.ProjectConfig.from_path(package_root, validate_builds=False)
     except Exception:
         return None, None
     if not config_obj or not config_obj.package:
@@ -817,10 +841,16 @@ def _read_module_package_info(
 
 
 def _get_dependency_status(
-    modules_root: Path, identifier: str, expected_version: str | None
+    source_path: Path | None,
+    expected_version: str | None,
+    dependency_type: str,
 ) -> str:
-    """Get the integrity status of an installed dependency."""
-    package_path = modules_root / identifier
+    if source_path is None or not source_path.exists():
+        return "not_installed"
+    if dependency_type == "project":
+        return "source"
+
+    package_path = source_path
     try:
         state, _, _ = get_package_state(
             package_path,
@@ -829,36 +859,48 @@ def _get_dependency_status(
         )
         return state.value
     except Exception as e:
-        log.debug(f"Error checking package state for {identifier}: {e}")
+        log.debug(f"Error checking package state for {package_path}: {e}")
         return "unknown"
 
 
 def _collect_dependency_sources(
     project_path: Path, direct_identifiers: list[str]
-) -> dict[str, set[str]]:
-    modules_root = project_path / ".ato" / "modules"
-    if not modules_root.exists():
-        return {}
-
+) -> tuple[dict[str, set[str]], dict[str, config.DependencySpec]]:
     seen_pairs: set[tuple[str, str]] = set()
     sources: dict[str, set[str]] = {}
-    queue: list[tuple[str, str]] = [(dep_id, dep_id) for dep_id in direct_identifiers]
+    specs_by_identifier: dict[str, config.DependencySpec] = {}
+    direct_specs = {
+        dep.identifier: dep
+        for dep in _read_project_config_dependencies(project_path)
+        if dep.identifier
+    }
+    queue: list[tuple[config.DependencySpec, str]] = [
+        (dep, dep_id) for dep_id, dep in direct_specs.items()
+    ]
 
     while queue:
-        current_id, origin_id = queue.pop(0)
+        current_dep, origin_id = queue.pop(0)
+        current_id = current_dep.identifier
+        if current_id is None:
+            continue
         if (current_id, origin_id) in seen_pairs:
             continue
         seen_pairs.add((current_id, origin_id))
 
-        deps = _read_project_config_dependencies(modules_root / current_id)
+        source_path = _resolve_dependency_source_path(project_path, current_dep)
+        if source_path is None:
+            continue
+
+        deps = _read_project_config_dependencies(source_path)
         for dep in deps:
             dep_id = dep.identifier
             if not dep_id or dep_id in direct_identifiers:
                 continue
+            specs_by_identifier.setdefault(dep_id, dep)
             sources.setdefault(dep_id, set()).add(origin_id)
-            queue.append((dep_id, origin_id))
+            queue.append((dep, origin_id))
 
-    return sources
+    return sources, specs_by_identifier
 
 
 def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
@@ -866,10 +908,6 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
     direct_identifiers = [dep.identifier for dep in direct_specs if dep.identifier]
     direct_identifiers_set = set(direct_identifiers)
 
-    installed = packages_domain.get_installed_packages_for_project(project_path)
-    installed_versions = {pkg.identifier: pkg.version for pkg in installed}
-
-    modules_root = project_path / ".ato" / "modules"
     dependencies: list[DependencyInfo] = []
 
     try:
@@ -884,25 +922,28 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
             continue
 
         name, publisher = _dependency_display_parts(identifier)
-        version = (
-            installed_versions.get(identifier)
-            or getattr(dep, "release", None)
-            or "unknown"
+        dependency_type = dep.type
+        source_path = _resolve_dependency_source_path(project_path, dep)
+        installed_path = _resolve_dependency_installed_path(project_path, dep)
+
+        local_version, repo_from_pkg = (
+            _read_module_package_info(source_path) if source_path else (None, None)
         )
+        version = local_version or getattr(dep, "release", None) or "unknown"
 
         latest_version = None
         has_update = False
-        repository = None
+        repository = repo_from_pkg
 
         cached_pkg = registry_by_id.get(identifier)
         if cached_pkg:
             latest_version = cached_pkg.latest_version
             has_update = packages_domain.version_is_newer(version, latest_version)
-            repository = cached_pkg.repository
+            repository = cached_pkg.repository or repository
 
         # Get package integrity status
         expected_version = getattr(dep, "release", None)
-        status = _get_dependency_status(modules_root, identifier, expected_version)
+        status = _get_dependency_status(source_path, expected_version, dependency_type)
 
         dependencies.append(
             DependencyInfo(
@@ -915,18 +956,35 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
                 has_update=has_update,
                 is_direct=True,
                 via=None,
+                dependency_type=dependency_type,
+                source_path=str(source_path) if source_path else None,
+                installed_path=str(installed_path) if installed_path else None,
                 status=status,
             )
         )
 
-    transitive_sources = _collect_dependency_sources(project_path, direct_identifiers)
+    transitive_sources, transitive_specs = _collect_dependency_sources(
+        project_path, direct_identifiers
+    )
 
     for identifier, sources in sorted(transitive_sources.items()):
         if identifier in direct_identifiers_set:
             continue
 
         name, publisher = _dependency_display_parts(identifier)
-        version, repo_from_pkg = _read_module_package_info(modules_root, identifier)
+        matching_dep = transitive_specs.get(identifier)
+        dependency_type = matching_dep.type if matching_dep else "registry"
+        source_path = (
+            _resolve_dependency_source_path(project_path, matching_dep)
+            if matching_dep
+            else (project_path / ".ato" / "modules" / identifier).resolve()
+        )
+        installed_path = (
+            _resolve_dependency_installed_path(project_path, matching_dep)
+            if matching_dep
+            else (project_path / ".ato" / "modules" / identifier).resolve()
+        )
+        version, repo_from_pkg = _read_module_package_info(source_path)
         version = version or "unknown"
 
         latest_version = None
@@ -940,7 +998,7 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
             repository = cached_pkg.repository or repository
 
         # Get package integrity status (no expected version for transitive deps)
-        status = _get_dependency_status(modules_root, identifier, version)
+        status = _get_dependency_status(source_path, version, dependency_type)
 
         dependencies.append(
             DependencyInfo(
@@ -953,6 +1011,9 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
                 has_update=has_update,
                 is_direct=False,
                 via=sorted(sources),
+                dependency_type=dependency_type,
+                source_path=str(source_path) if source_path else None,
+                installed_path=str(installed_path) if installed_path else None,
                 status=status,
             )
         )

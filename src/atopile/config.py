@@ -698,6 +698,8 @@ class DependencySpec(BaseConfigModel):
         # TODO dont use hardcoded strings
         if type_specifier.startswith("file"):
             return FileDependencySpec.from_str(spec_str)
+        elif type_specifier.startswith("project"):
+            return ProjectDependencySpec.from_str(spec_str)
         elif type_specifier.startswith("git"):
             return GitDependencySpec.from_str(spec_str)
         elif type_specifier.startswith("registry"):
@@ -725,6 +727,22 @@ class FileDependencySpec(DependencySpec):
     def from_str(spec_str: str) -> "FileDependencySpec":
         _, path = spec_str.split("://", 1)
         return FileDependencySpec(path=Path(path))
+
+
+class ProjectDependencySpec(DependencySpec):
+    type: Literal["project"] = "project"
+    path: Path
+    identifier: str | None = None
+
+    @field_serializer("path")
+    def serialize_path(self, path: Path, _info: Any) -> str:
+        return str(path)
+
+    @staticmethod
+    @override
+    def from_str(spec_str: str) -> "ProjectDependencySpec":
+        _, path = spec_str.split("://", 1)
+        return ProjectDependencySpec(path=Path(path))
 
 
 class GitDependencySpec(DependencySpec):
@@ -789,7 +807,12 @@ class RegistryDependencySpec(DependencySpec):
 
 
 _DependencySpec = Annotated[
-    Union[FileDependencySpec, GitDependencySpec, RegistryDependencySpec],
+    Union[
+        FileDependencySpec,
+        ProjectDependencySpec,
+        GitDependencySpec,
+        RegistryDependencySpec,
+    ],
     Field(discriminator="type"),
 ]
 
