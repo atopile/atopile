@@ -8,6 +8,7 @@ import posthog
 import pytest
 
 from atopile import telemetry
+from atopile.logging import AtoLogger
 from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import robustly_rm_dir
 
@@ -25,6 +26,11 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "worker_affinity(separator): route parametrized tests with the same "
         "prefix (split on separator) to the same worker process",
+    )
+    config.addinivalue_line(
+        "markers",
+        "ato_logging(kind=None, identifier=None, context='', reset_root=False): "
+        "configure the ato_logging_context fixture",
     )
     worker_id = os.environ.get("PYTEST_XDIST_WORKER")
     if worker_id is not None:
@@ -119,6 +125,36 @@ def clear_node_type_caches():
     _clear_type_caches()
     yield
     _clear_type_caches()
+
+
+@pytest.fixture(autouse=True)
+def ato_logging_context(request: pytest.FixtureRequest):
+    """
+    Isolate global logging state for tests with explicit context activation.
+
+    Configure behavior via:
+    - marker: `@pytest.mark.ato_logging(...)`
+    - defaults: unscoped context, no root logger reset
+    - override: pass `kind=None` in marker kwargs to disable context activation
+    """
+    marker = request.node.get_closest_marker("ato_logging")
+    if marker is None:
+        options = {}
+    else:
+        options = marker.kwargs
+
+    kind = options.get("kind", "unscoped")
+    identifier = options.get("identifier", request.node.name)
+    context = options.get("context", "")
+    reset_root = bool(options.get("reset_root", False))
+
+    with AtoLogger.test_context(
+        kind=kind,
+        identifier=identifier,
+        context=context,
+        reset_root=reset_root,
+    ) as root:
+        yield root
 
 
 # Enable this to force GC collection after each test
