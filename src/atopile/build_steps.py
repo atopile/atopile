@@ -552,8 +552,11 @@ def prepare_build(ctx: BuildStepContext) -> None:
             f"{', '.join(board_node.get_name() for board_node in board_nodes)}, "
             "currently not supported."
         )
-    board = board_nodes[0].get_trait(F.PCBManu.is_pcb)
-    _ = board.get_stackup()  # validate stackup
+    elif len(board_nodes) == 0:
+        logger.warning("No board definition found in design.")
+    else:
+        board = board_nodes[0].get_trait(F.PCBManu.is_pcb)
+        _ = board.get_stackup()  # validate stackup
 
     if ctx.pcb is None:
         ctx.pcb = (
