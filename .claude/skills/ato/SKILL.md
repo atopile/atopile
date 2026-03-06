@@ -168,11 +168,13 @@ When `packages_search` returns no match for a needed IC, connector, or module, *
    - Treat `packages/<PartName>/<PartName>.ato` as the canonical wrapper module for that part.
    - Edit that generated package file in place rather than creating another wrapper layer.
    - Keep the raw installed part file unchanged.
+   - Start with a basic reusable wrapper first. Expose the minimum standard interfaces needed to build the package and integrate it cleanly.
    - Keep the wrapper generic and reusable. Expose the chip's general capabilities, not one project's exact architecture.
    - Expose standard interfaces such as `ElectricPower`, `I2C`, `SPI`, `UART`, `CAN`, `SWD`, `USB2_0`, `USB2_0_IF`, `ElectricLogic`, or `ElectricSignal`.
    - Before writing any custom `interface`, check `stdlib_list` / `stdlib_get_item` for an existing stdlib interface and prefer stdlib arrays/composition over project-local aggregate interfaces.
    - Prefer capability-oriented names and boundaries such as `uart`, `spi`, `adc_inputs`, `gpio`, `usb`, `swd`, `power`, not design-specific roles like `sbus`, `phase_current`, `weapon_pwm`, or `battlebot_interfaces`.
    - It is fine to make slightly opinionated pin choices so key capabilities are wired out cleanly, but do not encode one specific end design into the wrapper shape.
+   - Do not treat incomplete pin exposure as a blocker. Add more interfaces, alternate pin mappings, or richer capabilities later when integration proves they are needed.
    - Map the internal `_package` component pins to those interfaces.
    - Add decoupling capacitors and required passives.
    - Set voltage/current constraints from the datasheet.
@@ -243,6 +245,7 @@ module TI_TCA9548A:
 - Always read the datasheet to get correct pin mapping, constraints, and recommended decoupling.
 - The generated package file under `packages/` is the canonical wrapper for that part. Refine it in place.
 - The raw installed file is a `component` — never edit it.
+- Build a basic reusable wrapper first. Expose the minimum standard interfaces needed to validate the package and integrate it, then come back and add more pin mappings or interfaces later if integration requires them.
 - Instantiate the raw component inside the wrapper as `package = new <ComponentName>`.
 - `main.ato` should import wrapper packages directly from `packages/<name>/<name>.ato`, not through an extra aggregator wrapper file.
 - Connect interfaces via `.line` and `.reference` (e.g., `i2c.sda.line ~ package.SDA`; `i2c.sda.reference ~ power`).
@@ -292,6 +295,7 @@ Run builds and fix issues iteratively until everything passes. **Build submodule
 - Run `workspace_list_targets` first after creating/installing local packages so you know which package targets already exist automatically.
 - Split the design into sensible submodules and build those smaller targets first. This is the default validation loop.
 - Build wrapper/package targets first, and do so in parallel where practical, so you get feedback much faster than waiting on repeated full-design builds.
+- If a wrapper is only partially exposed, still build the basic wrapper and keep moving. Extend the wrapper later during integration instead of marking the work blocked just because more interfaces may be needed.
 - Fix submodule/package failures before running the top-level design.
 - Do not add manual top-level `ato.yaml` entries just to build generated local package wrappers if `workspace_list_targets` already exposes those targets.
 - Use the full top-level build after submodules are green; it should then be mainly an integration check rather than the first place issues appear.

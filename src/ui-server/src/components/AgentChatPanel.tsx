@@ -194,6 +194,9 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                   void runtime.sendMessage();
                 }
               }}
+              onInterrupt={() => {
+                void runtime.sendInterruptMessage();
+              }}
               onStop={() => {
                 void runtime.stopRun();
               }}

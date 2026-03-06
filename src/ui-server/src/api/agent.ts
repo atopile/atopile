@@ -28,6 +28,11 @@ export type AgentRunCreateResponse = CreateRunResponse;
 export type AgentRunStatusResponse = GetRunResponse;
 export type AgentRunCancelResponse = CancelRunResponse;
 export type AgentRunSteerResponse = SteerRunResponse;
+export interface AgentRunInterruptResponse {
+  runId: string;
+  status: string;
+  queuedMessages: number;
+}
 
 export class AgentApiError extends Error {
   constructor(public status: number, message: string) {
@@ -165,6 +170,20 @@ export const agentApi = {
       {
         method: 'POST',
         body: JSON.stringify(requestBody),
+      }
+    );
+  },
+
+  async interruptRun(
+    sessionId: string,
+    runId: string,
+    payload: { message: string }
+  ): Promise<AgentRunInterruptResponse> {
+    return request<AgentRunInterruptResponse>(
+      `/api/agent/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/interrupt`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ message: payload.message }),
       }
     );
   },

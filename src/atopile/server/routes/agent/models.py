@@ -64,8 +64,11 @@ EVENT_RUN_PROGRESS = "run_progress"
 EVENT_RUN_COMPLETED = "run_completed"
 EVENT_RUN_FAILED = "run_failed"
 EVENT_RUN_CANCELLED = "run_cancelled"
+EVENT_RUN_STOP_REQUESTED = "run_stop_requested"
 EVENT_RUN_STEER_QUEUED = "run_steer_queued"
 EVENT_RUN_STEER_CONSUMED = "run_steer_consumed"
+EVENT_RUN_INTERRUPT_QUEUED = "run_interrupt_queued"
+EVENT_RUN_INTERRUPT_CONSUMED = "run_interrupt_consumed"
 
 USER_ROLE = "user"
 ASSISTANT_ROLE = "assistant"
@@ -105,6 +108,19 @@ class AgentRun(BaseModel):
     task: asyncio.Task[Any] | None = Field(default=None, repr=False)
     steer_messages: list[str] = Field(default_factory=list)
     consumed_steer_messages: list[str] = Field(default_factory=list)
+    interrupt_messages: list[str] = Field(default_factory=list)
+    consumed_interrupt_messages: list[str] = Field(default_factory=list)
+    stop_requested: bool = False
+
+
+class InterruptRunRequest(ApiModel):
+    message: str
+
+
+class InterruptRunResponse(ApiModel):
+    run_id: str = Field(alias="runId")
+    status: str
+    queued_messages: int = Field(alias="queuedMessages")
 
 
 def session_not_found_detail(session_id: str) -> str:

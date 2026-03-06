@@ -34,13 +34,15 @@ from atopile.server.agent.orchestrator_helpers import (
     _sanitize_tool_output_for_model,
     _summarize_tool_result_for_trace,
 )
-from atopile.server.agent.provider import LLMProvider
+from atopile.server.agent.provider import LLMProvider, LLMResponse
 from atopile.server.agent.registry import ToolRegistry
 
 log = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 SteeringMessagesCallback = Callable[[], list[str]]
+InterruptMessagesCallback = Callable[[], list[str]]
+StopRequestedCallback = Callable[[], bool]
 MessageCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 TraceCallback = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 
@@ -162,6 +164,39 @@ def _build_turn_time_budget_stop_text(
         f"Stopped after exceeding the per-turn time budget "
         f"({elapsed:.1f}s, {loops} loops, {len(traces)} tool calls)."
     )
+
+
+def _build_stop_inputs_for_model() -> list[dict[str, Any]]:
+    return [
+        {
+            "role": "user",
+            "content": (
+                "The user requested that you stop at the next safe boundary. "
+                "Do not call any more tools. Reply with a concise handoff "
+                "covering what was completed, what remains, and the best next "
+                "step if work resumes."
+            ),
+        }
+    ]
+
+
+def _build_interrupt_inputs_for_model(messages: list[str]) -> list[dict[str, Any]]:
+    if not messages:
+        return _build_stop_inputs_for_model()
+    bullets = "\n".join(f"- {message}" for message in messages)
+    return [
+        {
+            "role": "user",
+            "content": (
+                "The user interrupted your current work and wants a direct reply "
+                "now. Stop at this safe boundary, do not call any more tools, "
+                "answer the user's message directly, then include a brief "
+                "handoff covering what was completed and the best next step if "
+                "work resumes.\n"
+                f"{bullets}"
+            ),
+        }
+    ]
 
 
 def _build_kickstart_msg(checklist: Any) -> str:
@@ -333,6 +368,8 @@ class AgentRunner:
         tool_memory: dict[str, dict[str, Any]] | None = None,
         progress_callback: ProgressCallback | None = None,
         consume_steering_messages: SteeringMessagesCallback | None = None,
+        consume_interrupt_messages: InterruptMessagesCallback | None = None,
+        stop_requested: StopRequestedCallback | None = None,
         message_callback: MessageCallback | None = None,
         trace_callback: TraceCallback | None = None,
     ) -> AgentTurnResult:
@@ -396,6 +433,16 @@ class AgentRunner:
             "silent_retry_count": 0,
             "checklist_tool_count": 0,
             "work_tool_count": 0,
+            "model_call_count": 0,
+            "tool_call_count": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "model_duration_ms": 0,
+            "tool_duration_ms": 0,
+            "decision_duration_ms": 0,
         }
 
         # Checklist-driven continuation state
@@ -449,6 +496,7 @@ class AgentRunner:
             request_input.extend(steering_inputs)
 
         active_trace = trace_callback if cfg.trace_enabled else None
+        last_activity_at = started_at
         await self._emit_trace(
             active_trace,
             "turn_started",
@@ -460,6 +508,112 @@ class AgentRunner:
             },
         )
 
+        async def _complete_with_telemetry(
+            *,
+            messages: list[dict[str, Any]],
+            previous_response_id_for_call: str | None,
+            loop: int,
+            reason: str,
+            status_text: str,
+            detail_text: str,
+        ) -> LLMResponse:
+            nonlocal last_activity_at
+
+            request_started_at = time.monotonic()
+            decision_duration_ms = max(
+                0, int((request_started_at - last_activity_at) * 1000)
+            )
+            telemetry["decision_duration_ms"] = (
+                telemetry.get("decision_duration_ms", 0) + decision_duration_ms
+            )
+            await self._emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "step_kind": "model_request_started",
+                    "loop": loop,
+                    "model": cfg.model,
+                    "previous_response_id": previous_response_id_for_call,
+                    "duration_ms": decision_duration_ms,
+                    "status_text": status_text,
+                    "detail_text": detail_text,
+                    "reason": reason,
+                },
+            )
+
+            response = await self._provider.complete(
+                messages=messages,
+                instructions=instructions,
+                tools=tool_defs,
+                skill_state=skill_state,
+                project_path=project_path,
+                previous_response_id=previous_response_id_for_call,
+            )
+
+            response_received_at = time.monotonic()
+            model_duration_ms = max(
+                0, int((response_received_at - request_started_at) * 1000)
+            )
+            telemetry["model_call_count"] = telemetry.get("model_call_count", 0) + 1
+            telemetry["model_duration_ms"] = (
+                telemetry.get("model_duration_ms", 0) + model_duration_ms
+            )
+
+            usage_payload: dict[str, Any] = {}
+            if response.usage is not None:
+                if isinstance(response.usage.input_tokens, int):
+                    telemetry["input_tokens"] = (
+                        telemetry.get("input_tokens", 0) + response.usage.input_tokens
+                    )
+                    usage_payload["input_tokens"] = response.usage.input_tokens
+                if isinstance(response.usage.output_tokens, int):
+                    telemetry["output_tokens"] = (
+                        telemetry.get("output_tokens", 0) + response.usage.output_tokens
+                    )
+                    usage_payload["output_tokens"] = response.usage.output_tokens
+                if isinstance(response.usage.total_tokens, int):
+                    telemetry["total_tokens"] = (
+                        telemetry.get("total_tokens", 0) + response.usage.total_tokens
+                    )
+                    usage_payload["total_tokens"] = response.usage.total_tokens
+                if isinstance(response.usage.reasoning_tokens, int):
+                    telemetry["reasoning_tokens"] = (
+                        telemetry.get("reasoning_tokens", 0)
+                        + response.usage.reasoning_tokens
+                    )
+                    usage_payload["reasoning_tokens"] = response.usage.reasoning_tokens
+                if isinstance(response.usage.cached_input_tokens, int):
+                    telemetry["cached_input_tokens"] = (
+                        telemetry.get("cached_input_tokens", 0)
+                        + response.usage.cached_input_tokens
+                    )
+                    usage_payload["cached_input_tokens"] = (
+                        response.usage.cached_input_tokens
+                    )
+
+            await self._emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "step_kind": "model_response_received",
+                    "loop": loop,
+                    "model": cfg.model,
+                    "response_id": response.id,
+                    "previous_response_id": previous_response_id_for_call,
+                    "duration_ms": model_duration_ms,
+                    "status_text": "Model response received",
+                    "detail_text": (
+                        f"{len(response.tool_calls)} tool call(s), "
+                        f"phase={response.phase or 'unspecified'}"
+                    ),
+                    "reason": reason,
+                    **usage_payload,
+                },
+            )
+
+            last_activity_at = response_received_at
+            return response
+
         # Initial LLM call
         await self._emit_progress(
             progress_callback,
@@ -469,13 +623,13 @@ class AgentRunner:
                 "detail_text": "Reviewing request and project context",
             },
         )
-        response = await self._provider.complete(
+        response = await _complete_with_telemetry(
             messages=request_input,
-            instructions=instructions,
-            tools=tool_defs,
-            skill_state=skill_state,
-            project_path=project_path,
-            previous_response_id=previous_response_id,
+            previous_response_id_for_call=previous_response_id,
+            loop=0,
+            reason="initial_request",
+            status_text="Planning",
+            detail_text="Reviewing request and project context",
         )
         last_response_id = response.id or last_response_id
         initial_preamble = _summarize_model_preamble(response.text)
@@ -500,6 +654,14 @@ class AgentRunner:
             elapsed = time.monotonic() - started_at
 
             loops += 1
+            loop_started_at = time.monotonic()
+            loop_model_calls_before = telemetry.get("model_call_count", 0)
+            loop_model_duration_before = telemetry.get("model_duration_ms", 0)
+            loop_tool_duration_before = telemetry.get("tool_duration_ms", 0)
+            loop_decision_duration_before = telemetry.get("decision_duration_ms", 0)
+            loop_total_tokens_before = telemetry.get("total_tokens", 0)
+            loop_reasoning_tokens_before = telemetry.get("reasoning_tokens", 0)
+            loop_cached_input_tokens_before = telemetry.get("cached_input_tokens", 0)
 
             # No tool calls → check phase/checklist/steering, then done
             if not response.tool_calls:
@@ -534,13 +696,13 @@ class AgentRunner:
                             "text_preview": commentary_preamble,
                         },
                     )
-                    response = await self._provider.complete(
+                    response = await _complete_with_telemetry(
                         messages=[],
-                        instructions=instructions,
-                        tools=tool_defs,
-                        skill_state=skill_state,
-                        project_path=project_path,
-                        previous_response_id=last_response_id,
+                        previous_response_id_for_call=last_response_id,
+                        loop=loops,
+                        reason="commentary_continuation",
+                        status_text="Working",
+                        detail_text=commentary_preamble or "Continuing after preamble",
                     )
                     last_response_id = response.id or last_response_id
                     continued_preamble = _summarize_model_preamble(response.text)
@@ -611,13 +773,13 @@ class AgentRunner:
                             telemetry["silent_retry_count"] = (
                                 telemetry.get("silent_retry_count", 0) + 1
                             )
-                            response = await self._provider.complete(
+                            response = await _complete_with_telemetry(
                                 messages=[],
-                                instructions=instructions,
-                                tools=tool_defs,
-                                skill_state=skill_state,
-                                project_path=project_path,
-                                previous_response_id=last_response_id,
+                                previous_response_id_for_call=last_response_id,
+                                loop=loops,
+                                reason="silent_retry",
+                                status_text="Continuing",
+                                detail_text="Retrying after empty model response",
                             )
                             last_response_id = response.id or last_response_id
                             continue
@@ -649,13 +811,13 @@ class AgentRunner:
                         telemetry["kickstart_count"] = (
                             telemetry.get("kickstart_count", 0) + 1
                         )
-                        response = await self._provider.complete(
+                        response = await _complete_with_telemetry(
                             messages=[{"role": "user", "content": kickstart_msg}],
-                            instructions=instructions,
-                            tools=tool_defs,
-                            skill_state=skill_state,
-                            project_path=project_path,
-                            previous_response_id=last_response_id,
+                            previous_response_id_for_call=last_response_id,
+                            loop=loops,
+                            reason="tool_kickstart",
+                            status_text="Continuing",
+                            detail_text="Kickstarting tool use from checklist state",
                         )
                         last_response_id = response.id or last_response_id
                         continue
@@ -696,13 +858,16 @@ class AgentRunner:
                                 "summary": cl.summary_text(),
                             },
                         )
-                        response = await self._provider.complete(
+                        response = await _complete_with_telemetry(
                             messages=[{"role": "user", "content": cont_msg}],
-                            instructions=instructions,
-                            tools=tool_defs,
-                            skill_state=skill_state,
-                            project_path=project_path,
-                            previous_response_id=last_response_id,
+                            previous_response_id_for_call=last_response_id,
+                            loop=loops,
+                            reason="checklist_continuation",
+                            status_text="Continuing",
+                            detail_text=(
+                                f"{len(cl.incomplete_items())} checklist items "
+                                "remaining"
+                            ),
                         )
                         last_response_id = response.id or last_response_id
                         continue
@@ -748,13 +913,13 @@ class AgentRunner:
                             "nudge_count": turn_state.checklist_nudge_count,
                         },
                     )
-                    response = await self._provider.complete(
+                    response = await _complete_with_telemetry(
                         messages=[{"role": "user", "content": _CHECKLIST_NUDGE_MSG}],
-                        instructions=instructions,
-                        tools=tool_defs,
-                        skill_state=skill_state,
-                        project_path=project_path,
-                        previous_response_id=last_response_id,
+                        previous_response_id_for_call=last_response_id,
+                        loop=loops,
+                        reason="checklist_nudge",
+                        status_text="Continuing",
+                        detail_text="Requesting checklist creation",
                     )
                     last_response_id = response.id or last_response_id
                     continue
@@ -791,16 +956,56 @@ class AgentRunner:
                                 "pending_count": len(pending),
                             },
                         )
-                        response = await self._provider.complete(
+                        response = await _complete_with_telemetry(
                             messages=[{"role": "user", "content": nudge}],
-                            instructions=instructions,
-                            tools=tool_defs,
-                            skill_state=skill_state,
-                            project_path=project_path,
-                            previous_response_id=last_response_id,
+                            previous_response_id_for_call=last_response_id,
+                            loop=loops,
+                            reason="message_nudge",
+                            status_text="Continuing",
+                            detail_text=f"Addressing {len(pending)} pending message(s)",
                         )
                         last_response_id = response.id or last_response_id
                         continue
+
+                interrupt_messages = self._collect_interrupts(
+                    consume_interrupt_messages
+                )
+                if interrupt_messages or self._is_stop_requested(stop_requested):
+                    await self._emit_progress(
+                        progress_callback,
+                        {
+                            "phase": "thinking",
+                            "status_text": "Stopping",
+                            "detail_text": (
+                                "Responding to your interruption"
+                                if interrupt_messages
+                                else "Preparing a handoff"
+                            ),
+                        },
+                    )
+                    response = await self._provider.complete(
+                        messages=(
+                            _build_interrupt_inputs_for_model(interrupt_messages)
+                            if interrupt_messages
+                            else _build_stop_inputs_for_model()
+                        ),
+                        instructions=instructions,
+                        tools=[],
+                        skill_state=skill_state,
+                        project_path=project_path,
+                        previous_response_id=last_response_id,
+                    )
+                    last_response_id = response.id or last_response_id
+                    if turn_state.checklist is not None:
+                        turn_state.checklist.save_to_skill_state(skill_state)
+                    return AgentTurnResult(
+                        text=response.text or "Stopped.",
+                        tool_traces=traces,
+                        model=cfg.model,
+                        response_id=last_response_id,
+                        skill_state=skill_state,
+                        context_metrics=telemetry,
+                    )
 
                 steering = self._collect_steering(
                     consume_steering_messages,
@@ -816,13 +1021,13 @@ class AgentRunner:
                             "detail_text": "Applying latest user guidance",
                         },
                     )
-                    response = await self._provider.complete(
+                    response = await _complete_with_telemetry(
                         messages=steering,
-                        instructions=instructions,
-                        tools=tool_defs,
-                        skill_state=skill_state,
-                        project_path=project_path,
-                        previous_response_id=last_response_id,
+                        previous_response_id_for_call=last_response_id,
+                        loop=loops,
+                        reason="steering",
+                        status_text="Steering",
+                        detail_text="Applying latest user guidance",
                     )
                     last_response_id = response.id or last_response_id
                     continue
@@ -896,6 +1101,8 @@ class AgentRunner:
 
                 # Intercept managed tools — handled in-process, not
                 # dispatched to the registry.
+                tool_started_at = time.monotonic()
+
                 if call.name in _MANAGED_TOOLS:
                     args = call.arguments or {}
                     result_payload, ok = self._handle_managed_tool(
@@ -926,6 +1133,14 @@ class AgentRunner:
                         project_path=project_path,
                         ctx=ctx,
                     )
+                tool_duration_ms = max(
+                    0, int((time.monotonic() - tool_started_at) * 1000)
+                )
+                telemetry["tool_call_count"] = telemetry.get("tool_call_count", 0) + 1
+                telemetry["tool_duration_ms"] = (
+                    telemetry.get("tool_duration_ms", 0) + tool_duration_ms
+                )
+                last_activity_at = time.monotonic()
 
                 trace = ToolTrace(
                     name=call.name, args=args, ok=ok, result=result_payload
@@ -1001,6 +1216,7 @@ class AgentRunner:
                     "tool_index": tool_index,
                     "tool_count": tool_count,
                     "call_id": call.id,
+                    "duration_ms": tool_duration_ms,
                     "trace": {
                         "name": call.name,
                         "args": args,
@@ -1081,13 +1297,16 @@ class AgentRunner:
                     context_metrics=telemetry,
                 )
 
+            interrupt_messages = self._collect_interrupts(consume_interrupt_messages)
+            stop_now = self._is_stop_requested(stop_requested)
+
             # Append steering if available
             steering = self._collect_steering(
                 consume_steering_messages,
                 session_id=session_id,
                 project_root=str(project_path),
             )
-            if steering:
+            if steering and not interrupt_messages and not stop_now:
                 outputs.extend(steering)
 
             elapsed_after_tools = time.monotonic() - started_at
@@ -1113,6 +1332,46 @@ class AgentRunner:
                     telemetry=telemetry,
                 )
 
+            if interrupt_messages or stop_now:
+                await self._emit_progress(
+                    progress_callback,
+                    {
+                        "phase": "thinking",
+                        "status_text": "Stopping",
+                        "detail_text": (
+                            "Responding to your interruption"
+                            if interrupt_messages
+                            else "Preparing a handoff"
+                        ),
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                    },
+                )
+                response = await self._provider.complete(
+                    messages=outputs
+                    + (
+                        _build_interrupt_inputs_for_model(interrupt_messages)
+                        if interrupt_messages
+                        else _build_stop_inputs_for_model()
+                    ),
+                    instructions=instructions,
+                    tools=[],
+                    skill_state=skill_state,
+                    project_path=project_path,
+                    previous_response_id=last_response_id,
+                )
+                last_response_id = response.id or last_response_id
+                if turn_state.checklist is not None:
+                    turn_state.checklist.save_to_skill_state(skill_state)
+                return AgentTurnResult(
+                    text=response.text or "Stopped.",
+                    tool_traces=traces,
+                    model=cfg.model,
+                    response_id=last_response_id,
+                    skill_state=skill_state,
+                    context_metrics=telemetry,
+                )
+
             # Thinking progress
             await self._emit_progress(
                 progress_callback,
@@ -1126,15 +1385,59 @@ class AgentRunner:
             )
 
             # Next LLM call with tool results
-            response = await self._provider.complete(
+            response = await _complete_with_telemetry(
                 messages=outputs,
-                instructions=instructions,
-                tools=tool_defs,
-                skill_state=skill_state,
-                project_path=project_path,
-                previous_response_id=last_response_id,
+                previous_response_id_for_call=last_response_id,
+                loop=loops,
+                reason="tool_results",
+                status_text="Reviewing tool results",
+                detail_text="Choosing next step",
             )
             last_response_id = response.id or last_response_id
+            checklist_remaining = 0
+            if turn_state.checklist is not None:
+                checklist_remaining = len(turn_state.checklist.incomplete_items())
+            await self._emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "step_kind": "loop_summary",
+                    "loop": loops,
+                    "model": cfg.model,
+                    "duration_ms": max(
+                        0, int((time.monotonic() - loop_started_at) * 1000)
+                    ),
+                    "model_call_count": (
+                        telemetry.get("model_call_count", 0) - loop_model_calls_before
+                    ),
+                    "model_duration_ms": (
+                        telemetry.get("model_duration_ms", 0)
+                        - loop_model_duration_before
+                    ),
+                    "tool_duration_ms": (
+                        telemetry.get("tool_duration_ms", 0) - loop_tool_duration_before
+                    ),
+                    "decision_duration_ms": (
+                        telemetry.get("decision_duration_ms", 0)
+                        - loop_decision_duration_before
+                    ),
+                    "tool_count": tool_count,
+                    "checklist_remaining": checklist_remaining,
+                    "total_tokens": (
+                        telemetry.get("total_tokens", 0) - loop_total_tokens_before
+                    ),
+                    "reasoning_tokens": (
+                        telemetry.get("reasoning_tokens", 0)
+                        - loop_reasoning_tokens_before
+                    ),
+                    "cached_input_tokens": (
+                        telemetry.get("cached_input_tokens", 0)
+                        - loop_cached_input_tokens_before
+                    ),
+                    "status_text": "Loop summary",
+                    "detail_text": "Loop telemetry recorded",
+                },
+            )
 
         # Exhausted loop budget
         return self._stop(
@@ -1659,6 +1962,39 @@ class AgentRunner:
                 log.warning("Failed to register steering messages", exc_info=True)
 
         return _build_steering_inputs_for_model(messages, message_ids=message_ids)
+
+    @staticmethod
+    def _collect_interrupts(
+        consume_interrupt_messages: InterruptMessagesCallback | None,
+    ) -> list[str]:
+        if consume_interrupt_messages is None:
+            return []
+        try:
+            raw_messages = consume_interrupt_messages()
+        except Exception:
+            log.warning("Interrupt message callback failed", exc_info=True)
+            return []
+        if not isinstance(raw_messages, list):
+            return []
+
+        messages: list[str] = []
+        for raw_message in raw_messages:
+            if not isinstance(raw_message, str):
+                continue
+            stripped = raw_message.strip()
+            if stripped:
+                messages.append(stripped[:2000])
+        return messages
+
+    @staticmethod
+    def _is_stop_requested(stop_requested: StopRequestedCallback | None) -> bool:
+        if stop_requested is None:
+            return False
+        try:
+            return bool(stop_requested())
+        except Exception:
+            log.warning("Stop request callback failed", exc_info=True)
+            return False
 
     @staticmethod
     async def _emit_progress(

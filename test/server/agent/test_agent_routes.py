@@ -12,6 +12,7 @@ from atopile.dataclasses import AppContext
 from atopile.server.routes.agent import main as agent_routes
 from atopile.server.routes.agent import utils as agent_utils
 from atopile.server.routes.agent.models import (
+    RUN_STATUS_RUNNING,
     AgentRun,
     AgentSession,
     SendMessageRequest,
@@ -314,3 +315,78 @@ async def test_background_chain_integrity_error_retries_without_last_response_id
         assert current_run.status == "completed"
 
     assert calls == ["resp_bad", None]
+
+
+@pytest.mark.anyio
+async def test_cancel_route_requests_graceful_stop_instead_of_cancelling_task(
+    client: AsyncClient,
+    project_root: Path,
+) -> None:
+    session = AgentSession(
+        session_id="session_stop",
+        project_root=str(project_root),
+        active_run_id="run_stop",
+    )
+    run = AgentRun(
+        run_id="run_stop",
+        session_id=session.session_id,
+        project_root=str(project_root),
+        message="work",
+    )
+    with agent_state.sessions_lock:
+        agent_state.sessions_by_id[session.session_id] = session
+    with agent_state.runs_lock:
+        agent_state.runs_by_id[run.run_id] = run
+
+    response = await client.post(
+        f"/api/agent/sessions/{session.session_id}/runs/{run.run_id}/cancel"
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == RUN_STATUS_RUNNING
+    assert body["error"] is None
+
+    with agent_state.runs_lock:
+        updated = agent_state.runs_by_id[run.run_id]
+        assert updated.stop_requested is True
+        assert updated.status == RUN_STATUS_RUNNING
+
+    with agent_state.sessions_lock:
+        updated_session = agent_state.sessions_by_id[session.session_id]
+        assert updated_session.active_run_id == run.run_id
+
+
+@pytest.mark.anyio
+async def test_interrupt_route_queues_message_and_requests_stop(
+    client: AsyncClient,
+    project_root: Path,
+) -> None:
+    session = AgentSession(
+        session_id="session_interrupt",
+        project_root=str(project_root),
+        active_run_id="run_interrupt",
+    )
+    run = AgentRun(
+        run_id="run_interrupt",
+        session_id=session.session_id,
+        project_root=str(project_root),
+        message="work",
+    )
+    with agent_state.sessions_lock:
+        agent_state.sessions_by_id[session.session_id] = session
+    with agent_state.runs_lock:
+        agent_state.runs_by_id[run.run_id] = run
+
+    response = await client.post(
+        f"/api/agent/sessions/{session.session_id}/runs/{run.run_id}/interrupt",
+        json={"message": "What are you blocked on?"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == RUN_STATUS_RUNNING
+    assert body["queuedMessages"] == 1
+
+    with agent_state.runs_lock:
+        updated = agent_state.runs_by_id[run.run_id]
+        assert updated.stop_requested is True
+        assert updated.interrupt_messages == ["What are you blocked on?"]

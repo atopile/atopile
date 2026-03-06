@@ -38,6 +38,7 @@ interface AgentComposerProps {
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onInsertMention: (item: MentionItem) => void;
   onSend: () => void;
+  onInterrupt: () => void;
   onStop: () => void;
 }
 
@@ -60,6 +61,7 @@ export function AgentComposer({
   onInsertMention,
   onKeyDown,
   onSend,
+  onInterrupt,
   onStop,
 }: AgentComposerProps) {
   return (
@@ -72,7 +74,10 @@ export function AgentComposer({
                 key={`${item.kind}:${item.token}`}
                 type="button"
                 className={`agent-mention-item ${index === mentionIndex ? 'active' : ''}`}
-                onMouseDown={(event) => event.preventDefault()}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
                 onClick={() => onInsertMention(item)}
               >
                 <span className={`agent-mention-kind ${item.kind}`}>{item.kind}</span>
@@ -127,6 +132,17 @@ export function AgentComposer({
         >
           <ArrowUp size={14} />
         </button>
+        {isSending && input.trim().length > 0 && (
+          <button
+            className="agent-chat-interrupt"
+            onClick={onInterrupt}
+            disabled={isStopping}
+            aria-label="Interrupt and ask for a direct response"
+            title="Interrupt and respond now"
+          >
+            <AlertCircle size={14} />
+          </button>
+        )}
         {isSending && (
           <button
             className="agent-chat-stop"

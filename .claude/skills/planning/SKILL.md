@@ -329,9 +329,11 @@ Use `design_questions` any time you have multiple design decisions to gather. It
 7. **Create package wrappers** — one per IC. Install parts, read datasheets, map pins to interfaces.
    - Before committing to an unfamiliar IC, motor driver, PMIC, RF part, or other high-risk part, do a brief `web_search` pass to compare families, confirm the typical topology, and find reference-circuit guidance.
    - Keep wrappers reusable across projects. Expose generic chip capabilities and keep board-specific grouping and role naming in `main.ato` or project modules above the wrapper.
+   - Start each wrapper as a basic reusable boundary with the minimum standard interfaces needed to validate the package target and integrate the design. Add more interfaces or alternate pin mappings later only if integration proves they are needed.
 8. **Validate package targets first** — use `workspace_list_targets` to discover package targets automatically exposed by local packages, then build/fix wrappers and other submodules before attempting the full design.
    - Build smaller design sections first because they are much faster to validate.
    - Run independent package/submodule builds in parallel where practical to get faster feedback.
+   - Do not mark wrapper creation blocked just because the full ideal interface set is not exposed yet. Build the basic wrapper, validate it, and continue expanding it during integration.
    - Use the full-design build only after those smaller targets are green so it serves as an integration check, not the first debugging loop.
 9. **Wire up `main.ato`** — connect packages through their interfaces. No raw `_package` imports here.
 10. **Build and verify the full design last** — once package and submodule targets are green, run the top-level build and fix integration issues.

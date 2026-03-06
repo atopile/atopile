@@ -281,7 +281,25 @@ def consume_run_steer_messages(run_id: str) -> list[str]:
         run.steer_messages.clear()
         run.consumed_steer_messages.extend(queued)
         run.updated_at = time.time()
-    return queued
+        return queued
+
+
+def consume_run_interrupt_messages(run_id: str) -> list[str]:
+    with runs_lock:
+        run = runs_by_id.get(run_id)
+        if run is None or not run.interrupt_messages:
+            return []
+        queued = list(run.interrupt_messages)
+        run.interrupt_messages.clear()
+        run.consumed_interrupt_messages.extend(queued)
+        run.updated_at = time.time()
+        return queued
+
+
+def is_run_stop_requested(run_id: str) -> bool:
+    with runs_lock:
+        run = runs_by_id.get(run_id)
+        return bool(run and run.stop_requested)
 
 
 def reset_session_state(session: AgentSession, *, project_root: str) -> None:

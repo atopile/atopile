@@ -197,6 +197,7 @@ export function useAgentChatRuntime(projectRoot: string | null, selectedTargets:
     insertMention: composerState.insertMention,
     stopRun: runState.stopRun,
     sendSteeringMessage: runState.sendSteeringMessage,
+    sendInterruptMessage: runState.sendInterruptMessage,
     sendMessage: runState.sendMessage,
     activateChat,
     openFileDiff,

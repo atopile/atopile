@@ -25,6 +25,7 @@ from .models import (
     EVENT_AGENT_PROGRESS,
     EVENT_RUN_COMPLETED,
     EVENT_RUN_FAILED,
+    EVENT_RUN_INTERRUPT_CONSUMED,
     EVENT_RUN_PROGRESS,
     EVENT_RUN_STEER_CONSUMED,
     EVENT_TURN_COMPLETED,
@@ -41,7 +42,9 @@ from .models import (
     session_not_found_detail,
 )
 from .state import (
+    consume_run_interrupt_messages,
     consume_run_steer_messages,
+    is_run_stop_requested,
     persist_sessions_state,
     runs_by_id,
     runs_lock,
@@ -100,6 +103,21 @@ def log_agent_event(event: str, payload: dict[str, Any]) -> None:
     phase = payload.get("phase")
     tool_name = payload.get("name") or payload.get("tool_name")
     project_root = payload.get("project_root")
+    step_kind = payload.get("step_kind")
+    loop = payload.get("loop")
+    tool_index = payload.get("tool_index")
+    tool_count = payload.get("tool_count")
+    call_id = payload.get("call_id")
+    item_id = payload.get("item_id")
+    model = payload.get("model")
+    response_id = payload.get("response_id")
+    previous_response_id = payload.get("previous_response_id")
+    input_tokens = payload.get("input_tokens")
+    output_tokens = payload.get("output_tokens")
+    total_tokens = payload.get("total_tokens")
+    reasoning_tokens = payload.get("reasoning_tokens")
+    cached_input_tokens = payload.get("cached_input_tokens")
+    duration_ms = payload.get("duration_ms")
     level = "ERROR" if event in _ERROR_EVENTS else "INFO"
 
     summary = None
@@ -124,6 +142,35 @@ def log_agent_event(event: str, payload: dict[str, Any]) -> None:
         tool_name=str(tool_name) if tool_name else None,
         project_root=str(project_root) if project_root else None,
         summary=summary,
+        step_kind=str(step_kind) if step_kind else None,
+        loop=int(loop) if isinstance(loop, int | float) else None,
+        tool_index=int(tool_index) if isinstance(tool_index, int | float) else None,
+        tool_count=int(tool_count) if isinstance(tool_count, int | float) else None,
+        call_id=str(call_id) if call_id else None,
+        item_id=str(item_id) if item_id else None,
+        model=str(model) if model else None,
+        response_id=str(response_id) if response_id else None,
+        previous_response_id=(
+            str(previous_response_id) if previous_response_id else None
+        ),
+        input_tokens=(
+            int(input_tokens) if isinstance(input_tokens, int | float) else None
+        ),
+        output_tokens=(
+            int(output_tokens) if isinstance(output_tokens, int | float) else None
+        ),
+        total_tokens=(
+            int(total_tokens) if isinstance(total_tokens, int | float) else None
+        ),
+        reasoning_tokens=(
+            int(reasoning_tokens) if isinstance(reasoning_tokens, int | float) else None
+        ),
+        cached_input_tokens=(
+            int(cached_input_tokens)
+            if isinstance(cached_input_tokens, int | float)
+            else None
+        ),
+        duration_ms=int(duration_ms) if isinstance(duration_ms, int | float) else None,
         payload=payload_json,
     )
 
@@ -158,6 +205,8 @@ async def run_turn_with_chain_recovery(
     tool_memory: dict[str, dict[str, Any]],
     progress_callback: Any = None,
     consume_steering_messages: Any = None,
+    consume_interrupt_messages: Any = None,
+    stop_requested: Any = None,
     trace_callback: TraceCallback | None = None,
 ) -> Any:
     """Retry once from local history when the provider response chain is stale."""
@@ -174,6 +223,8 @@ async def run_turn_with_chain_recovery(
             tool_memory=tool_memory,
             progress_callback=progress_callback,
             consume_steering_messages=consume_steering_messages,
+            consume_interrupt_messages=consume_interrupt_messages,
+            stop_requested=stop_requested,
             trace_callback=trace_callback,
         )
     except Exception as exc:
@@ -199,6 +250,8 @@ async def run_turn_with_chain_recovery(
             tool_memory=tool_memory,
             progress_callback=progress_callback,
             consume_steering_messages=consume_steering_messages,
+            consume_interrupt_messages=consume_interrupt_messages,
+            stop_requested=stop_requested,
             trace_callback=trace_callback,
         )
 
@@ -246,16 +299,38 @@ def _summarize_progress_payload(payload: dict[str, Any]) -> dict[str, Any]:
     summary: dict[str, Any] = {}
     for key in (
         "phase",
+        "step_kind",
         "loop",
         "tool_index",
         "tool_count",
         "call_id",
         "name",
+        "item_id",
+        "model",
+        "response_id",
+        "previous_response_id",
         "reason",
     ):
         value = payload.get(key)
         if value is not None:
             summary[key] = value
+
+    for key in (
+        "duration_ms",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "reasoning_tokens",
+        "cached_input_tokens",
+        "model_call_count",
+        "model_duration_ms",
+        "tool_duration_ms",
+        "decision_duration_ms",
+        "checklist_remaining",
+    ):
+        value = payload.get(key)
+        if isinstance(value, (int, float)):
+            summary[key] = int(value)
 
     status_text = _truncate_log_text(payload.get("status_text"), max_chars=120)
     if status_text:
@@ -495,6 +570,20 @@ async def run_turn_in_background(
             )
         return queued
 
+    def _consume_interrupt_messages() -> list[str]:
+        queued = consume_run_interrupt_messages(run_id)
+        if queued:
+            log_agent_event(
+                EVENT_RUN_INTERRUPT_CONSUMED,
+                {
+                    "run_id": run_id,
+                    "session_id": session_id,
+                    "project_root": run.project_root,
+                    "count": len(queued),
+                },
+            )
+        return queued
+
     trace_callback = build_run_trace_callback(
         session_id=session_id,
         run_id=run_id,
@@ -514,6 +603,8 @@ async def run_turn_in_background(
             tool_memory=session.tool_memory,
             progress_callback=_emit_progress,
             consume_steering_messages=_consume_steering_messages,
+            consume_interrupt_messages=_consume_interrupt_messages,
+            stop_requested=lambda: is_run_stop_requested(run_id),
             trace_callback=trace_callback,
         )
     except asyncio.CancelledError:
@@ -601,6 +692,9 @@ async def run_turn_in_background(
                 steering_messages_for_history.extend(latest.steer_messages)
                 latest.consumed_steer_messages.clear()
                 latest.steer_messages.clear()
+                latest.consumed_interrupt_messages.clear()
+                latest.interrupt_messages.clear()
+                latest.stop_requested = False
 
         response = build_send_message_response(
             session=active_session,

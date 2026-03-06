@@ -280,6 +280,77 @@ export function useAgentRunState({
     }
   }, [activeChatId, activeChatSnapshot, activeRunId, input, isSending, projectRoot, sessionId, setActivityLabel, setError, setInput, setMentionIndex, setMentionToken, setMessages, pendingSteeringByChatRef, activeChatIdRef, updateChatSnapshot]);
 
+  const sendInterruptMessage = useCallback(async () => {
+    const trimmed = input.trim();
+    if (!trimmed || !projectRoot || !sessionId || !activeChatId || !isSending) return;
+    const chatId = activeChatId;
+    const chatPrefix = chatId;
+    const pendingAssistantId = activeChatSnapshot?.pendingAssistantId ?? null;
+    const userMessage: AgentMessage = {
+      id: `${chatPrefix}-user-interrupt-${Date.now()}`,
+      role: 'user',
+      content: trimmed,
+    };
+
+    const applyInterruptPendingState = (entries: AgentMessage[]): AgentMessage[] => {
+      const withUser = [...entries, userMessage];
+      if (!pendingAssistantId) return withUser;
+      return withUser.map((message) => (
+        message.id === pendingAssistantId
+          ? { ...message, content: 'Interrupting after the current step...', activity: 'Interrupting' }
+          : message
+      ));
+    };
+
+    updateChatSnapshot(chatId, (chat) => ({
+      ...chat,
+      messages: applyInterruptPendingState(chat.messages),
+      input: '',
+      error: null,
+      activityLabel: 'Interrupting',
+      isStopping: true,
+      cancelRequested: true,
+    }));
+    if (activeChatIdRef.current === chatId) {
+      setMessages((previous) => applyInterruptPendingState(previous));
+      setActivityLabel('Interrupting');
+      setError(null);
+      setIsStopping(true);
+    }
+    setInput('');
+    setMentionToken(null);
+    setMentionIndex(0);
+
+    const runId = activeRunId ?? activeChatSnapshot?.pendingRunId ?? null;
+    if (!runId) return;
+
+    try {
+      const interruptResult = await agentApi.interruptRun(sessionId, runId, { message: trimmed });
+      if (interruptResult.status !== 'running') {
+        throw new Error('Active run is no longer running. Please resend your request.');
+      }
+    } catch (interruptError: unknown) {
+      const message = interruptError instanceof Error ? interruptError.message : 'Unable to interrupt the active run.';
+      const interruptErrorMessage: AgentMessage = {
+        id: `${chatPrefix}-interrupt-error-${Date.now()}`,
+        role: 'system',
+        content: `Interrupt failed: ${message}`,
+      };
+      updateChatSnapshot(chatId, (chat) => ({
+        ...chat,
+        messages: [...chat.messages, interruptErrorMessage],
+        error: message,
+        isStopping: false,
+        cancelRequested: false,
+      }));
+      if (activeChatIdRef.current === chatId) {
+        setMessages((previous) => [...previous, interruptErrorMessage]);
+        setError(message);
+        setIsStopping(false);
+      }
+    }
+  }, [activeChatId, activeChatSnapshot, activeRunId, input, isSending, projectRoot, sessionId, setActivityLabel, setError, setInput, setIsStopping, setMentionIndex, setMentionToken, setMessages, activeChatIdRef, updateChatSnapshot]);
+
   const sendMessage = useCallback(async (options?: string | SendMessageOptions) => {
     const directMessage = typeof options === 'string' ? options : options?.directMessage;
     const hideUserMessage = typeof options === 'object' && options !== null
@@ -464,6 +535,7 @@ export function useAgentRunState({
   return {
     stopRun,
     sendSteeringMessage,
+    sendInterruptMessage,
     sendMessage,
   };
 }

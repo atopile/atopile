@@ -5,7 +5,7 @@ from pathlib import Path
 
 from atopile.dataclasses import AppContext
 from atopile.server.agent.checklist import Checklist, ChecklistItem
-from atopile.server.agent.provider import LLMResponse, ToolCall
+from atopile.server.agent.provider import LLMResponse, TokenUsage, ToolCall
 from atopile.server.agent.runner import AgentRunner
 
 
@@ -439,6 +439,244 @@ def test_turn_timeout_closes_pending_tool_chain_before_stopping(
     assert outputs[0]["call_id"] == "call_timeout_1"
 
 
+def test_stop_request_returns_graceful_handoff_after_tool_outputs(
+    monkeypatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "atopile.server.agent.runner.build_system_prompt",
+        lambda **_: ("system prompt", {}),
+    )
+
+    async def _fake_initial_user_message(**_: object) -> str:
+        return "user message"
+
+    monkeypatch.setattr(
+        "atopile.server.agent.runner.build_initial_user_message",
+        _fake_initial_user_message,
+    )
+
+    class _StopProvider:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        async def complete(
+            self,
+            *,
+            messages,
+            instructions,
+            tools,
+            skill_state,
+            project_path,
+            previous_response_id=None,
+        ) -> LLMResponse:
+            self.calls.append(
+                {
+                    "messages": messages,
+                    "tools": tools,
+                    "previous_response_id": previous_response_id,
+                }
+            )
+            if len(self.calls) == 1:
+                return LLMResponse(
+                    id="resp_tool_call",
+                    text="",
+                    tool_calls=[
+                        ToolCall(
+                            id="call_stop_1",
+                            name="project_read_file",
+                            arguments_raw='{"path":"main.ato"}',
+                            arguments={"path": "main.ato"},
+                        )
+                    ],
+                    phase=None,
+                )
+            return LLMResponse(
+                id="resp_stop_handoff",
+                text=(
+                    "Stopped cleanly. Completed the current read and can "
+                    "resume from wrapper integration."
+                ),
+                tool_calls=[],
+                phase="final_answer",
+            )
+
+    class _StopRegistry:
+        def definitions(self) -> list[dict[str, object]]:
+            return [{"type": "function", "name": "project_read_file"}]
+
+        async def execute(self, tool_name, args, project_path, ctx):
+            _ = tool_name, project_path, ctx
+            return {"ok": True, "path": args["path"], "content": "module main"}
+
+    provider = _StopProvider()
+    runner = AgentRunner(
+        config=type(
+            "Cfg",
+            (),
+            {
+                "model": "test-model",
+                "max_tool_loops": 4,
+                "max_turn_seconds": 60,
+                "max_checklist_continuations": 0,
+                "silent_retry_max": 0,
+                "trace_enabled": False,
+                "trace_preview_max_chars": 200,
+                "tool_output_max_chars": 10_000,
+                "context_summary_max_chars": 2_000,
+                "user_message_max_chars": 2_000,
+            },
+        )(),
+        provider=provider,
+        registry=_StopRegistry(),
+    )
+
+    import asyncio
+
+    result = asyncio.run(
+        runner.run_turn(
+            ctx=AppContext(workspace_paths=[project_root.parent]),
+            project_root=str(project_root),
+            history=[],
+            user_message="Build a robot controller",
+            session_id="session_1",
+            stop_requested=lambda: True,
+        )
+    )
+
+    assert result.text.startswith("Stopped cleanly.")
+    assert result.response_id == "resp_stop_handoff"
+    assert len(provider.calls) == 2
+    outputs = provider.calls[1]["messages"]
+    assert isinstance(outputs, list)
+    assert outputs[0]["type"] == "function_call_output"
+    assert outputs[0]["call_id"] == "call_stop_1"
+    assert outputs[1]["role"] == "user"
+    assert "stop at the next safe boundary" in outputs[1]["content"]
+
+
+def test_interrupt_request_returns_direct_response_after_tool_outputs(
+    monkeypatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "atopile.server.agent.runner.build_system_prompt",
+        lambda **_: ("system prompt", {}),
+    )
+
+    async def _fake_initial_user_message(**_: object) -> str:
+        return "user message"
+
+    monkeypatch.setattr(
+        "atopile.server.agent.runner.build_initial_user_message",
+        _fake_initial_user_message,
+    )
+
+    class _InterruptProvider:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        async def complete(
+            self,
+            *,
+            messages,
+            instructions,
+            tools,
+            skill_state,
+            project_path,
+            previous_response_id=None,
+        ) -> LLMResponse:
+            self.calls.append(
+                {
+                    "messages": messages,
+                    "tools": tools,
+                    "previous_response_id": previous_response_id,
+                }
+            )
+            if len(self.calls) == 1:
+                return LLMResponse(
+                    id="resp_tool_call",
+                    text="",
+                    tool_calls=[
+                        ToolCall(
+                            id="call_interrupt_1",
+                            name="project_read_file",
+                            arguments_raw='{"path":"main.ato"}',
+                            arguments={"path": "main.ato"},
+                        )
+                    ],
+                    phase=None,
+                )
+            return LLMResponse(
+                id="resp_interrupt_reply",
+                text=(
+                    "The wrapper work was blocked because the MCU and driver "
+                    "wrappers still needed pin mapping."
+                ),
+                tool_calls=[],
+                phase="final_answer",
+            )
+
+    class _InterruptRegistry:
+        def definitions(self) -> list[dict[str, object]]:
+            return [{"type": "function", "name": "project_read_file"}]
+
+        async def execute(self, tool_name, args, project_path, ctx):
+            _ = tool_name, project_path, ctx
+            return {"ok": True, "path": args["path"], "content": "module main"}
+
+    provider = _InterruptProvider()
+    runner = AgentRunner(
+        config=type(
+            "Cfg",
+            (),
+            {
+                "model": "test-model",
+                "max_tool_loops": 4,
+                "max_turn_seconds": 60,
+                "max_checklist_continuations": 0,
+                "silent_retry_max": 0,
+                "trace_enabled": False,
+                "trace_preview_max_chars": 200,
+                "tool_output_max_chars": 10_000,
+                "context_summary_max_chars": 2_000,
+                "user_message_max_chars": 2_000,
+            },
+        )(),
+        provider=provider,
+        registry=_InterruptRegistry(),
+    )
+
+    import asyncio
+
+    result = asyncio.run(
+        runner.run_turn(
+            ctx=AppContext(workspace_paths=[project_root.parent]),
+            project_root=str(project_root),
+            history=[],
+            user_message="Build a robot controller",
+            session_id="session_1",
+            consume_interrupt_messages=lambda: [
+                "What are you blocked on for the reusable wrappers?"
+            ],
+            stop_requested=lambda: True,
+        )
+    )
+
+    assert "blocked because" in result.text
+    outputs = provider.calls[1]["messages"]
+    assert isinstance(outputs, list)
+    assert outputs[0]["type"] == "function_call_output"
+    assert outputs[1]["role"] == "user"
+    assert "wants a direct reply now" in outputs[1]["content"]
+
+
 def test_resumed_turn_restores_persisted_checklist(monkeypatch, tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -717,3 +955,171 @@ def test_checklist_create_merges_with_existing_checklist(
 
     updated_checklist = result.skill_state["checklist"]["items"]
     assert [item["id"] for item in updated_checklist] == ["questions", "build"]
+
+
+def test_runner_emits_model_usage_and_loop_summary_progress(
+    monkeypatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "atopile.server.agent.runner.build_system_prompt",
+        lambda **_: ("system prompt", {}),
+    )
+
+    async def _fake_initial_user_message(**_: object) -> str:
+        return "user message"
+
+    monkeypatch.setattr(
+        "atopile.server.agent.runner.build_initial_user_message",
+        _fake_initial_user_message,
+    )
+
+    class _UsageProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def complete(
+            self,
+            *,
+            messages,
+            instructions,
+            tools,
+            skill_state,
+            project_path,
+            previous_response_id=None,
+        ) -> LLMResponse:
+            _ = (
+                messages,
+                instructions,
+                tools,
+                skill_state,
+                project_path,
+                previous_response_id,
+            )
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    id="resp_tool",
+                    text="",
+                    tool_calls=[
+                        ToolCall(
+                            id="call_read_1",
+                            name="project_read_file",
+                            arguments_raw='{"path":"main.ato"}',
+                            arguments={"path": "main.ato"},
+                        )
+                    ],
+                    usage=TokenUsage(
+                        input_tokens=100,
+                        output_tokens=25,
+                        total_tokens=125,
+                        reasoning_tokens=7,
+                        cached_input_tokens=80,
+                    ),
+                )
+            return LLMResponse(
+                id="resp_done",
+                text="Done.",
+                tool_calls=[],
+                phase="final_answer",
+                usage=TokenUsage(
+                    input_tokens=50,
+                    output_tokens=10,
+                    total_tokens=60,
+                    reasoning_tokens=3,
+                    cached_input_tokens=40,
+                ),
+            )
+
+    class _UsageRegistry:
+        def definitions(self) -> list[dict[str, object]]:
+            return [{"type": "function", "name": "project_read_file"}]
+
+        async def execute(self, tool_name, args, project_path, ctx):
+            _ = tool_name, project_path, ctx
+            return {"ok": True, "path": args["path"], "content": "module main"}
+
+    progress_events: list[dict[str, object]] = []
+
+    async def _progress(payload: dict[str, object]) -> None:
+        progress_events.append(payload)
+
+    runner = AgentRunner(
+        config=type(
+            "Cfg",
+            (),
+            {
+                "model": "test-model",
+                "max_tool_loops": 4,
+                "max_turn_seconds": 60,
+                "max_checklist_continuations": 0,
+                "silent_retry_max": 0,
+                "trace_enabled": False,
+                "trace_preview_max_chars": 200,
+                "tool_output_max_chars": 10_000,
+                "context_summary_max_chars": 2_000,
+                "user_message_max_chars": 2_000,
+            },
+        )(),
+        provider=_UsageProvider(),
+        registry=_UsageRegistry(),
+    )
+
+    import asyncio
+
+    result = asyncio.run(
+        runner.run_turn(
+            ctx=AppContext(workspace_paths=[project_root.parent]),
+            project_root=str(project_root),
+            history=[],
+            user_message="Build a robot controller",
+            session_id="",
+            prior_skill_state={
+                "checklist": Checklist(
+                    items=[
+                        ChecklistItem(
+                            id="existing",
+                            description="Already tracked",
+                            criteria="Tracked",
+                            status="done",
+                        )
+                    ],
+                    created_at=0,
+                ).to_dict()
+            },
+            progress_callback=_progress,
+        )
+    )
+
+    assert result.context_metrics["input_tokens"] == 150
+    assert result.context_metrics["output_tokens"] == 35
+    assert result.context_metrics["total_tokens"] == 185
+    assert result.context_metrics["reasoning_tokens"] == 10
+    assert result.context_metrics["cached_input_tokens"] == 120
+    assert result.context_metrics["model_call_count"] == 2
+
+    response_events = [
+        event
+        for event in progress_events
+        if event.get("step_kind") == "model_response_received"
+    ]
+    assert len(response_events) == 2
+    assert response_events[0]["input_tokens"] == 100
+    assert response_events[0]["output_tokens"] == 25
+    assert response_events[0]["total_tokens"] == 125
+    assert response_events[0]["reasoning_tokens"] == 7
+    assert response_events[0]["cached_input_tokens"] == 80
+
+    loop_summaries = [
+        event for event in progress_events if event.get("step_kind") == "loop_summary"
+    ]
+    assert len(loop_summaries) == 1
+    assert loop_summaries[0]["loop"] == 1
+    assert loop_summaries[0]["tool_count"] == 1
+    assert loop_summaries[0]["model_call_count"] == 1
+    assert loop_summaries[0]["total_tokens"] == 60
+    assert loop_summaries[0]["reasoning_tokens"] == 3
+    assert loop_summaries[0]["cached_input_tokens"] == 40

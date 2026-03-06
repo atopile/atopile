@@ -14,20 +14,17 @@ from atopile.server.domains.deps import get_ctx
 
 from .models import (
     DETAIL_TEXT_APPLYING_GUIDANCE,
-    ERROR_CANCELLED_BY_USER,
     ERROR_MESSAGE_EMPTY,
-    EVENT_RUN_CANCELLED,
     EVENT_RUN_CREATED,
+    EVENT_RUN_INTERRUPT_QUEUED,
     EVENT_RUN_STEER_QUEUED,
+    EVENT_RUN_STOP_REQUESTED,
     EVENT_SESSION_CREATED,
     EVENT_SESSION_PROJECT_SWITCHED,
     EVENT_TURN_FAILED,
     EVENT_TURN_STARTED,
     PHASE_ERROR,
-    PHASE_STOPPED,
     PHASE_THINKING,
-    REASON_CANCELLED_BY_USER,
-    RUN_STATUS_CANCELLED,
     RUN_STATUS_RUNNING,
     STATUS_TEXT_STEERING,
     TURN_MODE_BACKGROUND,
@@ -40,6 +37,8 @@ from .models import (
     CreateSessionRequest,
     CreateSessionResponse,
     GetRunResponse,
+    InterruptRunRequest,
+    InterruptRunResponse,
     SendMessageRequest,
     SendMessageResponse,
     SessionSkillsResponse,
@@ -420,32 +419,25 @@ async def cancel_run(
 
     if run.status != RUN_STATUS_RUNNING:
         return CancelRunResponse(runId=run.run_id, status=run.status, error=run.error)
-
-    task = run.task
     with runs_lock:
         current = runs_by_id.get(run_id)
         if current:
-            current.status = RUN_STATUS_CANCELLED
-            current.error = ERROR_CANCELLED_BY_USER
+            current.stop_requested = True
             current.updated_at = time.time()
-
-    with sessions_lock:
-        session = sessions_by_id.get(session_id)
-        if session and session.active_run_id == run_id:
-            session.active_run_id = None
     persist_sessions_state()
-
-    if task and not task.done():
-        task.cancel()
 
     await emit_agent_progress(
         session_id=session_id,
         project_root=run.project_root,
         run_id=run_id,
-        payload={"phase": PHASE_STOPPED, "reason": REASON_CANCELLED_BY_USER},
+        payload={
+            "phase": PHASE_THINKING,
+            "status_text": "Stopping",
+            "detail_text": "Finishing the current step before stopping",
+        },
     )
     log_agent_event(
-        EVENT_RUN_CANCELLED,
+        EVENT_RUN_STOP_REQUESTED,
         {
             "run_id": run_id,
             "session_id": session_id,
@@ -455,8 +447,83 @@ async def cancel_run(
 
     return CancelRunResponse(
         runId=run_id,
-        status=RUN_STATUS_CANCELLED,
-        error=ERROR_CANCELLED_BY_USER,
+        status=RUN_STATUS_RUNNING,
+        error=None,
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/runs/{run_id}/interrupt",
+    response_model=InterruptRunResponse,
+)
+async def interrupt_run(
+    session_id: str,
+    run_id: str,
+    request: InterruptRunRequest,
+):
+    message = request.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail=ERROR_MESSAGE_EMPTY)
+
+    with runs_lock:
+        run = runs_by_id.get(run_id)
+        if run:
+            run = normalize_running_run_state(run)
+    if not run or run.session_id != session_id:
+        raise HTTPException(status_code=404, detail=run_not_found_detail(run_id))
+
+    if run.status != RUN_STATUS_RUNNING:
+        return InterruptRunResponse(
+            runId=run_id,
+            status=run.status,
+            queuedMessages=0,
+        )
+
+    with runs_lock:
+        current = runs_by_id.get(run_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail=run_not_found_detail(run_id))
+
+        current = normalize_running_run_state(current)
+        if current.status != RUN_STATUS_RUNNING:
+            return InterruptRunResponse(
+                runId=run_id,
+                status=current.status,
+                queuedMessages=0,
+            )
+
+        current.stop_requested = True
+        current.interrupt_messages.append(message)
+        current.updated_at = time.time()
+        queued_count = len(current.interrupt_messages)
+        run_project_root = current.project_root
+
+    persist_sessions_state()
+
+    await emit_agent_progress(
+        session_id=session_id,
+        project_root=run_project_root,
+        run_id=run_id,
+        payload={
+            "phase": PHASE_THINKING,
+            "status_text": "Interrupting",
+            "detail_text": "Will respond after the current step",
+        },
+    )
+    log_agent_event(
+        EVENT_RUN_INTERRUPT_QUEUED,
+        {
+            "run_id": run_id,
+            "session_id": session_id,
+            "project_root": run_project_root,
+            "queued_messages": queued_count,
+            "message": message,
+        },
+    )
+    return InterruptRunResponse(
+        runId=run_id,
+        status=RUN_STATUS_RUNNING,
+        queuedMessages=queued_count,
     )
 
 
