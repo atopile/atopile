@@ -1013,30 +1013,34 @@ export interface SteerRunResponse {
 }
 
 export interface AgentProgressUsage {
-    inputTokens?:  number | null;
-    outputTokens?: number | null;
-    totalTokens?:  number | null;
+    cachedInputTokens?: number | null;
+    inputTokens?:       number | null;
+    outputTokens?:      number | null;
+    reasoningTokens?:   number | null;
+    totalTokens?:       number | null;
     [property: string]: any;
 }
 
 export interface AgentProgressEventPayload {
-    args?:         { [key: string]: any } | null;
-    callId?:       null | string;
-    detailText?:   null | string;
-    inputTokens?:  number | null;
-    loop?:         number | null;
-    name?:         null | string;
-    outputTokens?: number | null;
-    phase?:        null | string;
-    projectRoot?:  null | string;
-    runId?:        null | string;
-    sessionId?:    null | string;
-    statusText?:   null | string;
-    toolCount?:    number | null;
-    toolIndex?:    number | null;
-    totalTokens?:  number | null;
-    trace?:        null | ToolTraceResponseObject;
-    usage?:        null | AgentProgressUsageObject;
+    args?:              { [key: string]: any } | null;
+    cachedInputTokens?: number | null;
+    callId?:            null | string;
+    detailText?:        null | string;
+    inputTokens?:       number | null;
+    loop?:              number | null;
+    name?:              null | string;
+    outputTokens?:      number | null;
+    phase?:             null | string;
+    projectRoot?:       null | string;
+    reasoningTokens?:   number | null;
+    runId?:             null | string;
+    sessionId?:         null | string;
+    statusText?:        null | string;
+    toolCount?:         number | null;
+    toolIndex?:         number | null;
+    totalTokens?:       number | null;
+    trace?:             null | ToolTraceResponseObject;
+    usage?:             null | AgentProgressUsageObject;
     [property: string]: any;
 }
 
@@ -1049,8 +1053,10 @@ export interface ToolTraceResponseObject {
 }
 
 export interface AgentProgressUsageObject {
-    inputTokens?:  number | null;
-    outputTokens?: number | null;
-    totalTokens?:  number | null;
+    cachedInputTokens?: number | null;
+    inputTokens?:       number | null;
+    outputTokens?:      number | null;
+    reasoningTokens?:   number | null;
+    totalTokens?:       number | null;
     [property: string]: any;
 }

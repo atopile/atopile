@@ -4442,6 +4442,30 @@
         ],
         "default": null,
         "title": "Totaltokens"
+      },
+      "reasoningTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Reasoningtokens"
+      },
+      "cachedInputTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Cachedinputtokens"
       }
     },
     "title": "AgentProgressUsage",
@@ -4486,6 +4510,30 @@
             ],
             "default": null,
             "title": "Totaltokens"
+          },
+          "reasoningTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reasoningtokens"
+          },
+          "cachedInputTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cachedinputtokens"
           }
         },
         "title": "AgentProgressUsage",
@@ -4714,6 +4762,30 @@
         ],
         "default": null,
         "title": "Totaltokens"
+      },
+      "reasoningTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Reasoningtokens"
+      },
+      "cachedInputTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Cachedinputtokens"
       },
       "usage": {
         "anyOf": [
