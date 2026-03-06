@@ -30,7 +30,6 @@ from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
-from atopile.server.ws.actions import dispatch_registered_action
 from faebryk.libs.package.meta import PackageModifiedError
 
 log = logging.getLogger(__name__)
@@ -321,9 +320,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
     log.info(f"handle_data_action called: action={action}, payload={payload}")
 
     try:
-        registered_result = await dispatch_registered_action(action, payload, ctx)
-        if registered_result is not None:
-            return registered_result
+        if action == "refreshProjects":
+            if ctx.workspace_paths:
+                await asyncio.to_thread(
+                    projects_domain.discover_projects_in_paths, ctx.workspace_paths
+                )
+                await server_state.emit_event("projects_changed")
+            return {"success": True}
 
         if action == "createProject":
             parent_directory = payload.get("parentDirectory")
@@ -347,6 +350,11 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 "project_name": project_name,
             }
 
+        if action == "refreshPackages":
+            scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
+            await packages_domain.refresh_packages_state(scan_path=scan_path)
+            return {"success": True}
+
         if action == "searchPackages":
             query = payload.get("query", "")
             path = payload.get("path")
@@ -355,6 +363,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 packages_domain.handle_search_registry, query, scan_path
             )
             return {"success": True, **result.model_dump(by_alias=True)}
+
+        if action == "refreshStdlib":
+            await server_state.emit_event("stdlib_changed")
+            return {"success": True}
 
         if action == "buildPackage":
             package_id = payload.get("packageId", "")
@@ -538,6 +550,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": True, "bom": bom_json}
             except Exception as exc:
                 return {"success": False, "error": str(exc)}
+
+        if action == "refreshProblems":
+            await server_state.emit_event("problems_changed")
+            return {"success": True}
 
         if action == "fetchVariables":
             project_root = payload.get("projectRoot", "")
