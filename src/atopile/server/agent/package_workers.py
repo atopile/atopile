@@ -7,14 +7,11 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from atopile.dataclasses import AppContext
 from atopile.server.agent.config import AgentConfig
 from atopile.server.events import get_event_bus
-
-if TYPE_CHECKING:
-    from atopile.server.agent.runner import AgentRunner
 
 MAX_COMPLETED_WORKERS = 48
 EVENT_AGENT_PROGRESS = "agent_progress"
@@ -68,6 +65,7 @@ def _get_runner():
     if _runner is None:
         from atopile.server.agent.provider import OpenAIProvider
         from atopile.server.agent.registry import ToolRegistry
+        from atopile.server.agent.runner import AgentRunner
 
         subagent_config = _config.build_subagent_config()
         _runner = AgentRunner(
