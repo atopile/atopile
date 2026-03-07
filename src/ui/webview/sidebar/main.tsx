@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { render, logoUrl } from "../shared/render";
-import { vscode } from "../shared/vscodeApi";
-import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import type { Build } from "../../shared/types";
 import { Spinner, Button, Alert, AlertTitle, AlertDescription } from "../shared/components";
 import { getCurrentStage } from "../shared/utils";
@@ -26,11 +25,11 @@ const POST_CONNECT_DISCONNECT_GRACE_MS = 5_000;
 function DisconnectedOverlay({
   isConnected,
   startupError,
-  hubConnected,
+  connected,
 }: {
   isConnected: boolean;
   startupError: string | null;
-  hubConnected: boolean;
+  connected: boolean;
 }) {
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const [show, setShow] = useState(false);
@@ -66,9 +65,9 @@ function DisconnectedOverlay({
           {startupError ? (
             <code>{startupError}</code>
           ) : (
-            !hubConnected
-              ? "Unable to connect to the UI hub."
-              : "Unable to connect to the core server."
+            !connected
+              ? "Unable to connect to the core server."
+              : "Disconnected from the extension bridge."
           )}
         </AlertDescription>
         <AlertDescription>
@@ -87,16 +86,16 @@ function DisconnectedOverlay({
 }
 
 function App() {
-  const projectState = WebviewWebSocketClient.useSubscribe("projectState");
-  const projects = WebviewWebSocketClient.useSubscribe("projects");
-  const hubConnected = WebviewWebSocketClient.useSubscribe("hubConnected");
-  const coreStatus = WebviewWebSocketClient.useSubscribe("coreStatus");
-  const currentBuilds = WebviewWebSocketClient.useSubscribe("currentBuilds");
-  const previousBuilds = WebviewWebSocketClient.useSubscribe("previousBuilds");
+  const projectState = WebviewRpcClient.useSubscribe("projectState");
+  const projects = WebviewRpcClient.useSubscribe("projects");
+  const connected = WebviewRpcClient.useSubscribe("connected");
+  const coreStatus = WebviewRpcClient.useSubscribe("coreStatus");
+  const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
+  const previousBuilds = WebviewRpcClient.useSubscribe("previousBuilds");
 
   const [activeTab, setActiveTab] = useState<TabId>("files");
 
-  const isConnected = hubConnected && coreStatus.hubCoreConnected;
+  const isConnected = connected;
   const startupError = coreStatus.error;
   const [hasEverConnected, setHasEverConnected] = useState(false);
 
@@ -170,7 +169,9 @@ function App() {
           size="icon"
           title="Settings"
           style={{ marginLeft: "auto" }}
-          onClick={() => vscode.postMessage({ type: "openPanel", panelId: "panel-settings" })}
+          onClick={() => {
+            void rpcClient?.requestAction("vscode.openPanel", { panelId: "panel-settings" });
+          }}
         >
           <Settings size={14} />
         </Button>
@@ -189,24 +190,23 @@ function App() {
               projects={projects}
               selectedProject={projectState.selectedProject}
               onSelectProject={(root) =>
-                webviewClient?.sendAction("selectProject", { projectRoot: root })
+                rpcClient?.sendAction("selectProject", { projectRoot: root })
               }
               targets={targets}
               selectedTarget={projectState.selectedTarget}
               onSelectTarget={(target) =>
-                webviewClient?.sendAction("selectTarget", { target })
+                rpcClient?.sendAction("selectTarget", { target })
               }
             />
             <ActionBar
               onBuild={() =>
-                webviewClient?.sendAction("startBuild", {
+                rpcClient?.sendAction("startBuild", {
                   projectRoot: projectState.selectedProject,
                   targets: [projectState.selectedTarget],
                 })
               }
               onOpenKicad={() =>
-                vscode.postMessage({
-                  type: "openKicad",
+                void rpcClient?.requestAction("vscode.openKicad", {
                   projectRoot: projectState.selectedProject,
                   target: projectState.selectedTarget,
                 })
@@ -232,7 +232,7 @@ function App() {
       <DisconnectedOverlay
         isConnected={isConnected}
         startupError={startupError}
-        hubConnected={hubConnected}
+        connected={connected}
       />
     </div>
   );

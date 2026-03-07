@@ -1,6 +1,5 @@
 import { render } from "../shared/render";
-import { requestBroker } from "../shared/vscodeApi";
-import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import {
   Field,
   FieldLabel,
@@ -17,11 +16,11 @@ import {
 } from "../shared/components";
 
 function App() {
-  const coreStatus = WebviewWebSocketClient.useSubscribe("coreStatus");
-  const settings = WebviewWebSocketClient.useSubscribe("extensionSettings");
+  const coreStatus = WebviewRpcClient.useSubscribe("coreStatus");
+  const settings = WebviewRpcClient.useSubscribe("extensionSettings");
 
   const updateSetting = (key: string, value: string | boolean) => {
-    webviewClient?.sendAction("updateExtensionSetting", { key, value });
+    rpcClient?.sendAction("updateExtensionSetting", { key, value });
   };
 
   return (
@@ -42,7 +41,9 @@ function App() {
           <Button
             variant="outline"
             onClick={async () => {
-              const path = await requestBroker.request<string | undefined>("browseFolder");
+              const path = await rpcClient?.requestAction<string | undefined>(
+                "vscode.browseFolder",
+              );
               if (path) {
                 updateSetting("devPath", path);
               }

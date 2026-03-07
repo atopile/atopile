@@ -17,7 +17,7 @@ import {
   TableHead,
   TableCell,
 } from "../shared/components";
-import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import type { VariableNode, Variable } from "../../shared/types";
 import "./ParametersPanel.css";
 
@@ -129,9 +129,9 @@ function filterNodes(nodes: VariableNode[], search: string): VariableNode[] {
 }
 
 export function ParametersPanel() {
-  const { selectedProject: projectRoot, selectedTarget } = WebviewWebSocketClient.useSubscribe("projectState");
-  const variablesData = WebviewWebSocketClient.useSubscribe("variablesData");
-  const currentBuilds = WebviewWebSocketClient.useSubscribe("currentBuilds");
+  const { selectedProject: projectRoot, selectedTarget } = WebviewRpcClient.useSubscribe("projectState");
+  const variablesData = WebviewRpcClient.useSubscribe("variablesData");
+  const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
@@ -141,7 +141,7 @@ export function ParametersPanel() {
   useEffect(() => {
     if (projectRoot) {
       setLoading(true);
-      webviewClient?.sendAction("getVariables", { projectRoot, target });
+      rpcClient?.sendAction("getVariables", { projectRoot, target });
     }
   }, [projectRoot, target]);
 
@@ -151,7 +151,7 @@ export function ParametersPanel() {
       projectRoot &&
       currentBuilds.every((b) => b.status !== "building" && b.status !== "queued")
     ) {
-      webviewClient?.sendAction("getVariables", { projectRoot, target });
+      rpcClient?.sendAction("getVariables", { projectRoot, target });
     }
   }, [currentBuilds, projectRoot, target]);
 

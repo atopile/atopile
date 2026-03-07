@@ -98,8 +98,8 @@
         ]
     },
     "scripts": {
-        "build": "bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --minify && cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --minify && cd ../webview && bun run build",
-        "watch": "concurrently \"bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --watch\" \"cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --watch\" \"cd ../ui/webview && bun run watch\"",
+        "build": "bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --minify && cd ../ui/webview && bun run build",
+        "watch": "concurrently \"bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --watch\" \"cd ../ui/webview && bun run watch\"",
         "vscode:prepublish": "bun run build",
         "package": "vsce package"
     },

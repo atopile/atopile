@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { render } from "../shared/render";
-import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import { ThreeDPreview } from "./threeDPreviewManager";
 import {
   getSelectedThreeDBuild,
@@ -10,9 +10,9 @@ import {
 import "./panel-3d.css";
 
 function App() {
-  const projectState = WebviewWebSocketClient.useSubscribe("projectState");
-  const currentBuilds = WebviewWebSocketClient.useSubscribe("currentBuilds");
-  const previousBuilds = WebviewWebSocketClient.useSubscribe("previousBuilds");
+  const projectState = WebviewRpcClient.useSubscribe("projectState");
+  const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
+  const previousBuilds = WebviewRpcClient.useSubscribe("previousBuilds");
 
   const [model, setModel] = useState<ResolvedThreeDModel | null>(null);
   const [isResolving, setIsResolving] = useState(false);
@@ -33,7 +33,7 @@ function App() {
     if (!selectedProject || !selectedTarget) {
       return;
     }
-    webviewClient?.sendAction("startBuild", {
+    rpcClient?.sendAction("startBuild", {
       projectRoot: selectedProject,
       targets: [selectedTarget],
       includeTargets: ["glb-only"],

@@ -1,11 +1,11 @@
 /**
  * Canonical shared types for the atopile UI.
  *
- * Imported by both the hub (Node process) and webview (React) code.
+ * Imported by the extension host, webviews, and shared UI code.
  */
 
 export class StoreState {
-  hubConnected: boolean = false;
+  connected: boolean = false;
   coreStatus = new CoreStatus();
   extensionSettings = new ExtensionSettings();
   projectState = new ProjectState();
@@ -28,8 +28,6 @@ export class ExtensionSettings {
 }
 
 export class CoreStatus {
-  hubCoreConnected: boolean = false;
-  logCoreConnected: boolean = false;
   error: string | null = null;
   uvPath: string = "";
   atoBinary: string = "";
@@ -333,12 +331,13 @@ export class BuildLogRequest {
   count?: number;
 }
 
-// -- WebSocket protocol messages -------------------------------------------
+// -- RPC protocol messages -------------------------------------------------
 
 export const MSG_TYPE = {
   SUBSCRIBE: "subscribe",
   STATE: "state",
   ACTION: "action",
+  ACTION_RESULT: "action_result",
 } as const;
 
 export interface SubscribeMessage {
@@ -358,4 +357,17 @@ export interface ActionMessage {
   [key: string]: unknown;
 }
 
-export type WebSocketMessage = SubscribeMessage | StateMessage | ActionMessage;
+export interface ActionResultMessage {
+  type: typeof MSG_TYPE.ACTION_RESULT;
+  requestId?: string;
+  action: string;
+  ok?: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+export type WebSocketMessage =
+  | SubscribeMessage
+  | StateMessage
+  | ActionMessage
+  | ActionResultMessage;

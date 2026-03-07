@@ -11,8 +11,7 @@ import {
   PanelSearchBox,
   Badge,
 } from "../shared/components";
-import { vscode } from "../shared/vscodeApi";
-import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import type { BOMComponent, BOMUsage } from "../../shared/types";
 import "./BOMPanel.css";
 
@@ -29,7 +28,7 @@ function typeBadgeVariant(type: string | null): string {
 function UsageRow({ usage }: { usage: BOMUsage }) {
   const handleGoTo = useCallback(() => {
     if (usage.file) {
-      vscode.postMessage({ type: "openFile", path: usage.file });
+      void rpcClient?.requestAction("vscode.openFile", { path: usage.file });
     }
   }, [usage.file]);
 
@@ -137,9 +136,9 @@ function BOMComponentRow({ component }: { component: BOMComponent }) {
 }
 
 export function BOMPanel() {
-  const { selectedProject: projectRoot, selectedTarget } = WebviewWebSocketClient.useSubscribe("projectState");
-  const bomData = WebviewWebSocketClient.useSubscribe("bomData");
-  const currentBuilds = WebviewWebSocketClient.useSubscribe("currentBuilds");
+  const { selectedProject: projectRoot, selectedTarget } = WebviewRpcClient.useSubscribe("projectState");
+  const bomData = WebviewRpcClient.useSubscribe("bomData");
+  const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -148,7 +147,7 @@ export function BOMPanel() {
   useEffect(() => {
     if (projectRoot) {
       setLoading(true);
-      webviewClient?.sendAction("getBom", { projectRoot, target });
+      rpcClient?.sendAction("getBom", { projectRoot, target });
     }
   }, [projectRoot, target]);
 
@@ -158,7 +157,7 @@ export function BOMPanel() {
       projectRoot &&
       currentBuilds.every((b) => b.status !== "building" && b.status !== "queued")
     ) {
-      webviewClient?.sendAction("getBom", { projectRoot, target });
+      rpcClient?.sendAction("getBom", { projectRoot, target });
     }
   }, [currentBuilds, projectRoot, target]);
 

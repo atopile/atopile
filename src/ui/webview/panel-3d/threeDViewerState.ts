@@ -1,5 +1,5 @@
 import type { Build } from "../../shared/types";
-import { requestBroker } from "../shared/vscodeApi";
+import { rpcClient } from "../shared/rpcClient";
 
 export interface ResolvedThreeDModel {
   exists: boolean;
@@ -28,7 +28,11 @@ export async function resolveThreeDModel(
   projectRoot: string,
   target: string,
 ): Promise<ResolvedThreeDModel> {
-  return requestBroker.request<ResolvedThreeDModel>("resolveThreeDModel", {
+  if (!rpcClient) {
+    throw new Error("RPC client is not initialized");
+  }
+
+  return rpcClient.requestAction<ResolvedThreeDModel>("vscode.resolveThreeDModel", {
     projectRoot,
     target,
   });

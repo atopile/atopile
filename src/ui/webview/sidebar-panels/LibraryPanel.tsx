@@ -8,7 +8,7 @@ import {
   CopyableCodeBlock,
   typeIcon,
 } from "../shared/components";
-import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import type { StdLibItem, StdLibChild } from "../../shared/types";
 import "./LibraryPanel.css";
 
@@ -72,12 +72,12 @@ function LibraryItem({ item }: { item: StdLibItem }) {
 }
 
 export function LibraryPanel() {
-  const stdlibData = WebviewWebSocketClient.useSubscribe("stdlibData");
+  const stdlibData = WebviewRpcClient.useSubscribe("stdlibData");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    webviewClient?.sendAction("getStdlib", {});
+    rpcClient?.sendAction("getStdlib", {});
     const timer = setTimeout(() => setLoading(false), 3000);
     return () => clearTimeout(timer);
   }, []);

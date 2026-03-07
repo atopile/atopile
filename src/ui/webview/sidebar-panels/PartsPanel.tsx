@@ -8,7 +8,7 @@ import {
   Button,
   Spinner,
 } from "../shared/components";
-import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import type { PartSearchItem, InstalledPartItem } from "../../shared/types";
 import "./PartsPanel.css";
 
@@ -31,7 +31,7 @@ function SearchResultRow({
 
   const handleInstall = useCallback(() => {
     setBusy(true);
-    webviewClient?.sendAction("installPart", {
+    rpcClient?.sendAction("installPart", {
       projectRoot,
       lcsc: part.lcsc,
     });
@@ -76,7 +76,7 @@ function InstalledPartRow({
 
   const handleUninstall = useCallback(() => {
     setBusy(true);
-    webviewClient?.sendAction("uninstallPart", {
+    rpcClient?.sendAction("uninstallPart", {
       projectRoot,
       lcsc: part.lcsc ?? "",
     });
@@ -107,9 +107,9 @@ function InstalledPartRow({
 }
 
 export function PartsPanel() {
-  const { selectedProject: projectRoot } = WebviewWebSocketClient.useSubscribe("projectState");
-  const partsSearch = WebviewWebSocketClient.useSubscribe("partsSearch");
-  const installedParts = WebviewWebSocketClient.useSubscribe("installedParts");
+  const { selectedProject: projectRoot } = WebviewRpcClient.useSubscribe("projectState");
+  const partsSearch = WebviewRpcClient.useSubscribe("partsSearch");
+  const installedParts = WebviewRpcClient.useSubscribe("installedParts");
   const [tab, setTab] = useState<Tab>("find");
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -129,7 +129,7 @@ export function PartsPanel() {
     setSearching(true);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      webviewClient?.sendAction("searchParts", { query: query.trim(), limit: 50 });
+      rpcClient?.sendAction("searchParts", { query: query.trim(), limit: 50 });
     }, 250);
     return () => clearTimeout(debounceRef.current);
   }, [query]);
@@ -143,7 +143,7 @@ export function PartsPanel() {
   // Load installed parts on project tab
   useEffect(() => {
     if (tab === "project" && projectRoot) {
-      webviewClient?.sendAction("getInstalledParts", { projectRoot });
+      rpcClient?.sendAction("getInstalledParts", { projectRoot });
     }
   }, [tab, projectRoot]);
 

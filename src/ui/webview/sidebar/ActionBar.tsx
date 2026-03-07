@@ -1,6 +1,6 @@
 import { Hammer, Compass, Box, Layout, Code } from "lucide-react";
 import { Button, Spinner } from "../shared/components";
-import { vscode } from "../shared/vscodeApi";
+import { rpcClient } from "../shared/rpcClient";
 import "./ActionBar.css";
 
 interface ActionBarProps {
@@ -33,9 +33,9 @@ export function ActionBar({ onBuild, onOpenKicad, buildDisabled, isBuilding }: A
           size="sm"
           className="action-btn"
           disabled={buildDisabled}
-          onClick={() =>
-            vscode.postMessage({ type: "openPanel", panelId: "panel-layout" })
-          }
+          onClick={() => {
+            void rpcClient?.requestAction("vscode.openPanel", { panelId: "panel-layout" });
+          }}
         >
           <Layout size={12} />
           <span className="action-label">Layout</span>
@@ -48,9 +48,9 @@ export function ActionBar({ onBuild, onOpenKicad, buildDisabled, isBuilding }: A
           size="sm"
           className="action-btn"
           disabled={buildDisabled}
-          onClick={() =>
-            vscode.postMessage({ type: "openPanel", panelId: "panel-3d" })
-          }
+          onClick={() => {
+            void rpcClient?.requestAction("vscode.openPanel", { panelId: "panel-3d" });
+          }}
         >
           <Box size={12} />
           <span className="action-label">3D</span>
@@ -76,9 +76,9 @@ export function ActionBar({ onBuild, onOpenKicad, buildDisabled, isBuilding }: A
           variant="ghost"
           size="sm"
           className="action-btn"
-          onClick={() =>
-            vscode.postMessage({ type: "openPanel", panelId: "panel-developer" })
-          }
+          onClick={() => {
+            void rpcClient?.requestAction("vscode.openPanel", { panelId: "panel-developer" });
+          }}
         >
           <Code size={12} />
           <span className="action-label">Developer</span>

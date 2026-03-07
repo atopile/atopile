@@ -1,260 +1,221 @@
-# Extension Architecture Rewrite: Merge Hub into Core, RPC Transport Layer
+# VS Code Extension Architecture
 
-## Context
+Key invariants:
 
-The current extension uses a 3-process architecture: VS Code extension host spawns a Node.js "Hub" process and a Python "Core Server" process. Webviews connect to the Hub via WebSocket, and the Hub relays to Core via a second WebSocket. This creates unnecessary complexity (two WS hops, a whole Node process just for state routing) and doesn't work for VS Code Remote SSH / Web IDE where webviews can't open direct WebSocket connections to localhost.
-
-**Goals:**
-1. Eliminate the Hub process — move its Store + subscription tracking + action routing into the Python core server
-2. Introduce a proper RPC protocol layer with a pluggable transport underneath
-3. Webviews **always** communicate through the extension host (never direct WS to core)
-4. Implement VS Code `postMessage` transport now; stub WebSocket transport for future non-VS Code use
-
-## New Architecture
+- webviews only talk through RPC
+- core interprets every webview-originated action first
+- extension-only work returns from core as `extension_request`
+- VS Code-coupled backend actions live under the `vscode.*` RPC namespace
+- there is exactly one extension-to-core IPC socket
+- webview and extension sessions are multiplexed over that socket via `sessionId`
+- there is no direct webview command channel into the extension host
 
 ```mermaid
 flowchart LR
-  subgraph EXTPROC["Extension Host (Node)"]
-    EXT["Extension"]
-    PROXY["RPC Proxy"]
+  subgraph CLIENT["Client machine: desktop VS Code workbench or browser workbench"]
+    subgraph VS["VS Code Workbench UI"]
+      IDE["Workbench shell
+activity bar
+sidebar container
+editor tabs
+command palette
+settings UI
+active editor state"]
+    end
+
+    subgraph WV["Webview renderer processes"]
+      HTML["render.tsx
+mount app"]
+      PMT["PostMessageTransport
+send: vscode.postMessage(type=rpc:send)
+recv: window.message(type=rpc:open / rpc:close / rpc:recv)"]
+      WRPC["WebviewRpcClient
+RpcClient(PostMessageTransport)
+subscribe()
+sendAction()
+requestAction()
+local connected state"]
+      LOGRPC["LogRpcClient
+same RPC connection
+subscribeLogs / unsubscribeLogs
+consume logs_stream / logs_error"]
+      UI["Sidebar / Logs / Panels
+call rpcClient directly"]
+    end
   end
 
-  subgraph WEBVIEWS["Webview Processes (Chromium)"]
-    WV1["Sidebar"]
-    WV2@{ shape: st-rect, label: "Panels (N)" }
+  subgraph SERVER["Extension-side runtime: local machine in normal desktop mode, remote VS Code server in SSH / web-IDE mode"]
+    subgraph EH["Extension host process (Node)"]
+      ACT["extension.ts / activate()
+resolve ato
+start core process
+create RpcProxy
+create CoreClient
+register passive webview hosts"]
+      HOST["HostedWebviewViewProvider + PanelHost
+serve HTML/bootstrap only
+sidebar view
+logs view
+editor panels
+register webview with RpcProxy using panel/view id as sessionId"]
+      PROXY["RpcProxy
+only webview entrypoint in extension runtime
+recv from webview: rpc:send
+send to webview: rpc:open / rpc:close / rpc:recv
+one shared WS to core
+multiplex sessions by sessionId
+intercept extension_request
+send extension_response"]
+      EXTSRV["ExtensionRequestHandler
+vscode.openPanel
+vscode.openFile
+vscode.browseFolder
+vscode.openKicad
+vscode.resolveThreeDModel
+vscode.log"]
+      CORECLI["CoreClient
+extension-owned RpcClient
+uses RpcProxy transport
+sessionId=extension
+send resolverInfo
+send extensionSettings
+send setActiveFile
+send discoverProjects
+subscribe extensionSettings
+apply backend settings to VS Code config"]
+      PM["ProcessManager
+spawn: ato serve core
+env: ATOPILE_CORE_SERVER_PORT"]
+      OUT["OutputChannel"]
+      CMDS["VS Code commands
+openPanel
+openFile
+browseFolder
+openKicad"]
+    end
+
+    subgraph PY["Python core server process"]
+      ENTRY["serve core
+websockets.serve(CoreSocket.handle_client)
+endpoint: ws://127.0.0.1:CORE/atopile-ui"]
+      SOCK["CoreSocket
+receive subscribe / action / extension_response
+track subscriptions per sessionId
+track pending extension requests per sessionId
+track log task per sessionId
+dispatch actions
+broadcast state
+return action_result"]
+      STORE["Store
+canonical shared UI state"]
+      FILES["FileWatcher"]
+      BUILDS["BuildQueue + builds model"]
+      DOMAIN["Project / packages / parts / stdlib / artifacts handlers"]
+      LOGS["SQLite Logs polling"]
+    end
   end
 
-  subgraph CORE["Core Server (Python)"]
-    WSS["WS Server\n/atopile-ui"]
-    STORE["Store\n(subscriptions,\nstate, routing)"]
-    SVC["Build queue\nProject discovery"]
-    WSS <--> STORE
-    STORE <--> SVC
-  end
+  IDE -. activate extension .-> ACT
+  IDE -. active editor + settings events .-> ACT
+  IDE -. show views / panels .-> HOST
+  IDE -. command palette .-> CMDS
 
-  EXT -.->|"spawns"| CORE
-  EXT -.->|"spawns"| WV1
-  EXT -.->|"spawns"| WV2
+  ACT --> PM
+  ACT --> HOST
+  ACT --> PROXY
+  ACT --> CORECLI
+  ACT --> CMDS
+  ACT --> OUT
+  ACT -. setActiveFile / extensionSettings .-> CORECLI
+  PM -->|"spawn child process"| ENTRY
+  CMDS --> HOST
 
-  WV1 -->|"postMessage"| PROXY
-  WV2 -->|"postMessage"| PROXY
-  PROXY -->|"WS"| WSS
+  HOST -->|"HTML + asset bootstrap"| HTML
+  HOST -->|"registerWebview(webview)"| PROXY
 
-  EXT -->|"WS"| WSS
+  HTML --> WRPC
+  UI --> WRPC
+  UI --> LOGRPC
+  WRPC --> PMT
+  LOGRPC --> WRPC
 
-  subgraph LEGEND[" "]
-    direction LR
-    L1["A"] -.->|"lifecycle"| L2["B"]
-    L3["A"] -->|"websocket / ipc"| L4["B"]
-  end
+  PMT -->|"rpc:send + raw JSON"| PROXY
+  PROXY -->|"rpc:open / rpc:close / rpc:recv"| PMT
 
-  classDef state fill:#e3f2fd,color:#0d47a1
-  classDef legend fill:none,stroke:none
-  class WSS,STORE,SVC state
-  class LEGEND legend
-  class L1,L2,L3,L4 legend
+  PROXY -->|"single WS
+subscribe / action / extension_response
+with sessionId"| ENTRY
+  CORECLI -->|"same shared WS via RpcProxy
+sessionId=extension"| PROXY
+
+  ENTRY --> SOCK
+  SOCK <--> STORE
+  SOCK <--> FILES
+  SOCK <--> BUILDS
+  SOCK <--> DOMAIN
+  SOCK <--> LOGS
+
+  FILES -->|"projectFiles"| STORE
+  BUILDS -->|"currentBuilds / previousBuilds"| STORE
+  DOMAIN -->|"projects / packagesSummary / partsSearch /
+installedParts / stdlibData / structureData /
+variablesData / bomData"| STORE
+
+  STORE -->|"on_change(key,data)"| SOCK
+  SOCK -->|"state(key,data)
+only to subscribed sessionIds"| PROXY
+  LOGS -->|"logs_stream / logs_error"| SOCK
+  SOCK -->|"state / logs_stream / logs_error / action_result
+with sessionId"| PROXY
+
+  SOCK -->|"extension_request
+sessionId + requestId + action=vscode.* + payload"| PROXY
+  PROXY -->|"handle(webview, extension_request)"| EXTSRV
+  EXTSRV -->|"open panel / open file / browse dialog /
+launch KiCad / resolve asWebviewUri / output log"| IDE
+  PROXY -->|"extension_response
+sessionId + requestId + ok/result/error"| SOCK
+  PROXY -->|"sessionId=extension messages"| CORECLI
+
+  CORECLI -->|"state(extensionSettings)
+apply VS Code config"| IDE
+
+  classDef proc fill:#e8f0fe,stroke:#4a67d6,color:#102040
+  classDef state fill:#e8fff1,stroke:#2b8a57,color:#123524
+  classDef ui fill:#fff4db,stroke:#c48a18,color:#4a3510
+  class ACT,HOST,PROXY,EXTSRV,CORECLI,PM,OUT,CMDS,ENTRY,SOCK,FILES,BUILDS,DOMAIN,LOGS proc
+  class STORE state
+  class IDE,HTML,PMT,WRPC,LOGRPC,UI ui
 ```
 
-**Key differences from current:**
-- No Hub process — Core Server owns the Store, subscriptions, and action routing
-- Webviews **never** connect directly to core — all traffic goes through the extension host via `postMessage`
-- Extension host acts as RPC proxy: webview `postMessage` ↔ WebSocket to core (one WS per webview)
-- Extension host also has its own WS connection for extension-level actions (`resolverInfo`, `setActiveFile`, etc.)
+## Boundary Meaning
 
-## Layered Protocol Design
+`VS Code Workbench UI` is the host application shell: the activity bar, editor tabs, command palette, settings UI, and the active-editor state that the extension observes through the VS Code API.
 
-```
-┌─────────────────────────────────┐
-│  RPC Protocol                   │  subscribe / state / action messages
-│  (JSON, same as current)        │  unchanged semantics
-├─────────────────────────────────┤
-│  Transport Layer (pluggable)    │  how messages move between processes
-│  ├─ PostMessageTransport        │  ← implement now (webview ↔ extension host)
-│  └─ WebSocketTransport          │  ← stub for future (non-VS Code use)
-└─────────────────────────────────┘
-```
+It is not the same thing as either of these:
 
-The `subscribe`/`state`/`action` RPC protocol is **unchanged**. The transport layer is an abstraction that can carry these messages over different channels.
+- `Extension host process`: the Node process running the extension code and owning the VS Code extension API surface.
+- `Webview renderer processes`: isolated browser documents/processes used to render the sidebar, logs view, and editor panels.
 
-## Implementation Plan
+So the workbench box is there to show where user-visible UI and VS Code-owned events live, while the extension host and webviews are the programmable runtimes attached to that shell.
 
-### Phase 1: Python Store + Subscription Tracking
+## Placement In Remote Modes
 
-**Create** `src/atopile/server/store.py`:
-- Port of the TS `Store` class (45 lines → ~50 lines Python)
-- `get(key)`, `set(key, value)`, `merge(key, partial)` with deep-equality check via `json.dumps`
-- `on_change: Callable[[str, Any], None]` callback for broadcasting
-- Uses camelCase keys to match the wire protocol exactly
-- Default state matches `StoreState` defaults from `types.ts`
+In normal desktop VS Code:
 
-**Modify** `src/atopile/server/websocket.py` — `CoreSocket`:
-- Add `Store` instance and per-client subscription tracking (`dict[ServerConnection, set[str]]`)
-- Handle `subscribe` message type in `handle_client` (currently only handles `action`)
-- On subscribe: track keys, immediately send current state for each key
-- Replace `broadcast_state()` with store-based broadcasting (only to subscribed clients)
-- Add all hub-local action handlers to `_dispatch`:
-  - `selectProject` → `store.merge("projectState", ...)` + auto-trigger `listFiles`
-  - `selectTarget` → `store.merge("projectState", ...)`
-  - `setActiveFile` → `store.merge("projectState", ...)`
-  - `resolverInfo` → `store.merge("coreStatus", ...)`
-  - `coreStartupError` → `store.merge("coreStatus", ...)`
-  - `extensionSettings` → `store.merge("extensionSettings", ...)`
-  - `updateExtensionSetting` → `store.merge("extensionSettings", ...)`
-  - `updateLogCoreStatus` → `store.merge("coreStatus", ...)`
-- Change existing core actions (`discoverProjects`, `getPackagesSummary`, etc.) to write to store instead of calling `broadcast_state` directly
-- Build queue `_push_builds` writes to store: `self._store.set("currentBuilds", ...)` / `self._store.set("previousBuilds", ...)`
-- Remove the "send builds on connect" behavior — clients subscribe and get current state via the subscription mechanism
-- Accept connections on `/atopile-ui` path (keep `/atopile-core` for backward compat during migration)
+- client machine runs the workbench UI, webview renderers, extension host, and Python core server
 
-**Modify** `src/atopile/server/server.py`:
-- Update `websockets.serve()` to accept the `/atopile-ui` path
-- Remove any path-specific routing if present
+In Remote SSH, Codespaces, or similar web-IDE/server-backed modes:
 
-**Reference files:**
-- `src/ui/hub/webviewWebSocketServer.ts:85-163` — all local action handlers to port
-- `src/ui/hub/store.ts` — Store semantics to replicate
+- client machine runs the workbench UI and webview renderers
+- backend VS Code server runs the extension host and Python core server
 
-### Phase 2: RPC Transport Layer (TypeScript)
+That is the main reason the diagram is split into `Client machine` and `Extension-side runtime`: the left side always stays with the user, while the right side may be local or remote depending on how VS Code is being used.
 
-The transport layer is a simple interface that both sides (webview and extension host) implement. The RPC protocol messages (JSON with `type` field) ride on top.
+## Notes
 
-**Create** `src/ui/shared/rpcTransport.ts` — transport interface + implementations:
-```typescript
-/** Abstract transport for RPC messages. */
-export interface RpcTransport {
-  /** Send a raw JSON string to the other side. */
-  send(data: string): void;
-  /** Called when a raw JSON string arrives. */
-  onMessage: ((data: string) => void) | null;
-  /** Called when the transport is ready. */
-  onOpen: (() => void) | null;
-  /** Called when the transport closes. */
-  onClose: (() => void) | null;
-  /** Shut down the transport. */
-  close(): void;
-}
-```
-
-**Create** `src/ui/webview/shared/postMessageTransport.ts` — webview-side `postMessage` transport:
-- Implements `RpcTransport`
-- `send(data)` → `vscode.postMessage({type: "rpc:send", data})`
-- Listens on `window` message events:
-  - `rpc:recv` → calls `onMessage`
-  - `rpc:open` → calls `onOpen`
-  - `rpc:close` → calls `onClose`
-
-**Stub** `src/ui/shared/webSocketTransport.ts` — WebSocket transport (not used yet):
-- Implements `RpcTransport` over a `WebSocket` / `SocketLike`
-- Skeleton implementation for future non-VS Code scenarios
-- Not wired up in this iteration
-
-**Modify** `src/ui/shared/webSocketClient.ts` → rename to `src/ui/shared/rpcClient.ts`:
-- Rename `WebSocketClient` → `RpcClient`
-- Change constructor from `create: () => SocketLike` to `transport: RpcTransport`
-- Wire `transport.onMessage` → parse and route (same logic as current `socket.onmessage`)
-- Wire `transport.onOpen` → resubscribe + call `onConnected`
-- Wire `transport.onClose` → call `onDisconnected` + reconnect logic
-- Keep the reconnect scheduler but have it call a `reconnect()` callback (transport-level reconnect)
-- Add `sendRaw(data: string)` method for the extension-side proxy
-- Keep `subscribe()`, `sendAction()`, existing helpers
-
-**Modify** `src/ui/webview/shared/webviewWebSocketClient.tsx` → rename to `src/ui/webview/shared/rpcClient.tsx`:
-- Change `constructor(url: string)` → `constructor(transport: RpcTransport)`
-- Change `connectWebview(hubUrl: string)` → `connectWebview(transport: RpcTransport)`
-- Rename `hubConnected` → `connected`
-- Uses `RpcClient` internally instead of `WebSocketClient`
-
-**Modify** `src/ui/webview/shared/render.tsx`:
-- Remove `__ATOPILE_HUB_PORT__` global
-- Create `PostMessageTransport` instance
-- Pass it to `connectWebview(transport)`
-
-**Modify** `src/ui/webview/panel-logs/logWebSocketClient.ts`:
-- Use the same `RpcTransport` instead of a separate direct WebSocket
-- Log streaming (`subscribeLogs`/`unsubscribeLogs`) goes through the same RPC connection
-
-**Modify** `src/ui/shared/types.ts`:
-- Rename `hubConnected` → `connected` in `StoreState`
-- Remove `hubCoreConnected` from `CoreStatus`
-
-### Phase 3: Extension Host — RPC Proxy + Core Client
-
-The extension host is the **sole bridge** between webviews and core. Every webview gets its own WS connection to core, proxied through `postMessage`.
-
-**Create** `src/vscode-atopile/src/rpcProxy.ts`:
-- `RpcProxy` class, implements `vscode.Disposable`
-- `constructor(corePort: number)`
-- `registerWebview(webview: vscode.Webview): vscode.Disposable`
-  - Creates a new WS connection to `ws://localhost:{corePort}/atopile-ui`
-  - Listens on `webview.onDidReceiveMessage` for `rpc:send` → forwards raw data to WS
-  - Listens on WS messages → sends `{type: "rpc:recv", data}` via `webview.postMessage()`
-  - On WS open → sends `{type: "rpc:open"}` to webview
-  - On WS close → sends `{type: "rpc:close"}` to webview; schedules reconnect
-  - Returns a `Disposable` that cleans up the WS + listener
-
-**Create** `src/vscode-atopile/src/coreClient.ts` (replaces `hubWebSocketClient.ts`):
-- Same pattern as `HubWebSocketClient` but connects to `/atopile-ui` on core port
-- Uses the existing shared `WebSocketClient` (Node `ws` library) for the extension's own connection
-- Sends `resolverInfo`, `extensionSettings`, `setActiveFile`, `discoverProjects`
-- Subscribes to `extensionSettings` for two-way VS Code config sync
-
-**Modify** `src/vscode-atopile/src/extension.ts`:
-- Remove `startHub()` — no hub process
-- Remove `hubPort` / second `findFreePort()` call
-- Create `RpcProxy(coreServerPort)` — always (not optional)
-- After core server starts, connect `CoreClient` to core
-- Send `discoverProjects` with workspace folders on connect
-- Pass `RpcProxy` to `WebviewManager`
-
-**Modify** `src/vscode-atopile/src/webviewManager.ts`:
-- Remove `_hubPort` constructor param, remove `__ATOPILE_HUB_PORT__` from HTML
-- Accept `RpcProxy` in constructor
-- In `resolveWebviewView` and `openPanel`: call `proxy.registerWebview(webview)` and push disposable
-- Existing `_registerMessageHandler` continues handling `log`, `openPanel`, `openFile`, etc. (coexists with `rpc:*` messages on the same `onDidReceiveMessage`)
-
-### Phase 4: Cleanup
-
-**Delete** entire `src/ui/hub/` directory:
-- `main.ts`, `store.ts`, `webviewWebSocketServer.ts`, `coreWebSocketClient.ts`, `utils.ts`, `package.json`, `tsconfig.json`
-
-**Move** `findFreePort()` from `src/ui/hub/utils.ts` → `src/vscode-atopile/src/utils.ts` (only remaining consumer)
-
-**Delete** `src/vscode-atopile/src/hubWebSocketClient.ts`
-
-**Rename/delete** old files replaced by new ones:
-- `src/ui/shared/webSocketClient.ts` → replaced by `rpcTransport.ts` + `rpcClient.ts` (or refactored in-place)
-- `src/ui/webview/shared/webviewWebSocketClient.tsx` → replaced by `rpcClient.tsx`
-
-**Update** build scripts:
-- Remove hub build step from `package.json` / build config
-- Remove hub-dist from extension packaging
-
-**Update** all webview components referencing `hubConnected` → `connected`
-
-### Phase 5: Update Architecture Doc
-
-**Rewrite** `src/EXTENSION_ARCHITECTURE.md` with the new diagram and protocol description.
-
-## Key Design Decisions
-
-1. **Webviews never connect directly to core.** All webview traffic goes through the extension host via `postMessage`. The extension host holds per-webview WS connections to core. This works universally — local, SSH remote, web IDE.
-
-2. **RPC protocol layer is separate from transport.** The `subscribe`/`state`/`action` JSON protocol is the RPC layer. The transport (`RpcTransport` interface) is pluggable underneath. We implement `PostMessageTransport` now; `WebSocketTransport` is stubbed for future non-VS Code use.
-
-3. **One WS per webview in the proxy** (not multiplexed): simpler, matches per-client subscription model in core, avoids fan-out complexity.
-
-4. **`rpc:` prefix for proxy messages** (`rpc:send`, `rpc:recv`, `rpc:open`, `rpc:close`): clearly separated from existing webview `postMessage` types (`log`, `openPanel`, `openFile`, etc.). Both handlers coexist on `webview.onDidReceiveMessage`.
-
-5. **Store uses camelCase keys** matching the TypeScript `StoreState`: the wire protocol sends these keys directly and the webview expects camelCase.
-
-6. **`broadcast_state` becomes subscription-aware**: only sends to clients that subscribed to the changed key (port of Hub's `broadcastChange`).
-
-## Verification
-
-1. **End-to-end**: Start extension locally, verify sidebar/panels load, build works, all tabs (files, packages, parts, stdlib, structure, params, BOM) populate correctly — all traffic flowing through the postMessage proxy
-2. **Reconnection**: Kill and restart core server — verify the proxy reconnects WS and webviews recover state
-3. **Subscription filtering**: Add console logging in Python store to verify only subscribed clients receive state updates
-4. **Extension settings sync**: Change settings in VS Code config, verify they propagate to core and back
-5. **Build queue**: Start a build, verify `currentBuilds`/`previousBuilds` update in real-time
-6. **Log streaming**: Open logs panel, verify log streaming works through the main `/atopile-ui` endpoint
-7. **No hub process**: Verify no Node hub process is spawned, only the core server Python process
+- `connected` is local webview state derived from `rpc:open` / `rpc:close`; it is not stored in Python.
+- panel/view ids are the logical `sessionId`s used for multiplexing webview traffic on the shared extension-to-core socket.
+- `updateExtensionSetting` still goes through core first: webview action -> backend store -> `CoreClient` subscription -> VS Code config update.
+- Logs share the same proxied RPC connection as the rest of the logs panel.
+- VS Code-coupled backend routing lives in [`src/atopile/server/domains/vscode_bridge.py`](/home/ra/git/atopile/src/atopile/server/domains/vscode_bridge.py).

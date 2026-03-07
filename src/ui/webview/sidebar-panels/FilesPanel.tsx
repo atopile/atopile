@@ -19,8 +19,7 @@ import {
   GitBranch,
 } from "lucide-react";
 import { EmptyState, CenteredSpinner } from "../shared/components";
-import { vscode } from "../shared/vscodeApi";
-import { WebviewWebSocketClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import type { FileNode } from "../../shared/types";
 import "./FilesPanel.css";
 
@@ -142,7 +141,7 @@ function TreeNode({
       </div>
       {isFolder && isExpanded && (
         <div>
-          {node.children.map((child) => {
+          {node.children?.map((child) => {
             const childPath = `${path}/${child.name}`;
             return (
               <TreeNode
@@ -163,8 +162,8 @@ function TreeNode({
 }
 
 export function FilesPanel() {
-  const { selectedProject: projectRoot } = WebviewWebSocketClient.useSubscribe("projectState");
-  const projectFiles = WebviewWebSocketClient.useSubscribe("projectFiles");
+  const { selectedProject: projectRoot } = WebviewRpcClient.useSubscribe("projectState");
+  const projectFiles = WebviewRpcClient.useSubscribe("projectFiles");
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
 
@@ -184,7 +183,7 @@ export function FilesPanel() {
     (relativePath: string) => {
       if (!projectRoot) return;
       const fullPath = `${projectRoot}/${relativePath}`;
-      vscode.postMessage({ type: "openFile", path: fullPath });
+      void rpcClient?.requestAction("vscode.openFile", { path: fullPath });
     },
     [projectRoot],
   );

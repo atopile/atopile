@@ -1,12 +1,11 @@
 /**
  * Log Viewer - Main component with build selection, filtering, and log display.
- * Build-logs only (no test mode). Streams via /atopile-core WebSocket.
- * Build list comes from the hub via useSubscribe.
+ * Build-logs only (no test mode). Streams through the shared RPC client.
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { render } from "../shared/render";
-import { WebviewWebSocketClient, webviewClient } from '../shared/webviewWebSocketClient';
+import { WebviewRpcClient } from '../shared/rpcClient';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '../shared/components/Select';
 import { SearchBar, RegexSearchBar } from '../shared/components/SearchBar';
 import { Button } from '../shared/components/Button';
@@ -22,7 +21,7 @@ import {
   groupLogsIntoTrees, filterLogs, filterByLoggers,
   computeRowDisplay, initLogSettings, countDescendants,
 } from './logUtils';
-import { LogWebSocketClient, logClient, connectLogClient } from './logWebSocketClient';
+import { LogRpcClient, logClient, connectLogClient } from './logRpcClient';
 import './LogViewer.css';
 
 type ResizableColumnKey = 'source' | 'stage';
@@ -213,10 +212,9 @@ function LoggerFilter({ logs, enabledLoggers, onEnabledLoggersChange }: {
 // -- LogViewer (main) ---------------------------------------------------------
 
 function LogViewer() {
-  // Central hub state
-  const projectState = WebviewWebSocketClient.useSubscribe('projectState') as ProjectState;
-  const currentBuilds = WebviewWebSocketClient.useSubscribe('currentBuilds') as Build[];
-  const previousBuilds = WebviewWebSocketClient.useSubscribe('previousBuilds') as Build[];
+  const projectState = WebviewRpcClient.useSubscribe('projectState') as ProjectState;
+  const currentBuilds = WebviewRpcClient.useSubscribe('currentBuilds') as Build[];
+  const previousBuilds = WebviewRpcClient.useSubscribe('previousBuilds') as Build[];
 
   // Query parameters
   const [buildId, setBuildId] = useState('');
@@ -255,16 +253,10 @@ function LogViewer() {
   const contentRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(autoScroll);
 
-  // WebSocket
-  const { connectionState, error, logs, streaming } = LogWebSocketClient.useLogState();
+  const { connectionState, error, logs, streaming } = LogRpcClient.useLogState();
 
   // Connect on mount
   useEffect(() => { if (!logClient) connectLogClient(); }, []);
-
-  // Report log WS status to hub for the developer panel
-  useEffect(() => {
-    webviewClient?.sendAction("updateLogCoreStatus", { connected: connectionState === 'connected' });
-  }, [connectionState]);
 
   // Persist display states
   useEffect(() => { localStorage.setItem('lv-levelFull', String(levelFull)); }, [levelFull]);

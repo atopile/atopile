@@ -10,7 +10,7 @@ import {
   Button,
 } from "../shared/components";
 import { formatDownloads } from "../shared/utils/packageUtils";
-import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import type { PackageSummaryItem } from "../../shared/types";
 import "./PackagesPanel.css";
 
@@ -29,7 +29,7 @@ function PackageRow({
 
   const handleInstall = useCallback(() => {
     setBusy(true);
-    webviewClient?.sendAction("installPackage", {
+    rpcClient?.sendAction("installPackage", {
       projectRoot,
       packageId: pkg.identifier,
     });
@@ -38,7 +38,7 @@ function PackageRow({
 
   const handleRemove = useCallback(() => {
     setBusy(true);
-    webviewClient?.sendAction("removePackage", {
+    rpcClient?.sendAction("removePackage", {
       projectRoot,
       packageId: pkg.identifier,
     });
@@ -90,8 +90,8 @@ function PackageRow({
 }
 
 export function PackagesPanel() {
-  const { selectedProject: projectRoot } = WebviewWebSocketClient.useSubscribe("projectState");
-  const packagesSummary = WebviewWebSocketClient.useSubscribe("packagesSummary");
+  const { selectedProject: projectRoot } = WebviewRpcClient.useSubscribe("projectState");
+  const packagesSummary = WebviewRpcClient.useSubscribe("packagesSummary");
   const [tab, setTab] = useState<Tab>("browse");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -104,7 +104,7 @@ export function PackagesPanel() {
   useEffect(() => {
     if (projectRoot) {
       setLoading(true);
-      webviewClient?.sendAction("getPackagesSummary", { projectRoot });
+      rpcClient?.sendAction("getPackagesSummary", { projectRoot });
     }
   }, [projectRoot]);
 

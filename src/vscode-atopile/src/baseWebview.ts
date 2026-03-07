@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getResourcesPath } from '../common/resources';
-import { buildHtml } from './html-builder';
+import { buildHtml } from './htmlBuilder';
 
 export interface WebviewConfig {
     id: string;
@@ -55,7 +54,7 @@ export abstract class BaseWebview {
             });
 
             if (this.config.iconName) {
-                const iconPath = vscode.Uri.file(path.join(getResourcesPath(), this.config.iconName));
+                const iconPath = vscode.Uri.file(path.join(this.getResourcesPath(), this.config.iconName));
                 this.panel.iconPath = {
                     light: iconPath,
                     dark: iconPath,
@@ -72,7 +71,7 @@ export abstract class BaseWebview {
 
     protected getLocalResourceRoots(): vscode.Uri[] {
         return [
-            vscode.Uri.file(getResourcesPath()),
+            vscode.Uri.file(this.getResourcesPath()),
             ...(vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? []),
         ];
     }
@@ -83,6 +82,10 @@ export abstract class BaseWebview {
 
     protected onDispose(): void {
         // Override in subclasses if needed
+    }
+
+    protected getResourcesPath(): string {
+        return path.join(__dirname, '..', 'resources');
     }
 
     protected getMissingResourceHtml(resourceType: string): string {

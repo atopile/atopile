@@ -13,7 +13,7 @@ import {
   TreeRowHeader,
   typeIcon,
 } from "../shared/components";
-import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import type { StructureModule, ModuleChild } from "../../shared/types";
 import "./StructurePanel.css";
 
@@ -110,8 +110,8 @@ function ModuleNode({
 }
 
 export function StructurePanel() {
-  const { selectedProject: projectRoot, activeFilePath: activeFile } = WebviewWebSocketClient.useSubscribe("projectState");
-  const structureData = WebviewWebSocketClient.useSubscribe("structureData");
+  const { selectedProject: projectRoot, activeFilePath: activeFile } = WebviewRpcClient.useSubscribe("projectState");
+  const structureData = WebviewRpcClient.useSubscribe("structureData");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
@@ -121,7 +121,7 @@ export function StructurePanel() {
   useEffect(() => {
     if (projectRoot && isAtoFile) {
       setLoading(true);
-      webviewClient?.sendAction("getStructure", { projectRoot });
+      rpcClient?.sendAction("getStructure", { projectRoot });
     }
   }, [projectRoot, activeFile]);
 
@@ -132,7 +132,7 @@ export function StructurePanel() {
   const handleRefresh = useCallback(() => {
     if (projectRoot) {
       setLoading(true);
-      webviewClient?.sendAction("getStructure", { projectRoot });
+      rpcClient?.sendAction("getStructure", { projectRoot });
     }
   }, [projectRoot]);
 

@@ -1,13 +1,19 @@
-import * as path from "path";
 import * as vscode from "vscode";
 import { ProcessManager } from "./processManager";
-import { WebviewManager } from "./webviewManager";
 import { AtoResolver } from "./atoResolver";
-import { HubWebSocketClient } from "./hubWebSocketClient";
-import { findFreePort } from "../../ui/hub/utils";
+import { CoreClient } from "./coreClient";
+import { RpcProxy } from "./rpcProxy";
+import { findFreePort } from "./utils";
 import { openKicadForBuild } from "./kicad";
+import { ExtensionRequestHandler } from "./extensionRequestHandler";
+import {
+  HostedWebviewViewProvider,
+  LOGS_VIEW_ID,
+  PanelHost,
+  SIDEBAR_VIEW_ID,
+} from "./webviewHost";
+import { CoreStatus } from "../../ui/shared/types";
 
-const HUB_READY_MARKER = "ATOPILE_HUB_READY";
 const CORE_SERVER_READY_MARKER = "ATOPILE_SERVER_READY";
 
 const panels = [
@@ -16,9 +22,7 @@ const panels = [
   { id: "panel-3d", label: "3D Model" },
 ];
 
-let hub: ProcessManager | undefined;
-let hubSocket: HubWebSocketClient | undefined;
-let webviewManager: WebviewManager | undefined;
+let coreClient: CoreClient | undefined;
 
 // -- Activate -----------------------------------------------------------------
 
@@ -26,89 +30,67 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const output = vscode.window.createOutputChannel("atopile");
   output.appendLine("atopile extension activating");
 
-  const hubPort = await findFreePort();
   const coreServerPort = await findFreePort();
+  const workspaceFolders =
+    vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
 
   const portEnv = {
-    ATOPILE_HUB_PORT: String(hubPort),
     ATOPILE_CORE_SERVER_PORT: String(coreServerPort),
   };
-
-  hub = await startHub(context, output, hubPort, coreServerPort, portEnv);
-  hubSocket = await connectHub(hubPort);
 
   const version: string = context.extension.packageJSON.version;
   const resolver = new AtoResolver(context, output);
   const resolved = await resolveAtoBinary(resolver, version, output);
   if (!resolved) return;
 
-  webviewManager = new WebviewManager(context.extensionUri, hubPort, coreServerPort, output);
-  hubSocket.sendAction("resolverInfo", {
+  let panelHost!: PanelHost;
+  const requestHandler = new ExtensionRequestHandler(
+    (panelId) => panelHost.openPanel(panelId),
+    output,
+  );
+  const proxy = new RpcProxy(coreServerPort, output, (webview, message) =>
+    requestHandler.handle(webview, message)
+  );
+  panelHost = new PanelHost(context.extensionUri, proxy);
+  const sidebarProvider = new HostedWebviewViewProvider(context.extensionUri, proxy, "sidebar");
+  const logsProvider = new HostedWebviewViewProvider(context.extensionUri, proxy, "panel-logs");
+
+  registerWebviews(context, sidebarProvider, logsProvider);
+  registerCommands(context, panelHost);
+  context.subscriptions.push(proxy, output, panelHost, sidebarProvider, logsProvider);
+
+  const coreServer = await startCoreServer(resolved, portEnv, output, proxy);
+  context.subscriptions.push(coreServer);
+
+  coreClient = new CoreClient(proxy, workspaceFolders);
+  coreClient.start();
+  coreClient.sendResolverInfo({
     uvPath: resolved.command,
     atoBinary: resolved.atoBinary ?? "",
     mode: resolved.isLocal ? "local" : "production",
     version,
+    coreServerPort,
   });
+  context.subscriptions.push(coreClient);
 
-  registerCommands(context, webviewManager);
-  context.subscriptions.push(hubSocket, hub, output);
-
-  // Track active editor file for structure/context panels
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (editor) {
-        hubSocket?.sendAction("setActiveFile", { filePath: editor.document.uri.fsPath });
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("atopile")) {
+        coreClient?.sendExtensionSettings();
       }
     }),
-  );
-  // Send initial active file
-  if (vscode.window.activeTextEditor) {
-    hubSocket.sendAction("setActiveFile", {
-      filePath: vscode.window.activeTextEditor.document.uri.fsPath,
-    });
-  }
 
-  const coreServer = await startCoreServer(resolved, portEnv, output, hubSocket);
-  context.subscriptions.push(coreServer);
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      coreClient?.sendActiveFile(editor?.document.uri.fsPath ?? null);
+    }),
+  );
+  coreClient.sendActiveFile(vscode.window.activeTextEditor?.document.uri.fsPath ?? null);
 
   output.appendLine("atopile extension activated");
 }
 
 export function deactivate(): void {
-  // Disposables (including hubSocket) are cleaned up by VS Code via context.subscriptions
-}
-
-// -- Helpers ------------------------------------------------------------------
-
-async function startHub(
-  context: vscode.ExtensionContext,
-  output: vscode.OutputChannel,
-  hubPort: number,
-  coreServerPort: number,
-  portEnv: Record<string, string>,
-): Promise<ProcessManager> {
-  const workspaceFolders =
-    vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath).join(":") ?? "";
-
-  const pm = new ProcessManager(output, {
-    name: "Hub",
-    command: "node",
-    args: [path.join(context.extensionPath, "hub-dist", "main.js")],
-    readyMarker: HUB_READY_MARKER,
-    env: {
-      ...portEnv,
-      ATOPILE_WORKSPACE_FOLDERS: workspaceFolders,
-    },
-    timeoutMs: 10_000,
-  });
-  await pm.start();
-  return pm;
-}
-
-async function connectHub(port: number): Promise<HubWebSocketClient> {
-  const client = new HubWebSocketClient(port);
-  await client.connect();
-  return client;
+  coreClient?.dispose();
 }
 
 async function resolveAtoBinary(
@@ -127,23 +109,15 @@ async function resolveAtoBinary(
 
 function registerCommands(
   context: vscode.ExtensionContext,
-  wm: WebviewManager,
+  panelHost: PanelHost,
 ): void {
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(WebviewManager.sidebarViewId, wm, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-
-    vscode.window.registerWebviewViewProvider(WebviewManager.logsViewId, wm, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-
     vscode.commands.registerCommand("atopile.openPanel", async () => {
       const pick = await vscode.window.showQuickPick(
         panels.map((p) => ({ label: p.label, id: p.id })),
         { placeHolder: "Select a panel to open" },
       );
-      if (pick) wm.openPanel(pick.id);
+      if (pick) panelHost.openPanel(pick.id);
     }),
 
     vscode.commands.registerCommand(
@@ -196,11 +170,27 @@ function registerCommands(
   );
 }
 
+function registerWebviews(
+  context: vscode.ExtensionContext,
+  sidebarProvider: HostedWebviewViewProvider,
+  logsProvider: HostedWebviewViewProvider,
+): void {
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebarProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+
+    vscode.window.registerWebviewViewProvider(LOGS_VIEW_ID, logsProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+}
+
 async function startCoreServer(
   resolved: Awaited<ReturnType<AtoResolver["resolve"]>>,
   portEnv: Record<string, string>,
   output: vscode.OutputChannel,
-  hub: HubWebSocketClient,
+  proxy: RpcProxy,
 ): Promise<ProcessManager> {
   const pm = new ProcessManager(output, {
     name: "CoreServer",
@@ -211,10 +201,13 @@ async function startCoreServer(
   });
   try {
     await pm.start();
+    proxy.clearBootstrapState("coreStatus");
   } catch (err: any) {
     output.appendLine(`[Extension] Core server failed to start: ${err.message}`);
     vscode.window.showWarningMessage(`atopile core server failed to start: ${err.message}`);
-    hub.sendAction("coreStartupError", { message: err.message });
+    const coreStatus = new CoreStatus();
+    coreStatus.error = err.message;
+    proxy.setBootstrapState("coreStatus", coreStatus);
   }
   return pm;
 }

@@ -1,12 +1,12 @@
-import { render, hubPort } from "../shared/render";
-import { WebviewWebSocketClient } from "../shared/webviewWebSocketClient";
+import { render } from "../shared/render";
+import { WebviewRpcClient } from "../shared/rpcClient";
 import { StoreState } from "../../shared/types";
 import { Separator, JsonView, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, GraphVisualizer2D } from "../shared/components";
 import type { GraphNode, GraphEdge } from "../shared/components";
 import { ComponentShowcase } from "../shared/components/ComponentShowcase";
 
 function StoreRow({ storeKey }: { storeKey: keyof StoreState }) {
-  const value = WebviewWebSocketClient.useSubscribe(storeKey);
+  const value = WebviewRpcClient.useSubscribe(storeKey);
   return (
     <TableRow>
       <TableCell><code>{storeKey}</code></TableCell>
@@ -34,12 +34,12 @@ function StoreTable() {
 }
 
 function App() {
-  const hubConnected = WebviewWebSocketClient.useSubscribe("hubConnected");
-  const coreStatus = WebviewWebSocketClient.useSubscribe("coreStatus");
+  const connected = WebviewRpcClient.useSubscribe("connected");
+  const coreStatus = WebviewRpcClient.useSubscribe("coreStatus");
 
   const nodes: GraphNode[] = [
     { id: "panels", label: "Panels",       x: 0,   y: 0   },
-    { id: "hub",    label: "UI Hub",       subtitle: hubPort ? `Port ${hubPort}` : undefined,                          x: 200, y: 0   },
+    { id: "bridge", label: "Extension Host", x: 200, y: 0 },
     { id: "core",   label: "Core Server",  subtitle: coreStatus.coreServerPort ? `Port ${coreStatus.coreServerPort}` : undefined, x: 420, y: 0   },
     { id: "logs",   label: "Log Viewer",   x: 200, y: 100 },
   ];
@@ -48,10 +48,10 @@ function App() {
   const connLabel = (ok: boolean) => ok ? 'Connected' : 'Disconnected'
 
   const edges: GraphEdge[] = [
-    { id: "e1", from: "panels", to: "hub",  label: connLabel(hubConnected), color: connColor(hubConnected) },
-    { id: "e2", from: "hub",    to: "core", label: connLabel(coreStatus.hubCoreConnected), color: connColor(coreStatus.hubCoreConnected) },
-    { id: "e3", from: "logs",   to: "hub",  label: connLabel(hubConnected), color: connColor(hubConnected) },
-    { id: "e4", from: "logs",   to: "core", label: connLabel(coreStatus.logCoreConnected), color: connColor(coreStatus.logCoreConnected) },
+    { id: "e1", from: "panels", to: "bridge", label: connLabel(connected), color: connColor(connected) },
+    { id: "e2", from: "bridge", to: "core", label: connLabel(connected), color: connColor(connected) },
+    { id: "e3", from: "logs",   to: "bridge", label: connLabel(connected), color: connColor(connected) },
+    { id: "e4", from: "logs",   to: "bridge", label: connLabel(connected), color: connColor(connected) },
   ];
 
   return (
