@@ -119,7 +119,6 @@ export interface ProjectDependency {
   hasUpdate?: boolean;
   isDirect?: boolean;
   via?: string[];
-  installedPath?: string;  // Absolute path where dependency is installed (null if not installed)
   summary?: string;  // Package summary/description from ato.yaml
   usageContent?: string;  // Content of usage.ato if it exists
   license?: string;  // License from ato.yaml package section
@@ -433,6 +432,9 @@ export interface InstalledPartsResponse {
 export interface AppState {
   // Connection
   isConnected: boolean;
+  features: {
+    chat: boolean;
+  };
   hasEverConnected: boolean;
 
   // Projects (from ato.yaml)
@@ -570,6 +572,7 @@ export interface AppState {
 
   // Manufacturing Wizard
   manufacturingWizard: ManufacturingWizardState | null;
+
 }
 
 // Re-export manufacturing types for convenience

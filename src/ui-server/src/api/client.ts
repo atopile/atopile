@@ -133,12 +133,23 @@ interface DependenciesResponse {
   dependencies: ProjectDependency[];
 }
 
+interface FeaturesResponse {
+  features: {
+    chat: boolean;
+  };
+}
+
 /**
  * API client with typed methods for all backend endpoints.
  */
 export const api = {
   // Health check
   health: () => fetchJSON<{ status: string }>('/health'),
+
+  // Feature capabilities
+  features: {
+    get: () => fetchJSON<FeaturesResponse>('/api/features'),
+  },
 
   // Projects
   projects: {

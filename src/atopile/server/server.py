@@ -42,7 +42,7 @@ from starlette.responses import Response
 from atopile.dataclasses import AppContext, EventType
 from atopile.model.build_queue import _build_queue
 from atopile.model.model_state import model_state
-from atopile.model.sqlite import BuildHistory
+from atopile.model.sqlite import AgentLogs, BuildHistory
 from atopile.server.connections import server_state
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import projects as projects_domain
@@ -427,10 +427,10 @@ class CrashOnErrorMiddleware(BaseHTTPMiddleware):
 
 def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
     """
-    Handle uncaught exceptions in asyncio tasks by crashing the server.
+    Handle uncaught exceptions in asyncio tasks.
 
-    This ensures background task failures are visible instead of being
-    silently logged and ignored.
+    WebSocket disconnects (ConnectionClosedError, CancelledError) are normal
+    and should not crash the server. Other exceptions are fatal.
     """
     exc = context.get("exception")
     msg = context.get("message", "Unknown asyncio error")
@@ -451,7 +451,6 @@ def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -
         # If websockets import fails, continue with fatal handling below.
         pass
 
-    # Log the full context for debugging
     log.critical("Uncaught exception in asyncio task: %s", msg)
     if exc:
         _fatal_error(f"Asyncio task crashed: {msg}", exc)
@@ -503,8 +502,9 @@ def create_app(
     )
     app.state.ctx = ctx
 
-    # Initialize build history database
+    # Initialize databases
     BuildHistory.init_db()
+    AgentLogs.init_db()
 
     @app.on_event("startup")
     async def on_startup():
@@ -541,6 +541,26 @@ def create_app(
             event_bus.emit_sync(
                 EventType.BOM_CHANGED, {"project_root": build.project_root}
             )
+            # Notify the agent if it has an active run for this project
+            try:
+                from atopile.server.routes.agent.utils import (
+                    inject_build_completed_steering,
+                )
+
+                inject_build_completed_steering(
+                    project_root=build.project_root or "",
+                    build_id=build.build_id or "",
+                    target=build.target or "default",
+                    status=build.status.value
+                    if hasattr(build.status, "value")
+                    else str(build.status),
+                    warnings=build.warnings,
+                    errors=build.errors,
+                    error=build.error,
+                    elapsed_seconds=build.elapsed_seconds,
+                )
+            except Exception:
+                log.debug("Failed to inject build steering", exc_info=True)
 
         _build_queue.on_change = _handle_build_change
         _build_queue.on_completed = _handle_build_completed
@@ -568,6 +588,17 @@ def create_app(
         """Simple health check endpoint."""
         return {"status": "ok"}
 
+    @app.get("/api/features")
+    async def get_features():
+        """Return backend-controlled UI feature capabilities."""
+        raw = os.getenv("UI_ENABLE_CHAT") or os.getenv("FBRK_UI_ENABLE_CHAT") or ""
+        chat_enabled = raw.lower() in ("1", "true", "yes", "y")
+        log.info(f"GET /api/features: UI_ENABLE_CHAT={raw!r} → chat={chat_enabled}")
+        return {"features": {"chat": chat_enabled}}
+
+    from atopile.server.routes import (
+        agent as agent_routes,
+    )
     from atopile.server.routes import (
         artifacts as artifacts_routes,
     )
@@ -610,6 +641,7 @@ def create_app(
 
     app.include_router(ws_routes.router)
     app.include_router(logs_routes.router)
+    app.include_router(agent_routes.router)
     app.include_router(projects_routes.router)
     app.include_router(builds_routes.router)
     app.include_router(artifacts_routes.router)
