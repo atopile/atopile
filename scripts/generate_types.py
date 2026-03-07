@@ -15,7 +15,7 @@ from pydantic import BaseModel
 import atopile.dataclasses as dataclasses_module
 import atopile.server.store as store_module
 from atopile.dataclasses import CamelModel
-from atopile.server.store import STORE_FIELDS
+from atopile.server.store import STORE_SCHEMA
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src/ui/shared/generated-types.ts"
@@ -31,8 +31,7 @@ def main() -> None:
         "",
         "type JsonPrimitive = string | number | boolean | null;",
         "export type JsonValue ="
-        "  | JsonPrimitive | JsonValue[]"
-        "  | { [key: string]: JsonValue };",
+        " JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };",
         "",
         "function cloneGenerated<T>(value: T): T {",
         "  return JSON.parse(JSON.stringify(value)) as T;",
@@ -166,7 +165,7 @@ def override_model_field_ts_type(model_name: str, field_name: str) -> str | None
 
 def render_store_keys() -> list[str]:
     store_fields = _all_store_fields()
-    keys = [store_field.wire_key for store_field in store_fields]
+    keys = [store_field.wire_key for _, store_field in store_fields]
     key_literals = ", ".join(json.dumps(key) for key in keys)
     return [
         f"export const STORE_KEYS = [{key_literals}] as const;",
@@ -177,11 +176,11 @@ def render_store_keys() -> list[str]:
 def _all_store_fields() -> list[Any]:
     return sorted(
         [
-            store_field
-            for store_field in vars(STORE_FIELDS).values()
+            (field_name, store_field)
+            for field_name, store_field in STORE_SCHEMA.items()
             if getattr(store_field, "wire_key", None)
         ],
-        key=lambda store_field: store_field.field_name,
+        key=lambda item: item[0],
     )
 
 
