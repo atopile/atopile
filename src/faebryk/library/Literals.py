@@ -3848,6 +3848,44 @@ class Numbers(fabll.Node):
             numeric_set=out_numeric_set, unit=None
         )
 
+    def convert_to_with_unit(
+        self,
+        unit: "is_unit",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Numbers":
+        # Do the unit conversion in pure Python math instead of creating
+        # 6+ graph nodes for interval arithmetic.
+        # Formula: result_value = (base_value - offset) / multiplier
+        multiplier = unit._extract_multiplier()
+        offset = unit._extract_offset()
+
+        _g = g or self.g
+        _tg = tg or self.tg
+
+        numeric_set = self.get_numeric_set()
+        intervals = numeric_set.get_intervals()
+        converted_values = []
+        for iv in intervals:
+            min_v = iv.get_min_value()
+            max_v = iv.get_max_value()
+            new_min = (min_v - offset) / multiplier
+            new_max = (max_v - offset) / multiplier
+            if multiplier < 0:
+                new_min, new_max = new_max, new_min
+            converted_values.append((new_min, new_max))
+
+        new_numeric_set = NumericSet.create_instance(g=_g, tg=_tg).setup_from_values(
+            values=converted_values
+        )
+        result_numbers = Numbers.create_instance(g=_g, tg=_tg).setup(
+            numeric_set=new_numeric_set,
+            unit=unit,
+        )
+
+        return result_numbers
+
     def op_add_intervals(
         self: "Numbers",
         *others: "Numbers",
