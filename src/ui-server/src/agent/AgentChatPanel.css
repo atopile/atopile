@@ -673,7 +673,7 @@
 }
 
 .agent-tool-group.scrollable .agent-tool-traces {
-  max-height: 320px;
+  max-height: 212px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -942,6 +942,9 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+  max-height: 188px;
+  overflow-y: auto;
+  padding-right: 3px;
 }
 
 .agent-build-status-list .build-queue-item {
@@ -968,7 +971,7 @@
 .agent-build-status-list .stage-icon.success,
 .agent-build-status-list .build-status-icon.success,
 .agent-build-status-list .success-indicator {
-  color: var(--agent-accent) !important;
+  color: color-mix(in srgb, var(--accent) 84%, var(--text-secondary)) !important;
 }
 
 .agent-build-status-list .queue-item.success {
