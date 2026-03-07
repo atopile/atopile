@@ -121,6 +121,7 @@ class InterruptRunResponse(ApiModel):
     run_id: str = Field(alias="runId")
     status: str
     queued_messages: int = Field(alias="queuedMessages")
+    queued_message: str | None = Field(default=None, alias="queuedMessage")
 
 
 def session_not_found_detail(session_id: str) -> str:

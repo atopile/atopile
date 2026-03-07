@@ -483,6 +483,7 @@ async def interrupt_run(
             runId=run_id,
             status=run.status,
             queuedMessages=0,
+            queuedMessage=None,
         )
 
     with runs_lock:
@@ -496,6 +497,7 @@ async def interrupt_run(
                 runId=run_id,
                 status=current.status,
                 queuedMessages=0,
+                queuedMessage=None,
             )
 
         current.stop_requested = True
@@ -530,6 +532,7 @@ async def interrupt_run(
         runId=run_id,
         status=RUN_STATUS_RUNNING,
         queuedMessages=queued_count,
+        queuedMessage=message,
     )
 
 

@@ -40,7 +40,7 @@ _TRACE_DISABLE_VALUES = {"0", "false", "no", "off"}
 class AgentConfig:
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-5.4"
-    summary_model: str = "gpt-5.4-mini"
+    summary_model: str = "gpt-4.1-nano"
     api_key: str | None = None
     timeout_s: float = 120.0
     summary_timeout_s: float = 8.0
@@ -102,7 +102,7 @@ class AgentConfig:
         return cls(
             base_url=_env("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1"),
             model=_env("ATOPILE_AGENT_MODEL", "gpt-5.4"),
-            summary_model=_env("ATOPILE_AGENT_SUMMARY_MODEL", "gpt-5.4-mini"),
+            summary_model=_env("ATOPILE_AGENT_SUMMARY_MODEL", "gpt-4.1-nano"),
             api_key=os.getenv("ATOPILE_AGENT_OPENAI_API_KEY")
             or os.getenv("OPENAI_API_KEY"),
             timeout_s=_env_float("ATOPILE_AGENT_TIMEOUT_S", "120"),
