@@ -164,7 +164,7 @@
 }
 
 .agent-chat-thread-status.ready {
-  color: color-mix(in srgb, var(--text-secondary) 92%, var(--text-muted));
+  color: color-mix(in srgb, var(--text-secondary) 76%, var(--agent-accent));
 }
 
 .agent-chat-thread-status.working {
@@ -259,128 +259,6 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.agent-package-workers-panel {
-  margin: 8px 12px 0;
-  border: 1px solid color-mix(in srgb, var(--agent-panel-line) 82%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-secondary) 56%, var(--bg-primary));
-  overflow: hidden;
-}
-
-.agent-package-workers-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--agent-panel-line) 70%, transparent);
-}
-
-.agent-package-workers-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-secondary);
-}
-
-.agent-package-workers-meta {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.agent-package-workers-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.agent-package-worker-card {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 9px 10px;
-  border-top: 1px solid color-mix(in srgb, var(--agent-panel-line) 46%, transparent);
-}
-
-.agent-package-worker-card:first-child {
-  border-top: 0;
-}
-
-.agent-package-worker-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.agent-package-worker-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  color: var(--text-primary);
-}
-
-.agent-package-worker-name {
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.agent-package-worker-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-}
-
-.agent-package-worker-status.running {
-  color: color-mix(in srgb, var(--text-primary) 80%, var(--accent));
-}
-
-.agent-package-worker-status.completed {
-  color: color-mix(in srgb, var(--text-primary) 60%, #3aa26d);
-}
-
-.agent-package-worker-status.failed {
-  color: color-mix(in srgb, var(--text-primary) 36%, #c75050);
-}
-
-.agent-package-worker-status.stopped {
-  color: var(--text-muted);
-}
-
-.agent-package-worker-path,
-.agent-package-worker-summary,
-.agent-package-worker-meta-row {
-  font-size: 11px;
-}
-
-.agent-package-worker-path {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.agent-package-worker-summary {
-  color: var(--text-secondary);
-  line-height: 1.35;
-}
-
-.agent-package-worker-meta-row {
-  display: flex;
-  gap: 10px;
-  color: var(--text-muted);
 }
 
 .agent-chat-history-drawer {
@@ -724,17 +602,17 @@
 }
 
 .agent-markdown li.task-list-item > input[type='checkbox']:checked {
-  border-color: color-mix(in srgb, var(--agent-accent) 44%, transparent);
-  background: color-mix(in srgb, var(--agent-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 62%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .agent-markdown li.task-list-item > input[type='checkbox']:checked::after {
-  border-left-color: color-mix(in srgb, var(--agent-accent) 84%, var(--text-primary));
-  border-bottom-color: color-mix(in srgb, var(--agent-accent) 84%, var(--text-primary));
+  border-left-color: color-mix(in srgb, var(--accent) 88%, var(--text-primary));
+  border-bottom-color: color-mix(in srgb, var(--accent) 88%, var(--text-primary));
 }
 
 .agent-markdown li.task-list-item:has(> input[type='checkbox']:checked) {
-  color: color-mix(in srgb, var(--text-secondary) 92%, var(--text-primary));
+  color: color-mix(in srgb, var(--text-secondary) 72%, var(--accent));
 }
 
 .agent-markdown li.task-list-item > p {
@@ -798,6 +676,14 @@
   max-height: 320px;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.agent-tool-group.scrollable .agent-tool-group-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: 4px;
+  background: color-mix(in srgb, var(--bg-primary) 94%, transparent);
 }
 
 .agent-tool-group-header {
@@ -1075,6 +961,25 @@
 .agent-build-status-list .build-queue-item.cancelled {
   background: transparent;
   opacity: 1;
+}
+
+.agent-build-status-list .queue-item.success,
+.agent-build-status-list .status-icon.success,
+.agent-build-status-list .stage-icon.success,
+.agent-build-status-list .build-status-icon.success,
+.agent-build-status-list .success-indicator {
+  color: var(--agent-accent) !important;
+}
+
+.agent-build-status-list .queue-item.success {
+  border-color: color-mix(in srgb, var(--agent-accent) 28%, transparent) !important;
+  background: color-mix(in srgb, var(--agent-accent) 4%, transparent) !important;
+}
+
+.agent-build-status-list .status-icon.warning,
+.agent-build-status-list .stage-icon.warning,
+.agent-build-status-list .build-status-icon.warning {
+  color: color-mix(in srgb, var(--agent-accent) 90%, var(--text-primary)) !important;
 }
 
 .agent-build-status-list .build-queue-item + .build-queue-item {
@@ -1722,7 +1627,7 @@
 }
 
 .agent-checklist-item--done {
-  color: color-mix(in srgb, var(--text-secondary) 94%, var(--text-muted));
+  color: color-mix(in srgb, var(--accent) 84%, var(--text-secondary));
 }
 
 .agent-checklist-item--blocked {
@@ -1749,12 +1654,13 @@
 .agent-checklist-item-req {
   flex-shrink: 0;
   font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
-  color: var(--text-muted);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: color-mix(in srgb, var(--accent) 82%, var(--text-secondary));
 }
 
 /* ── Design Questions Card ─────────────────────── */
