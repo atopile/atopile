@@ -117,8 +117,8 @@ export function filterLogs(
   return logs.filter(log => {
     if (search.trim() && !messageMatcher(log.message).matches) return false;
     if (sourceFilter.trim()) {
-      const sourceStr = log.source_file ? `${log.source_file}:${log.source_line || ''}` : '';
-      const loggerStr = log.logger_name || '';
+      const sourceStr = log.sourceFile ? `${log.sourceFile}:${log.sourceLine || ''}` : '';
+      const loggerStr = log.loggerName || '';
       if (!sourceMatcher(`${sourceStr} ${loggerStr}`).matches) return false;
     }
     return true;
@@ -135,7 +135,7 @@ export function getTopLevelLogger(loggerName: string | undefined | null): string
 export function getUniqueTopLevelLoggers(logs: LogEntry[]): string[] {
   const set = new Set<string>();
   for (const log of logs) {
-    const top = getTopLevelLogger(log.logger_name);
+    const top = getTopLevelLogger(log.loggerName);
     if (top) set.add(top);
   }
   return Array.from(set).sort();
@@ -163,7 +163,7 @@ export function saveEnabledLoggers(enabled: Set<string> | null): void {
 export function filterByLoggers(logs: LogEntry[], enabledLoggers: Set<string> | null): LogEntry[] {
   if (enabledLoggers === null) return logs;
   return logs.filter(log => {
-    const topLevel = getTopLevelLogger(log.logger_name);
+    const topLevel = getTopLevelLogger(log.loggerName);
     if (!topLevel) return true;
     return enabledLoggers.has(topLevel);
   });
@@ -178,15 +178,15 @@ export function computeRowDisplay(
   const ts = formatTimestamp(entry.timestamp, timeMode, firstTimestamp);
   const html = highlightMatches(ansiConverter.toHtml(content), search, searchOptions);
   const sourceColor = sourceMode === 'source'
-    ? (entry.source_file ? hashStringToColor(entry.source_file) : undefined)
-    : (entry.logger_name ? hashStringToColor(entry.logger_name) : undefined);
+    ? (entry.sourceFile ? hashStringToColor(entry.sourceFile) : undefined)
+    : (entry.loggerName ? hashStringToColor(entry.loggerName) : undefined);
   const sourceStyle: CSSProperties | undefined = sourceColor
     ? ({ '--lv-source-accent': sourceColor } as CSSProperties) : undefined;
-  const loggerShort = entry.logger_name?.split('.').pop() || '';
+  const loggerShort = entry.loggerName?.split('.').pop() || '';
   const sourceDisplayValue = sourceMode === 'source'
-    ? (formatSource(entry.source_file, entry.source_line) || '\u2014')
+    ? (formatSource(entry.sourceFile, entry.sourceLine) || '\u2014')
     : (loggerShort || '\u2014');
-  const sourceTooltip = sourceMode === 'source' ? (entry.source_file || '') : (entry.logger_name || '');
+  const sourceTooltip = sourceMode === 'source' ? (entry.sourceFile || '') : (entry.loggerName || '');
   return { ts, html, sourceStyle, sourceDisplayValue, sourceTooltip };
 }
 

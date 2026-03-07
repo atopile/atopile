@@ -58,7 +58,7 @@ function SearchResultRow({
         <span className={stockClass(part.stock)}>
           Stock: {part.stock.toLocaleString()}
         </span>
-        {part.unit_cost != null && <span>${part.unit_cost.toFixed(4)}</span>}
+        {part.unitCost != null && <span>${part.unitCost.toFixed(4)}</span>}
         <span>{part.lcsc}</span>
       </div>
     </div>

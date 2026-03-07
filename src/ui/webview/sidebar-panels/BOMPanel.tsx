@@ -72,10 +72,10 @@ function BOMComponentRow({ component }: { component: BOMComponent }) {
             <span className="bom-detail-value">{component.manufacturer}</span>
             <span className="bom-detail-label">MPN</span>
             <span className="bom-detail-value">{component.mpn}</span>
-            {component.package_name && (
+            {component.packageName && (
               <>
                 <span className="bom-detail-label">Package</span>
-                <span className="bom-detail-value">{component.package_name}</span>
+                <span className="bom-detail-value">{component.packageName}</span>
               </>
             )}
             {component.lcsc && (
@@ -101,10 +101,10 @@ function BOMComponentRow({ component }: { component: BOMComponent }) {
                 </span>
               </>
             )}
-            {component.unit_cost != null && (
+            {component.unitCost != null && (
               <>
                 <span className="bom-detail-label">Unit Cost</span>
-                <span className="bom-detail-value">${component.unit_cost.toFixed(4)}</span>
+                <span className="bom-detail-value">${component.unitCost.toFixed(4)}</span>
               </>
             )}
           </div>

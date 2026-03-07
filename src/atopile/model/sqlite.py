@@ -163,7 +163,12 @@ class BuildHistory:
                         build.elapsed_seconds
                         if build.elapsed_seconds
                         else (existing.elapsed_seconds if existing else 0.0),
-                        json.dumps(build.stages)
+                        json.dumps(
+                            [
+                                stage.model_dump(mode="json", by_alias=True)
+                                for stage in build.stages
+                            ]
+                        )
                         if build.stages
                         else (json.dumps(existing.stages) if existing else "[]"),
                         pick(

@@ -93,7 +93,7 @@ def _run_stage_ticker(
 ) -> None:
     import time
 
-    from atopile.dataclasses import Build, BuildStatus, StageStatus
+    from atopile.dataclasses import Build, BuildStage, BuildStatus, StageStatus
     from atopile.model.sqlite import BuildHistory
 
     while not stop_event.wait(interval_s):
@@ -104,32 +104,32 @@ def _run_stage_ticker(
         build_info = BuildHistory.get(build_id)
         current_stages = build_info.stages if build_info else []
         updated = False
-        new_stages: list[dict] = []
+        new_stages: list[BuildStage] = []
 
         for stage in current_stages:
-            stage_key = stage.get("stageId") or stage.get("stage_id")
-            if stage_key == stage_id:
+            if stage.stage_id == stage_id:
                 updated = True
                 new_stages.append(
-                    {
-                        **stage,
-                        "name": stage_name,
-                        "stageId": stage_id,
-                        "status": StageStatus.RUNNING.value,
-                        "elapsedSeconds": elapsed_stage,
-                    }
+                    stage.model_copy(
+                        update={
+                            "name": stage_name,
+                            "stage_id": stage_id,
+                            "status": StageStatus.RUNNING,
+                            "elapsed_seconds": elapsed_stage,
+                        }
+                    )
                 )
             else:
                 new_stages.append(stage)
 
         if not updated:
             new_stages.append(
-                {
-                    "name": stage_name,
-                    "stageId": stage_id,
-                    "status": StageStatus.RUNNING.value,
-                    "elapsedSeconds": elapsed_stage,
-                }
+                BuildStage(
+                    name=stage_name,
+                    stage_id=stage_id,
+                    status=StageStatus.RUNNING,
+                    elapsed_seconds=elapsed_stage,
+                )
             )
 
         BuildHistory.set(
@@ -207,8 +207,7 @@ class MusterTarget:
                     status=BuildStatus.BUILDING,
                     started_at=build_started_at,
                     elapsed_seconds=time.time() - build_started_at,
-                    stages=[s.model_dump() for s in ctx.completed_stages]
-                    + [running_stage.model_dump()],
+                    stages=[*ctx.completed_stages, running_stage],
                 )
             )
 
@@ -269,7 +268,7 @@ class MusterTarget:
                         status=BuildStatus.BUILDING,
                         started_at=started_at,
                         elapsed_seconds=time.time() - started_at,
-                        stages=[s.model_dump() for s in ctx.completed_stages],
+                        stages=ctx.completed_stages,
                     )
                 )
             self.success = succeeded

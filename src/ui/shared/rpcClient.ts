@@ -1,4 +1,4 @@
-import { MSG_TYPE, type WebSocketMessage } from "./types";
+import { MSG_TYPE, type RpcMessage, type StoreKey } from "./types";
 import type { RpcTransport } from "./rpcTransport";
 
 class ReconnectScheduler {
@@ -43,7 +43,7 @@ class ReconnectScheduler {
   }
 }
 
-export function parseMessage(data: unknown): WebSocketMessage | null {
+export function parseMessage(data: unknown): RpcMessage | null {
   try {
     const str = typeof data === "string" ? data : String(data);
     const msg = JSON.parse(str);
@@ -53,7 +53,7 @@ export function parseMessage(data: unknown): WebSocketMessage | null {
       msg?.type === MSG_TYPE.ACTION ||
       msg?.type === MSG_TYPE.ACTION_RESULT
     ) {
-      return msg as WebSocketMessage;
+      return msg as RpcMessage;
     }
     return null;
   } catch {
@@ -81,7 +81,7 @@ export class RpcClient {
   private _connected = false;
   private _requestCounter = 0;
 
-  onState: ((key: string, data: unknown) => void) | null = null;
+  onState: ((key: StoreKey, data: unknown) => void) | null = null;
   onConnected: (() => void) | null = null;
   onDisconnected: (() => void) | null = null;
   onRawMessage: ((data: string) => void) | null = null;
@@ -154,7 +154,7 @@ export class RpcClient {
     });
   }
 
-  subscribe(keys: string[]): void {
+  subscribe(keys: StoreKey[]): void {
     for (const key of keys) {
       this._subscribedKeys.add(key);
     }
@@ -215,7 +215,7 @@ export class RpcClient {
     return this.sendRaw(JSON.stringify({ type: MSG_TYPE.SUBSCRIBE, keys }));
   }
 
-  private _handleActionResult(msg: Extract<WebSocketMessage, { type: typeof MSG_TYPE.ACTION_RESULT }>): void {
+  private _handleActionResult(msg: Extract<RpcMessage, { type: typeof MSG_TYPE.ACTION_RESULT }>): void {
     if (!msg.requestId) {
       return;
     }

@@ -12,7 +12,7 @@ import {
   PanelHost,
   SIDEBAR_VIEW_ID,
 } from "./webviewHost";
-import { CoreStatus } from "../../ui/shared/types";
+import { createCoreStatus } from "../../ui/shared/types";
 
 const CORE_SERVER_READY_MARKER = "ATOPILE_SERVER_READY";
 
@@ -205,7 +205,7 @@ async function startCoreServer(
   } catch (err: any) {
     output.appendLine(`[Extension] Core server failed to start: ${err.message}`);
     vscode.window.showWarningMessage(`atopile core server failed to start: ${err.message}`);
-    const coreStatus = new CoreStatus();
+    const coreStatus = createCoreStatus();
     coreStatus.error = err.message;
     proxy.setBootstrapState("coreStatus", coreStatus);
   }

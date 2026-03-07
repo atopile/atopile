@@ -72,14 +72,14 @@ function TraceDetails({ label, content, className, defaultOpen = false }: {
 }
 
 function TracebacksInline({ entry }: { entry: LogEntry }) {
-  if (!entry.ato_traceback && !entry.python_traceback) return null;
+  if (!entry.atoTraceback && !entry.pythonTraceback) return null;
   return (
     <div className="lv-tracebacks lv-tracebacks-inline">
-      {entry.ato_traceback && (
-        <TraceDetails label="ato traceback" content={entry.ato_traceback} className="lv-trace-ato" defaultOpen />
+      {entry.atoTraceback && (
+        <TraceDetails label="ato traceback" content={entry.atoTraceback} className="lv-trace-ato" defaultOpen />
       )}
-      {entry.python_traceback && (
-        <TraceDetails label="python traceback" content={entry.python_traceback} className="lv-trace-python" />
+      {entry.pythonTraceback && (
+        <TraceDetails label="python traceback" content={entry.pythonTraceback} className="lv-trace-python" />
       )}
     </div>
   );
@@ -273,9 +273,9 @@ function LogViewer() {
     if (!id) { logClient?.stopStream(); return; }
 
     logClient?.startBuildStream({
-      build_id: id,
+      buildId: id,
       stage: stage.trim() || null,
-      log_levels: logLevels.length > 0 ? logLevels : null,
+      logLevels: logLevels.length > 0 ? logLevels : null,
       audience,
     });
     setAutoScroll(true);

@@ -1,84 +1,113 @@
 /**
- * Canonical shared types for the atopile UI.
+ * Frontend-side helpers layered on top of generated backend-owned UI types.
  *
- * Imported by the extension host, webviews, and shared UI code.
+ * The canonical shared schema lives in `generated-types.ts`, which is generated
+ * from `src/atopile/dataclasses.py`.
  */
 
-export class StoreState {
-  connected: boolean = false;
-  coreStatus = new CoreStatus();
-  extensionSettings = new ExtensionSettings();
-  projectState = new ProjectState();
-  projects: Project[] = [];
-  projectFiles: FileNode[] = [];
-  currentBuilds: Build[] = [];
-  previousBuilds: Build[] = [];
-  packagesSummary: PackagesSummaryData = new PackagesSummaryData();
-  partsSearch: PartsSearchData = new PartsSearchData();
-  installedParts: InstalledPartsData = new InstalledPartsData();
-  stdlibData: StdLibData = new StdLibData();
-  structureData: StructureData = new StructureData();
-  variablesData: VariablesData = new VariablesData();
-  bomData: BOMData = new BOMData();
-}
+import * as Gen from "./generated-types";
 
-export class ExtensionSettings {
-  devPath: string = "";
-  autoInstall: boolean = true;
-}
-
-export class CoreStatus {
-  error: string | null = null;
-  uvPath: string = "";
-  atoBinary: string = "";
-  mode: "local" | "production" = "production";
-  version: string = "";
-  coreServerPort: number = 0;
-}
-
-export class ProjectState {
-  selectedProject: string | null = null;
-  selectedTarget: string | null = null;
-  activeFilePath: string | null = null;
-}
-
-export class Project {
-  root: string = "";
-  name: string = "";
-  targets: string[] = [];
-}
-
-export class FileNode {
-  name: string = "";
-  children?: FileNode[];
-}
-
-export class BuildStage {
-  name: string = "";
-  stageId?: string;
-  elapsedSeconds: number = 0;
-  status: string = "";
-  infos?: number;
-  warnings?: number;
-  errors?: number;
-}
-
-export class Build {
-  name: string = "";
-  buildId?: string;
-  status: string = "";
-  elapsedSeconds: number = 0;
-  projectRoot?: string;
-  entry?: string;
-  startedAt?: number;
-  stages?: BuildStage[];
+export type ExtensionSettings = Gen.UiExtensionSettings;
+export type CoreStatus = Gen.UiCoreStatus;
+export type ProjectState = Gen.UiProjectState;
+export type Project = Gen.Project;
+export type FileNode = Gen.FileNode;
+export type BuildStage = Gen.BuildStage;
+export type Build = Gen.Build & {
   currentStage?: BuildStage | null;
-  totalStages?: number | null;
-  warnings?: number;
-  errors?: number;
-  error?: string;
-  returnCode?: number | null;
+};
+export type PackageSummaryItem = Gen.PackageSummaryItem;
+export type PackagesSummaryData = Gen.PackagesSummaryData;
+export type PartSearchItem = Gen.UiPartSearchItem;
+export type PartsSearchData = Gen.UiPartsSearchData;
+export type InstalledPartItem = Gen.UiInstalledPartItem;
+export type InstalledPartsData = Gen.UiInstalledPartsData;
+export type StdLibChild = Gen.StdLibChild;
+export type StdLibItem = Gen.StdLibItem;
+export type StdLibData = Gen.StdLibData;
+export type ModuleChild = Gen.ModuleChild;
+export type StructureModule = Gen.ModuleDefinition;
+export type StructureData = Gen.UiStructureData;
+export type Variable = Gen.UiVariable;
+export type VariableNode = Gen.UiVariableNode;
+export type VariablesData = Gen.UiVariablesData;
+export type BOMParameter = Gen.UiBOMParameter;
+export type BOMUsage = Gen.UiBOMUsage;
+export type BOMComponent = Gen.UiBOMComponent;
+export type BOMData = Gen.UiBOMData;
+export type LogLevel = Gen.UiLogLevel;
+export type Audience = Gen.UiAudience;
+export type LogEntry = Gen.UiLogEntry;
+export type BuildLogRequest = Gen.UiBuildLogRequest;
+export type LogMessage = Gen.UiLogsStreamMessage | Gen.UiLogsErrorMessage;
+
+export type StoreKey = Gen.StoreKey;
+export type StoreSnapshot = Gen.UiStore;
+export type StoreState = StoreSnapshot & {
+  connected: boolean;
+};
+
+export function createCoreStatus(): CoreStatus {
+  return Gen.createUiCoreStatus();
 }
+
+export function createExtensionSettings(): ExtensionSettings {
+  return Gen.createUiExtensionSettings();
+}
+
+export function createProjectState(): ProjectState {
+  return Gen.createUiProjectState();
+}
+
+export function createPackagesSummaryData(): PackagesSummaryData {
+  return Gen.createUiStore().packagesSummary;
+}
+
+export function createPartsSearchData(): PartsSearchData {
+  return Gen.createUiPartsSearchData();
+}
+
+export function createInstalledPartsData(): InstalledPartsData {
+  return Gen.createUiInstalledPartsData();
+}
+
+export function createStdLibData(): StdLibData {
+  return Gen.createUiStore().stdlibData;
+}
+
+export function createStructureData(): StructureData {
+  return Gen.createUiStructureData();
+}
+
+export function createVariablesData(): VariablesData {
+  return Gen.createUiVariablesData();
+}
+
+export function createBOMData(): BOMData {
+  return Gen.createUiBOMData();
+}
+
+export function createLogEntry(): LogEntry {
+  return Gen.createUiLogEntry();
+}
+
+export function createBuildLogRequest(): BuildLogRequest {
+  return Gen.createUiBuildLogRequest();
+}
+
+export function createStoreSnapshot(): StoreSnapshot {
+  return Gen.createUiStore();
+}
+
+export function createStoreState(): StoreState {
+  return {
+    connected: false,
+    ...createStoreSnapshot(),
+  };
+}
+
+export const REMOTE_STORE_KEYS = Gen.STORE_KEYS;
+export const STORE_KEYS = ["connected", ...Gen.STORE_KEYS] as const;
 
 export interface BuildTarget {
   name: string;
@@ -103,235 +132,55 @@ export interface AtoYaml {
   >;
 }
 
-// -- Packages panel types --------------------------------------------------
+// -- Log viewer UI-only helpers --------------------------------------------
 
-export interface PackageSummaryItem {
-  identifier: string;
-  name: string;
-  publisher: string;
-  installed: boolean;
-  version: string | null;
-  latest_version: string | null;
-  has_update: boolean;
-  summary: string | null;
-  description: string | null;
-  homepage: string | null;
-  repository: string | null;
-  license: string | null;
-  downloads: number | null;
-  keywords: string[];
-}
-
-export class PackagesSummaryData {
-  packages: PackageSummaryItem[] = [];
-  total: number = 0;
-  installedCount: number = 0;
-}
-
-// -- Parts panel types -----------------------------------------------------
-
-export interface PartSearchItem {
-  lcsc: string;
-  mpn: string;
-  manufacturer: string;
-  description: string;
-  stock: number;
-  unit_cost: number | null;
-  datasheet_url: string | null;
-  package: string | null;
-  is_basic: boolean;
-  is_preferred: boolean;
-  attributes: Record<string, string>;
-}
-
-export class PartsSearchData {
-  parts: PartSearchItem[] = [];
-  error: string | null = null;
-}
-
-export interface InstalledPartItem {
-  identifier: string;
-  manufacturer: string;
-  mpn: string;
-  lcsc: string | null;
-  datasheet_url: string | null;
-  description: string;
-  path: string;
-}
-
-export class InstalledPartsData {
-  parts: InstalledPartItem[] = [];
-}
-
-// -- Standard library panel types ------------------------------------------
-
-export interface StdLibChild {
-  name: string;
-  type: string;
-  item_type: string;
-  children: StdLibChild[];
-  enum_values: string[];
-}
-
-export interface StdLibItem {
-  id: string;
-  name: string;
-  type: string;
-  description: string;
-  usage: string | null;
-  children: StdLibChild[];
-  parameters: Record<string, string>[];
-}
-
-export class StdLibData {
-  items: StdLibItem[] = [];
-  total: number = 0;
-}
-
-// -- Structure panel types -------------------------------------------------
-
-export interface ModuleChild {
-  name: string;
-  type_name: string;
-  item_type: string;
-  children: ModuleChild[];
-  spec: string | null;
-}
-
-export interface StructureModule {
-  name: string;
-  type: string;
-  file: string;
-  entry: string;
-  line: number | null;
-  super_type: string | null;
-  children: ModuleChild[];
-}
-
-export class StructureData {
-  modules: StructureModule[] = [];
-  total: number = 0;
-}
-
-// -- Parameters (variables) panel types ------------------------------------
-
-export interface Variable {
-  name: string;
-  spec: string | null;
-  actual: string | null;
-  tolerance: string | null;
-  status: string | null;
-}
-
-export interface VariableNode {
-  name: string;
-  variables: Variable[];
-  children: VariableNode[];
-}
-
-export class VariablesData {
-  nodes: VariableNode[] = [];
-}
-
-// -- BOM panel types -------------------------------------------------------
-
-export interface BOMParameter {
-  name: string;
-  value: string;
-}
-
-export interface BOMUsage {
-  module: string;
-  instance: string;
-  file: string | null;
-  line: number | null;
-}
-
-export interface BOMComponent {
-  mpn: string;
-  manufacturer: string;
-  description: string;
-  value: string | null;
-  package_name: string | null;
-  lcsc: string | null;
-  stock: number | null;
-  unit_cost: number | null;
-  quantity: number;
-  type: string | null;
-  parameters: BOMParameter[];
-  usages: BOMUsage[];
-}
-
-export class BOMData {
-  components: BOMComponent[] = [];
-  totalQuantity: number = 0;
-  uniqueParts: number = 0;
-  estimatedCost: number | null = null;
-  outOfStock: number = 0;
-}
-
-// -- Log viewer types ------------------------------------------------------
-
-export type LogLevel = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'ALERT';
-export type Audience = 'user' | 'developer' | 'agent';
-export type TimeMode = 'delta' | 'wall';
-export type SourceMode = 'source' | 'logger';
-export type LogConnectionState = 'disconnected' | 'connecting' | 'connected';
+export type TimeMode = "delta" | "wall";
+export type SourceMode = "source" | "logger";
+export type LogConnectionState = "disconnected" | "connecting" | "connected";
 
 export const LEVEL_SHORT: Record<LogLevel, string> = {
-  DEBUG: 'D',
-  INFO: 'I',
-  WARNING: 'W',
-  ERROR: 'E',
-  ALERT: 'A',
+  DEBUG: "D",
+  INFO: "I",
+  WARNING: "W",
+  ERROR: "E",
+  ALERT: "A",
 };
 
 export const SOURCE_COLORS = [
-  '#cba6f7', '#f38ba8', '#fab387', '#f9e2af',
-  '#a6e3a1', '#94e2d5', '#89dceb', '#74c7ec',
-  '#89b4fa', '#b4befe', '#f5c2e7', '#eba0ac',
+  "#cba6f7", "#f38ba8", "#fab387", "#f9e2af",
+  "#a6e3a1", "#94e2d5", "#89dceb", "#74c7ec",
+  "#89b4fa", "#b4befe", "#f5c2e7", "#eba0ac",
 ];
 
-export class LogEntry {
-  id?: number;
-  timestamp: string = "";
-  level: LogLevel = "INFO";
-  audience: Audience = "user";
-  logger_name: string = "";
-  message: string = "";
-  stage?: string | null;
-  source_file?: string | null;
-  source_line?: number | null;
-  ato_traceback?: string | null;
-  python_traceback?: string | null;
-  objects?: unknown;
+export interface TreeNode {
+  entry: LogEntry;
+  depth: number;
+  content: string;
+  children: TreeNode[];
 }
 
-export type LogMessage =
-  | { type: 'logs_stream'; logs: LogEntry[]; last_id: number }
-  | { type: 'logs_error'; error: string };
-
-export class TreeNode {
-  entry: LogEntry = new LogEntry();
-  depth: number = 0;
-  content: string = "";
-  children: TreeNode[] = [];
+export interface LogTreeGroup {
+  type: "standalone" | "tree";
+  root: TreeNode;
 }
 
-export class LogTreeGroup {
-  type: 'standalone' | 'tree' = 'standalone';
-  root: TreeNode = new TreeNode();
+export function createTreeNode(): TreeNode {
+  return {
+    entry: createLogEntry(),
+    depth: 0,
+    content: "",
+    children: [],
+  };
 }
 
-export class BuildLogRequest {
-  build_id: string = "";
-  stage?: string | null;
-  log_levels?: LogLevel[] | null;
-  audience?: Audience | null;
-  count?: number;
+export function createLogTreeGroup(): LogTreeGroup {
+  return {
+    type: "standalone",
+    root: createTreeNode(),
+  };
 }
 
-// -- RPC protocol messages -------------------------------------------------
+// -- Logical RPC protocol messages -----------------------------------------
 
 export const MSG_TYPE = {
   SUBSCRIBE: "subscribe",
@@ -340,33 +189,12 @@ export const MSG_TYPE = {
   ACTION_RESULT: "action_result",
 } as const;
 
-export interface SubscribeMessage {
-  type: typeof MSG_TYPE.SUBSCRIBE;
-  keys: string[];
-}
+export type SubscribeMessage = Gen.UiSubscribeMessage;
+export type StateMessage = Gen.UiStateMessage;
+export type ActionMessage = Gen.UiActionMessage;
+export type ActionResultMessage = Gen.UiActionResultMessage;
 
-export interface StateMessage {
-  type: typeof MSG_TYPE.STATE;
-  key: string;
-  data: unknown;
-}
-
-export interface ActionMessage {
-  type: typeof MSG_TYPE.ACTION;
-  action: string;
-  [key: string]: unknown;
-}
-
-export interface ActionResultMessage {
-  type: typeof MSG_TYPE.ACTION_RESULT;
-  requestId?: string;
-  action: string;
-  ok?: boolean;
-  result?: unknown;
-  error?: string;
-}
-
-export type WebSocketMessage =
+export type RpcMessage =
   | SubscribeMessage
   | StateMessage
   | ActionMessage

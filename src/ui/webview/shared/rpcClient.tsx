@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { RpcClient } from "../../shared/rpcClient";
-import { StoreState } from "../../shared/types";
+import { createStoreState, type StoreKey, type StoreState } from "../../shared/types";
 import { PostMessageTransport } from "./postMessageTransport";
 
 type RawMessageListener = (data: string) => void;
@@ -8,7 +8,7 @@ type ConnectionListener = (connected: boolean) => void;
 
 export class WebviewRpcClient {
   protected readonly _client: RpcClient;
-  protected _state = new StoreState();
+  protected _state = createStoreState();
   protected _listeners = new Set<() => void>();
   private readonly _rawListeners = new Set<RawMessageListener>();
   private readonly _connectionListeners = new Set<ConnectionListener>();
@@ -27,10 +27,7 @@ export class WebviewRpcClient {
     };
 
     this._client.onState = (key, data) => {
-      if (key === "connected") {
-        return;
-      }
-      this._setState(key as keyof StoreState, data);
+      this._setState(key, data);
     };
 
     this._client.onRawMessage = (data) => {
@@ -81,24 +78,23 @@ export class WebviewRpcClient {
     this._connectionListeners.delete(listener);
   }
 
-  subscribe(keys: string[]): void {
-    const remoteKeys = keys.filter((key) => key !== "connected");
-    if (remoteKeys.length > 0) {
-      this._client.subscribe(remoteKeys);
-    }
+  subscribe(keys: StoreKey[]): void {
+    this._client.subscribe(keys);
   }
 
   static useSubscribe<K extends keyof StoreState>(key: K): StoreState[K] {
     const [, bump] = useState(0);
     useEffect(() => {
-      rpcClient?.subscribe([key]);
+      if (key !== "connected") {
+        rpcClient?.subscribe([key]);
+      }
       const callback = () => bump((n) => n + 1);
       rpcClient?._listeners.add(callback);
       return () => {
         rpcClient?._listeners.delete(callback);
       };
     }, [key]);
-    return rpcClient?.get(key) ?? new StoreState()[key];
+    return rpcClient?.get(key) ?? createStoreState()[key];
   }
 
   protected _notify(): void {

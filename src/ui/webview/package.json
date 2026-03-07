@@ -3,8 +3,9 @@
   "private": true,
   "version": "0.0.1",
   "scripts": {
-    "build": "rm -rf ../../vscode-atopile/webview-dist && bun build */main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --chunk-naming chunks/[name]-[hash].[ext] --splitting --format esm --minify && cp shared/logo.png ../../vscode-atopile/webview-dist/logo.png",
-    "watch": "bun build */main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --chunk-naming chunks/[name]-[hash].[ext] --splitting --format esm --watch"
+    "generate:types": "uv run python ../../../scripts/generate_types.py",
+    "build": "bun run generate:types && rm -rf ../../vscode-atopile/webview-dist && bun build */main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --chunk-naming chunks/[name]-[hash].[ext] --splitting --format esm --minify && cp shared/logo.png ../../vscode-atopile/webview-dist/logo.png",
+    "watch": "bun run generate:types && bun build */main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --chunk-naming chunks/[name]-[hash].[ext] --splitting --format esm --watch"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

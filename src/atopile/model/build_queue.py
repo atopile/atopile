@@ -14,9 +14,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Callable
 
-from atopile.dataclasses import Build, BuildStatus, StageStatus
+from atopile.dataclasses import Build, BuildStage, BuildStatus, StageStatus
 from atopile.model.sqlite import BUILD_HISTORY_DB, BuildHistory, Logs
 
 # ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ class BuildStartedMsg:
 @dataclass(frozen=True)
 class BuildStageMsg:
     build_id: str
-    stages: list[dict[str, Any]]
+    stages: list[BuildStage]
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ class BuildCompletedMsg:
     build_id: str
     return_code: int
     error: str | None
-    stages: list[dict[str, Any]]
+    stages: list[BuildStage]
 
 
 @dataclass(frozen=True)
@@ -161,7 +161,7 @@ def _run_build_subprocess(
     result_q.put(BuildStartedMsg(build_id=build.build_id))
 
     process = None
-    final_stages: list[dict[str, Any]] = []
+    final_stages: list[BuildStage] = []
     error_msg: str | None = None
     return_code: int = -1
 
@@ -261,7 +261,7 @@ def _run_build_subprocess(
             stderr_thread.start()
 
         # Poll for completion while monitoring the DB for stage updates
-        last_stages: list[dict[str, Any]] = []
+        last_stages: list[BuildStage] = []
         poll_interval = 0.1 if build.verbose else 0.25
         last_emit = 0.0
         while process.poll() is None:

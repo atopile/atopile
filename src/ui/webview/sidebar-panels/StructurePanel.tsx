@@ -46,12 +46,12 @@ function ChildNode({
         ) : (
           <span style={{ width: 10 }} />
         )}
-        <span className={`type-icon type-${child.item_type}`}>
-          {typeIcon(child.item_type)}
+        <span className={`type-icon type-${child.itemType}`}>
+          {typeIcon(child.itemType)}
         </span>
         <span className="structure-child-name">{child.name}</span>
         {child.spec && <span className="structure-child-spec">{child.spec}</span>}
-        <span className="structure-child-type">{child.type_name}</span>
+        <span className="structure-child-type">{child.typeName}</span>
       </div>
       {hasChildren && isExpanded && (
         <div>
@@ -89,7 +89,7 @@ function ModuleNode({
         isExpanded={isExpanded}
         onClick={() => onToggle(key)}
         label={module.name}
-        secondaryLabel={module.super_type ?? undefined}
+        secondaryLabel={module.superType ?? undefined}
         className="structure-module-header"
       />
       {isExpanded && module.children.length > 0 && (

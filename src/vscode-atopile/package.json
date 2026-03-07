@@ -98,8 +98,9 @@
         ]
     },
     "scripts": {
-        "build": "bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --minify && cd ../ui/webview && bun run build",
-        "watch": "concurrently \"bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --watch\" \"cd ../ui/webview && bun run watch\"",
+        "generate:types": "uv run python ../../scripts/generate_types.py",
+        "build": "bun run generate:types && bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --minify && cd ../ui/webview && bun run build",
+        "watch": "bun run generate:types && concurrently \"bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --watch\" \"cd ../ui/webview && bun run watch\"",
         "vscode:prepublish": "bun run build",
         "package": "vsce package"
     },

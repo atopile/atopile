@@ -59,7 +59,7 @@ export class LogRpcClient {
   }
 
   startBuildStream(request: BuildLogRequest): void {
-    if (!request.build_id.trim()) {
+    if (!request.buildId.trim()) {
       this._error = "Build ID is required";
       this._notify();
       return;
@@ -67,7 +67,7 @@ export class LogRpcClient {
 
     this._activeRequest = {
       ...request,
-      build_id: request.build_id.trim(),
+      buildId: request.buildId.trim(),
     };
     this._logs = [];
     this._streaming = true;

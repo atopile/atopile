@@ -1,6 +1,6 @@
 import { render } from "../shared/render";
 import { WebviewRpcClient } from "../shared/rpcClient";
-import { StoreState } from "../../shared/types";
+import { STORE_KEYS, type StoreState } from "../../shared/types";
 import { Separator, JsonView, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, GraphVisualizer2D } from "../shared/components";
 import type { GraphNode, GraphEdge } from "../shared/components";
 import { ComponentShowcase } from "../shared/components/ComponentShowcase";
@@ -25,7 +25,7 @@ function StoreTable() {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {(Object.keys(new StoreState()) as (keyof StoreState)[]).map((key) => (
+        {STORE_KEYS.map((key) => (
           <StoreRow key={key} storeKey={key} />
         ))}
       </TableBody>

@@ -448,7 +448,7 @@ class Build(CamelModel):
     frozen: bool | None = False
 
     # Stages and logs
-    stages: list[dict[str, Any]] = Field(default_factory=list)
+    stages: list[BuildStage] = Field(default_factory=list)
     # Total number of stages - set by subprocess at build start
     total_stages: Optional[int] = None
 
@@ -519,13 +519,8 @@ class ProjectsResponse(CamelModel):
     total: int
 
 
-class ModuleChild(BaseModel):
+class ModuleChild(CamelModel):
     """A child field within a module (interface, parameter, nested module, etc.)."""
-
-    model_config = ConfigDict(
-        alias_generator=_to_camel,
-        populate_by_name=True,
-    )
 
     name: str
     type_name: str  # The type name (e.g., "Electrical", "Resistor", "V")
@@ -536,7 +531,7 @@ class ModuleChild(BaseModel):
     spec: Optional[str] = None
 
 
-class ModuleDefinition(BaseModel):
+class ModuleDefinition(CamelModel):
     """A module/interface/component definition from an .ato file."""
 
     name: str
@@ -755,7 +750,7 @@ class PackageDetails(CamelModel):
     dependencies: list[PackageDependency] = Field(default_factory=list)
 
 
-class PackageSummaryItem(BaseModel):
+class PackageSummaryItem(CamelModel):
     """Display-ready package info for the packages panel.
 
     This is the unified type sent from /api/packages/summary that merges
@@ -907,7 +902,7 @@ class StdLibItemType(str, Enum):
     PARAMETER = "parameter"
 
 
-class StdLibChild(BaseModel):
+class StdLibChild(CamelModel):
     """A child field within a standard library item."""
 
     name: str
@@ -917,7 +912,7 @@ class StdLibChild(BaseModel):
     enum_values: list[str] = Field(default_factory=list)
 
 
-class StdLibItem(BaseModel):
+class StdLibItem(CamelModel):
     """A standard library item (module, interface, trait, etc.)."""
 
     id: str
@@ -929,7 +924,7 @@ class StdLibItem(BaseModel):
     parameters: list[dict[str, str]] = Field(default_factory=list)
 
 
-class StdLibData(BaseModel):
+class StdLibData(CamelModel):
     """Response for /api/stdlib endpoint."""
 
     items: list[StdLibItem]
@@ -1022,6 +1017,250 @@ class VariablesData(BaseModel):
 
 
 # =============================================================================
+# VS Code UI Store Models
+# =============================================================================
+
+
+class UiCoreStatus(CamelModel):
+    """Core server status shared with the VS Code UI."""
+
+    error: str | None = None
+    uv_path: str = ""
+    ato_binary: str = ""
+    mode: Literal["local", "production"] = "production"
+    version: str = ""
+    core_server_port: int = 0
+
+
+class UiExtensionSettings(CamelModel):
+    """Extension settings mirrored into the backend store."""
+
+    dev_path: str = ""
+    auto_install: bool = True
+
+
+class UiProjectState(CamelModel):
+    """UI selection state for the active project/target/file."""
+
+    selected_project: str | None = None
+    selected_target: str | None = None
+    active_file_path: str | None = None
+
+
+class UiPartSearchItem(CamelModel):
+    """Display-ready part search result for the parts panel."""
+
+    lcsc: str = ""
+    mpn: str = ""
+    manufacturer: str = ""
+    description: str = ""
+    stock: int = 0
+    unit_cost: float | None = None
+    datasheet_url: str | None = None
+    package: str | None = None
+    is_basic: bool = False
+    is_preferred: bool = False
+    attributes: dict[str, str] = Field(default_factory=dict)
+
+
+class UiPartsSearchData(CamelModel):
+    """Parts search state for the sidebar."""
+
+    parts: list[UiPartSearchItem] = Field(default_factory=list)
+    error: str | None = None
+
+
+class UiInstalledPartItem(CamelModel):
+    """Installed project part shown in the parts panel."""
+
+    identifier: str = ""
+    manufacturer: str = ""
+    mpn: str = ""
+    lcsc: str | None = None
+    datasheet_url: str | None = None
+    description: str = ""
+    path: str = ""
+
+
+class UiInstalledPartsData(CamelModel):
+    """Installed parts state for the sidebar."""
+
+    parts: list[UiInstalledPartItem] = Field(default_factory=list)
+
+
+class UiStructureData(CamelModel):
+    """Structure panel data."""
+
+    modules: list[ModuleDefinition] = Field(default_factory=list)
+    total: int = 0
+
+
+class UiVariable(CamelModel):
+    """Simplified variable row used by the VS Code variables panel."""
+
+    name: str = ""
+    spec: str | None = None
+    actual: str | None = None
+    tolerance: str | None = None
+    status: str | None = None
+
+
+class UiVariableNode(CamelModel):
+    """Simplified recursive variable node used by the VS Code variables panel."""
+
+    name: str = ""
+    variables: list[UiVariable] = Field(default_factory=list)
+    children: list["UiVariableNode"] = Field(default_factory=list)
+
+
+class UiVariablesData(CamelModel):
+    """Variables panel data for the VS Code UI store."""
+
+    nodes: list[UiVariableNode] = Field(default_factory=list)
+
+
+class UiBOMParameter(CamelModel):
+    """BOM parameter displayed in the VS Code UI."""
+
+    name: str = ""
+    value: str = ""
+
+
+class UiBOMUsage(CamelModel):
+    """BOM usage location displayed in the VS Code UI."""
+
+    module: str = ""
+    instance: str = ""
+    file: str | None = None
+    line: int | None = None
+
+
+class UiBOMComponent(CamelModel):
+    """BOM component displayed in the VS Code UI."""
+
+    mpn: str = ""
+    manufacturer: str = ""
+    description: str = ""
+    value: str | None = None
+    package_name: str | None = None
+    lcsc: str | None = None
+    stock: int | None = None
+    unit_cost: float | None = None
+    quantity: int = 0
+    type: str | None = None
+    parameters: list[UiBOMParameter] = Field(default_factory=list)
+    usages: list[UiBOMUsage] = Field(default_factory=list)
+
+
+class UiBOMData(CamelModel):
+    """BOM panel data for the VS Code UI store."""
+
+    components: list[UiBOMComponent] = Field(default_factory=list)
+    total_quantity: int = 0
+    unique_parts: int = 0
+    estimated_cost: float | None = None
+    out_of_stock: int = 0
+
+
+class UiLogLevel(StrEnum):
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    ALERT = "ALERT"
+
+
+class UiAudience(StrEnum):
+    USER = "user"
+    DEVELOPER = "developer"
+    AGENT = "agent"
+
+
+class UiLogEntry(CamelModel):
+    """Log entry as consumed by the VS Code logs panel."""
+
+    id: int | None = None
+    timestamp: str = ""
+    level: UiLogLevel = UiLogLevel.INFO
+    audience: UiAudience = UiAudience.USER
+    logger_name: str = ""
+    message: str = ""
+    stage: str | None = None
+    source_file: str | None = None
+    source_line: int | None = None
+    ato_traceback: str | None = None
+    python_traceback: str | None = None
+    objects: Any | None = None
+
+
+class UiBuildLogRequest(CamelModel):
+    """Request payload for the VS Code logs panel."""
+
+    build_id: str = ""
+    stage: str | None = None
+    log_levels: list[UiLogLevel] | None = None
+    audience: UiAudience | None = None
+    count: int | None = None
+
+
+class UiLogsStreamMessage(CamelModel):
+    """Streamed log message for the VS Code logs panel."""
+
+    type: Literal["logs_stream"] = "logs_stream"
+    logs: list[UiLogEntry] = Field(default_factory=list)
+    last_id: int = 0
+
+
+class UiLogsErrorMessage(CamelModel):
+    """Log stream error message for the VS Code logs panel."""
+
+    type: Literal["logs_error"] = "logs_error"
+    error: str
+
+
+class UiSubscribeMessage(CamelModel):
+    """Logical RPC subscribe message after transport/session routing."""
+
+    type: Literal["subscribe"] = "subscribe"
+    keys: list[str]
+
+
+class UiStateMessage(CamelModel):
+    """Logical RPC state message after transport/session routing."""
+
+    type: Literal["state"] = "state"
+    key: str
+    data: Any
+
+
+class UiActionMessage(CamelModel):
+    """Logical RPC action message after transport/session routing."""
+
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+        serialize_by_alias=True,
+        extra="allow",
+    )
+
+    type: Literal["action"] = "action"
+    action: str
+
+
+class UiActionResultMessage(CamelModel):
+    """Logical RPC action result after transport/session routing."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["action_result"] = "action_result"
+    request_id: str | None = None
+    action: str
+    ok: bool | None = None
+    result: Any = None
+    error: str | None = None
+
+
+# =============================================================================
 # atopile Configuration Pydantic Models
 # =============================================================================
 
@@ -1094,3 +1333,9 @@ class InstalledPackage:
     identifier: str
     version: str
     project_root: str
+
+
+FileNode.model_rebuild()
+ModuleChild.model_rebuild()
+StdLibChild.model_rebuild()
+UiVariableNode.model_rebuild()

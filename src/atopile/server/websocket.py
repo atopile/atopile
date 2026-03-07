@@ -11,7 +11,13 @@ from typing import Any
 import websockets
 from websockets.asyncio.server import ServerConnection
 
-from atopile.dataclasses import BuildRequest
+from atopile.dataclasses import (
+    BuildRequest,
+    UiBuildLogRequest,
+    UiLogEntry,
+    UiLogsErrorMessage,
+    UiLogsStreamMessage,
+)
 from atopile.model import artifacts, packages, parts_search, stdlib
 from atopile.model.build_queue import BuildQueue, _build_queue
 from atopile.model.builds import (
@@ -46,13 +52,15 @@ class CoreSocket:
         self._project_files = FileWatcher(
             "project-files",
             paths=[],
-            on_change=lambda result: self._store.set("projectFiles", result.tree or []),
+            on_change=lambda result: self._store.set(
+                "project_files", result.tree or []
+            ),
             glob="**/*",
             debounce_s=0.1,
             mode="tree",
         )
-        self._store.set("currentBuilds", get_active_builds())
-        self._store.set("previousBuilds", get_finished_builds())
+        self._store.set("current_builds", get_active_builds())
+        self._store.set("previous_builds", get_finished_builds())
         self.bind_build_queue(_build_queue)
 
     # -- Client lifecycle --------------------------------------------------
@@ -100,7 +108,10 @@ class CoreSocket:
         self._subscriptions.setdefault(ws, {})[session_id] = keys
         for key in keys:
             try:
-                await self._send_state(ws, session_id, key, self._store.get(key))
+                field_name = self._store.require_field_name(key)
+                await self._send_state(
+                    ws, session_id, field_name, self._store.dump(field_name)
+                )
             except KeyError:
                 log.warning("Client subscribed to unknown state key: %s", key)
 
@@ -117,7 +128,7 @@ class CoreSocket:
             case "selectProject":
                 project_root = msg.get("projectRoot") or None
                 self._store.merge(
-                    "projectState",
+                    "project_state",
                     {
                         "selectedProject": project_root,
                         "selectedTarget": None,
@@ -126,11 +137,11 @@ class CoreSocket:
                 if project_root:
                     await self._project_files.watch([Path(project_root)])
                 else:
-                    self._store.set("projectFiles", [])
+                    self._store.set("project_files", [])
 
             case "selectTarget":
                 self._store.merge(
-                    "projectState",
+                    "project_state",
                     {
                         "selectedTarget": msg.get("target") or None,
                     },
@@ -138,7 +149,7 @@ class CoreSocket:
 
             case "resolverInfo":
                 self._store.merge(
-                    "coreStatus",
+                    "core_status",
                     {
                         "uvPath": msg.get("uvPath", ""),
                         "atoBinary": msg.get("atoBinary", ""),
@@ -150,11 +161,11 @@ class CoreSocket:
                 )
 
             case "coreStartupError":
-                self._store.merge("coreStatus", {"error": msg.get("message")})
+                self._store.merge("core_status", {"error": msg.get("message")})
 
             case "extensionSettings":
                 self._store.merge(
-                    "extensionSettings",
+                    "extension_settings",
                     {
                         "devPath": msg.get("devPath", ""),
                         "autoInstall": msg.get("autoInstall", True),
@@ -164,11 +175,11 @@ class CoreSocket:
             case "updateExtensionSetting":
                 key = msg.get("key")
                 if isinstance(key, str):
-                    self._store.merge("extensionSettings", {key: msg.get("value")})
+                    self._store.merge("extension_settings", {key: msg.get("value")})
 
             case "setActiveFile":
                 self._store.merge(
-                    "projectState",
+                    "project_state",
                     {
                         "activeFilePath": msg.get("filePath"),
                     },
@@ -177,14 +188,14 @@ class CoreSocket:
             case "discoverProjects":
                 paths = [Path(p) for p in msg.get("paths", []) if p]
                 result = handle_get_projects(paths)
-                self._store.set("projects", [p.model_dump() for p in result.projects])
+                self._store.set("projects", result.projects)
 
             case "listFiles":
                 project_root = msg.get("projectRoot", "")
                 if project_root:
                     await self._project_files.watch([Path(project_root)])
                 else:
-                    self._store.set("projectFiles", [])
+                    self._store.set("project_files", [])
 
             case "startBuild":
                 request = BuildRequest(
@@ -202,7 +213,7 @@ class CoreSocket:
                 project_root = msg.get("projectRoot", "")
                 root = Path(project_root) if project_root else None
                 result = await asyncio.to_thread(packages.handle_packages_summary, root)
-                self._store.set("packagesSummary", result.model_dump())
+                self._store.set("packages_summary", result)
 
             case "installPackage":
                 project_root = Path(msg.get("projectRoot", ""))
@@ -220,7 +231,7 @@ class CoreSocket:
                 result = await asyncio.to_thread(
                     packages.handle_packages_summary, project_root
                 )
-                self._store.set("packagesSummary", result.model_dump())
+                self._store.set("packages_summary", result)
 
             case "removePackage":
                 project_root = Path(msg.get("projectRoot", ""))
@@ -236,7 +247,7 @@ class CoreSocket:
                 result = await asyncio.to_thread(
                     packages.handle_packages_summary, project_root
                 )
-                self._store.set("packagesSummary", result.model_dump())
+                self._store.set("packages_summary", result)
 
             case "getStdlib":
                 type_filter = msg.get("typeFilter")
@@ -244,7 +255,7 @@ class CoreSocket:
                 result = await asyncio.to_thread(
                     stdlib.handle_get_stdlib, type_filter, search
                 )
-                self._store.set("stdlibData", result.model_dump())
+                self._store.set("stdlib_data", result)
 
             case "getStructure":
                 project_root = msg.get("projectRoot", "")
@@ -270,7 +281,7 @@ class CoreSocket:
                     }
                 else:
                     data = {"modules": [], "total": 0}
-                self._store.set("structureData", data)
+                self._store.set("structure_data", data)
 
             case "searchParts":
                 query = msg.get("query", "")
@@ -280,7 +291,7 @@ class CoreSocket:
                     query,
                     limit=limit,
                 )
-                self._store.set("partsSearch", {"parts": parts, "error": error})
+                self._store.set("parts_search", {"parts": parts, "error": error})
 
             case "getInstalledParts":
                 project_root = msg.get("projectRoot", "")
@@ -288,7 +299,7 @@ class CoreSocket:
                     parts_search.handle_list_installed_parts,
                     project_root,
                 )
-                self._store.set("installedParts", {"parts": parts})
+                self._store.set("installed_parts", {"parts": parts})
 
             case "installPart":
                 project_root = msg.get("projectRoot", "")
@@ -305,7 +316,7 @@ class CoreSocket:
                     parts_search.handle_list_installed_parts,
                     project_root,
                 )
-                self._store.set("installedParts", {"parts": parts})
+                self._store.set("installed_parts", {"parts": parts})
 
             case "uninstallPart":
                 project_root = msg.get("projectRoot", "")
@@ -322,7 +333,7 @@ class CoreSocket:
                     parts_search.handle_list_installed_parts,
                     project_root,
                 )
-                self._store.set("installedParts", {"parts": parts})
+                self._store.set("installed_parts", {"parts": parts})
 
             case "getVariables":
                 project_root = msg.get("projectRoot", "")
@@ -332,7 +343,7 @@ class CoreSocket:
                     project_root,
                     target,
                 )
-                self._store.set("variablesData", data or {"nodes": []})
+                self._store.set("variables_data", data or {"nodes": []})
 
             case "getBom":
                 project_root = msg.get("projectRoot", "")
@@ -343,7 +354,7 @@ class CoreSocket:
                     target,
                 )
                 self._store.set(
-                    "bomData",
+                    "bom_data",
                     data
                     or {
                         "components": [],
@@ -355,17 +366,14 @@ class CoreSocket:
                 )
 
             case "subscribeLogs":
-                build_id = msg.get("build_id", "").strip()
+                request = UiBuildLogRequest.model_validate(msg)
+                build_id = request.build_id.strip()
                 if not build_id:
-                    await ws.send(
-                        json.dumps(
-                            {
-                                "type": "logs_error",
-                                "sessionId": session_id,
-                                "error": "build_id is required",
-                            }
-                        )
-                    )
+                    payload = UiLogsErrorMessage(
+                        error="buildId is required"
+                    ).model_dump(mode="json")
+                    payload["sessionId"] = session_id
+                    await ws.send(json.dumps(payload))
                     return
                 old_task = self._log_tasks.setdefault(ws, {}).pop(session_id, None)
                 if old_task:
@@ -373,10 +381,10 @@ class CoreSocket:
                 query = {
                     "session_id": session_id,
                     "build_id": build_id,
-                    "stage": msg.get("stage"),
-                    "log_levels": msg.get("log_levels"),
-                    "audience": msg.get("audience"),
-                    "count": msg.get("count", 1000),
+                    "stage": request.stage,
+                    "log_levels": request.log_levels,
+                    "audience": request.audience,
+                    "count": request.count or 1000,
                 }
                 task = asyncio.create_task(self._log_stream_loop(ws, query))
                 self._log_tasks.setdefault(ws, {})[session_id] = task
@@ -443,16 +451,12 @@ class CoreSocket:
         )
 
         if logs:
-            await ws.send(
-                json.dumps(
-                    {
-                        "type": "logs_stream",
-                        "sessionId": session_id,
-                        "logs": logs,
-                        "last_id": new_last_id,
-                    }
-                )
-            )
+            payload = UiLogsStreamMessage(
+                logs=[UiLogEntry.model_validate(log) for log in logs],
+                last_id=new_last_id,
+            ).model_dump(mode="json")
+            payload["sessionId"] = session_id
+            await ws.send(json.dumps(payload))
             return new_last_id
 
         return after_id
@@ -470,36 +474,43 @@ class CoreSocket:
         build_queue.start()
 
     async def _push_builds(self) -> None:
-        self._store.set("currentBuilds", get_active_builds())
-        self._store.set("previousBuilds", get_finished_builds())
+        self._store.set("current_builds", get_active_builds())
+        self._store.set("previous_builds", get_finished_builds())
 
     # -- Broadcasting ------------------------------------------------------
 
-    def _on_store_change(self, key: str, value: Any, prev: Any) -> None:
+    def _on_store_change(self, field_name: str, value: Any, prev: Any) -> None:
         del prev
-        asyncio.run_coroutine_threadsafe(self._broadcast_state(key, value), self._loop)
+        asyncio.run_coroutine_threadsafe(
+            self._broadcast_state(field_name, value), self._loop
+        )
 
     async def _send_state(
-        self, ws: ServerConnection, session_id: str, key: str, data: Any
+        self,
+        ws: ServerConnection,
+        session_id: str,
+        field_name: str,
+        data: Any,
     ) -> None:
         await ws.send(
             json.dumps(
                 {
                     "type": "state",
                     "sessionId": session_id,
-                    "key": key,
+                    "key": self._store.wire_key(field_name),
                     "data": data,
                 }
             )
         )
 
-    async def _broadcast_state(self, key: str, data: Any) -> None:
+    async def _broadcast_state(self, field_name: str, data: Any) -> None:
+        wire_key = self._store.wire_key(field_name)
         dead: list[ServerConnection] = []
         for ws, sessions in list(self._subscriptions.items()):
             try:
                 for session_id, keys in sessions.items():
-                    if key in keys:
-                        await self._send_state(ws, session_id, key, data)
+                    if wire_key in keys:
+                        await self._send_state(ws, session_id, field_name, data)
             except Exception:
                 dead.append(ws)
         for ws in dead:
@@ -508,8 +519,8 @@ class CoreSocket:
             for task in self._log_tasks.pop(ws, {}).values():
                 task.cancel()
 
-    async def broadcast_state(self, key: str, data: Any) -> None:
-        self._store.set(key, data)
+    async def broadcast_state(self, field_name: str, data: Any) -> None:
+        self._store.set(field_name, data)
 
     def _session_id(self, msg: dict[str, Any]) -> str:
         session_id = msg.get("sessionId")

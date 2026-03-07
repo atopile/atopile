@@ -29,8 +29,8 @@ function ChildTree({ children, depth = 0 }: { children: StdLibChild[]; depth?: n
       {children.map((child) => (
         <div key={child.name}>
           <div className="library-child-row">
-            <span className={`type-icon type-${child.item_type}`}>
-              {typeIcon(child.item_type)}
+            <span className={`type-icon type-${child.itemType}`}>
+              {typeIcon(child.itemType)}
             </span>
             <span className="library-child-name">{child.name}</span>
             <span className="library-child-type">{child.type}</span>

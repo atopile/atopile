@@ -73,10 +73,10 @@ function PackageRow({
         {pkg.version && (
           <span className="package-version-info">
             v{pkg.version}
-            {pkg.has_update && (
+            {pkg.hasUpdate && (
               <>
                 <span className="package-update-dot" title="Update available" />
-                <span>{pkg.latest_version}</span>
+                <span>{pkg.latestVersion}</span>
               </>
             )}
           </span>
