@@ -29,6 +29,8 @@ from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
+from atopile.server.project_files import ProjectFilesWatcher, scan_project_tree
+from atopile.server.resource_files import ResourceFileWatcher
 from faebryk.libs.package.meta import PackageModifiedError
 
 log = get_logger(__name__)
@@ -952,14 +954,73 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
-            # Run blocking file tree build in thread pool
-            file_tree = await asyncio.to_thread(
-                projects_domain.build_file_tree, project_path, project_path
-            )
+            file_tree = await asyncio.to_thread(scan_project_tree, project_path)
             return {
                 "success": True,
-                "files": [node.model_dump(by_alias=True) for node in file_tree],
+                "files": file_tree,
             }
+
+        if action == "watchProjectFiles":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                ProjectFilesWatcher.clear()
+                return {"success": True, "info": "Project file watcher cleared"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            await ProjectFilesWatcher.watch(
+                project_root,
+                broadcast=server_state.emit_event,
+                loop=asyncio.get_running_loop(),
+            )
+            return {"success": True, "project_root": project_root}
+
+        if action == "watchResourceFile":
+            resource_type = str(payload.get("resourceType", "")).strip()
+            path = payload.get("path")
+            project_root = payload.get("projectRoot")
+
+            if not resource_type:
+                return {"success": False, "error": "Missing resourceType"}
+
+            result = await ResourceFileWatcher.watch(
+                resource_type,
+                path=str(path) if path else None,
+                project_root=str(project_root) if project_root else None,
+                broadcast=server_state.emit_event,
+            )
+            return {"success": True, **result}
+
+        if action == "getPackageDependencyStatus":
+            project_root = payload.get("projectRoot", "")
+            package_id = payload.get("packageId", "")
+            if not project_root or not package_id:
+                return {"success": False, "error": "Missing projectRoot or packageId"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            data, _ = await asyncio.to_thread(
+                projects_domain.load_ato_yaml, project_path
+            )
+            for dep in data.get("dependencies") or []:
+                if dep.get("identifier") == package_id:
+                    return {
+                        "success": True,
+                        "installed": True,
+                        "version": dep.get("release"),
+                    }
+
+            return {"success": True, "installed": False}
 
         if action == "fetchDependencies":
             project_root = payload.get("projectRoot", "")

@@ -105,7 +105,7 @@ export class SidebarActionHandlers {
 
     const glbPath = modelPath.toLowerCase().endsWith('.glb') ? modelPath : build.model_path;
 
-    prepareThreeDViewer(glbPath, () => {
+    prepareThreeDViewer(glbPath, build.root, () => {
       backendServer.sendToWebview({
         type: 'triggerBuild',
         projectRoot: build.root,
@@ -144,7 +144,7 @@ export class SidebarActionHandlers {
       if (build?.root && build?.name && build?.model_path) {
         traceInfo(`[SidebarActions] 3D viewer open, preparing viewer for new target: ${build.name}`);
 
-        prepareThreeDViewer(build.model_path, () => {
+        prepareThreeDViewer(build.model_path, build.root, () => {
           backendServer.sendToWebview({
             type: 'triggerBuild',
             projectRoot: build.root,

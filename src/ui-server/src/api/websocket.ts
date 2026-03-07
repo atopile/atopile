@@ -294,6 +294,21 @@ function handleMessage(event: MessageEvent): void {
         if (!result.success) {
           console.error(`[WS] Action failed: ${message.action}`, result.error);
         }
+        if (
+          message.action === 'fetchFiles' &&
+          result.success &&
+          typeof message.payload?.projectRoot === 'string' &&
+          Array.isArray((result as { files?: unknown }).files)
+        ) {
+          const files = (result as { files?: unknown }).files as AppState['projectFiles'][string];
+          useStore.getState().setProjectFiles(
+            message.payload.projectRoot,
+            files
+          );
+        }
+        if (message.action === 'watchProjectFiles' && !result.success) {
+          useStore.getState().setLoadingFiles(false);
+        }
         if (message.action === 'build' || message.action === 'cancelBuild') {
           void refreshBuilds();
         }
@@ -694,6 +709,12 @@ function handleEventMessage(message: EventMessage): void {
       // Clear all installing packages - a dependency change means install completed
       useStore.getState().clearInstallingPackages();
       void refreshDependencies(projectRoot);
+      break;
+    case EventType.ProjectFilesChanged:
+      if (projectRoot && Array.isArray(data.files)) {
+        useStore.getState().setProjectFiles(projectRoot, data.files as AppState['projectFiles'][string]);
+      }
+      useStore.getState().setLoadingFiles(false);
       break;
     case EventType.BOMChanged:
       void refreshBom();

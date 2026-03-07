@@ -33,6 +33,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { useStore } from '../store';
+import { sendAction } from '../api/websocket';
 import { postToExtension } from '../api/vscodeApi';
 import { FileContextMenu, type ContextMenuPosition, type ContextMenuTarget } from './FileContextMenu';
 import './FileExplorerPanel.css';
@@ -99,7 +100,6 @@ export interface FileNode {
   type: 'file' | 'folder';  // Use 'folder' to match FileTreeNode from store
   children?: FileNode[];
   mtime?: number; // Last modified timestamp
-  lazyLoad?: boolean; // True if directory contents not yet loaded
 }
 
 export type SortMode = 'name' | 'modified' | 'type';
@@ -266,7 +266,7 @@ const TreeNode = memo(function TreeNode({
   const isSelected = selectedPaths.has(node.path);
   const isLoading = loadingDirs.has(node.path);
   // Show expand arrow for directories with children OR lazy-loaded directories
-  const hasChildren = isDirectory && ((node.children && node.children.length > 0) || node.lazyLoad);
+  const hasChildren = isDirectory && Boolean(node.children && node.children.length > 0);
   const isRenaming = renamingPath === node.path;
   const isDragging = draggedPath === node.path;
   const isDragOver = dragOverPath === node.path && isDirectory;
@@ -435,7 +435,7 @@ const TreeNode = memo(function TreeNode({
       </div>
 
       {/* Children */}
-      {isExpanded && hasChildren && !node.lazyLoad && (
+      {isExpanded && hasChildren && (
         <div className="tree-children" role="group">
           {sortedChildren.map((child) => (
             <TreeNode
@@ -476,6 +476,7 @@ const TreeNode = memo(function TreeNode({
 export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
   const projectFiles = useStore((s) => s.projectFiles);
   const isLoadingFiles = useStore((s) => s.isLoadingFiles);
+  const isConnected = useStore((s) => s.isConnected);
 
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
@@ -502,106 +503,30 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
   // Get files for selected project
   const files = projectRoot ? projectFiles[projectRoot] : undefined;
 
-  // Request files from the VS Code extension (not the backend)
+  // Subscribe the backend watcher to the selected project root.
   useEffect(() => {
-    if (!projectRoot) return;
-    if (files && files.length > 0) return; // Already have files
+    if (!isConnected) {
+      return;
+    }
+
+    if (!projectRoot) {
+      sendAction('watchProjectFiles', { projectRoot: '' });
+      return;
+    }
 
     useStore.getState().setLoadingFiles(true);
-    // Send message to extension to list files
-    postToExtension({
-      type: 'listFiles',
-      projectRoot,
-      includeAll: true,
-    });
-  }, [projectRoot, files]);
+    sendAction('watchProjectFiles', { projectRoot });
+  }, [isConnected, projectRoot]);
 
-  // Track directories currently being loaded
-  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
+  // Track directories currently being loaded. Backend now sends whole-tree updates,
+  // so this stays empty and only preserves the existing tree component contract.
+  const [loadingDirs] = useState<Set<string>>(new Set());
 
-  // Helper to update a specific directory's children in the file tree
-  const updateDirectoryChildren = useCallback((
-    nodes: FileNode[],
-    targetPath: string,
-    children: FileNode[]
-  ): FileNode[] => {
-    return nodes.map(node => {
-      if (node.path === targetPath && node.type === 'folder') {
-        return { ...node, children, lazyLoad: false };
-      }
-      if (node.children && node.type === 'folder') {
-        return { ...node, children: updateDirectoryChildren(node.children, targetPath, children) };
-      }
-      return node;
-    });
-  }, []);
-
-  // Listen for file system changes and file listing results from the extension
+  // When a file is duplicated, start rename mode on the new file after watcher refresh.
   useEffect(() => {
-    if (!projectRoot) return;
-
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-
-      // Handle file listing response from extension
-      if (message?.type === 'filesListed' && message.projectRoot === projectRoot) {
-        useStore.getState().setProjectFiles(projectRoot, message.files || []);
-        useStore.getState().setLoadingFiles(false);
-        if (message.error) {
-          console.error('Failed to list files:', message.error);
-        }
-
-        // Re-request contents of any expanded lazy-loaded directories
-        // This preserves expanded state after file watcher triggers a reload
-        const files = message.files || [];
-        const findLazyLoadedExpanded = (nodes: typeof files, expanded: Set<string>): string[] => {
-          const paths: string[] = [];
-          for (const node of nodes) {
-            if (node.type === 'folder' && node.lazyLoad && expanded.has(node.path)) {
-              paths.push(node.path);
-            }
-            if (node.children) {
-              paths.push(...findLazyLoadedExpanded(node.children, expanded));
-            }
-          }
-          return paths;
-        };
-
-        const lazyExpandedPaths = findLazyLoadedExpanded(files, expandedPaths);
-        for (const dirPath of lazyExpandedPaths) {
-          postToExtension({
-            type: 'loadDirectory',
-            projectRoot,
-            directoryPath: dirPath,
-          });
-        }
-      }
-
-      // Handle lazy-loaded directory contents
-      if (message?.type === 'directoryLoaded' && message.projectRoot === projectRoot) {
-        const currentFiles = useStore.getState().projectFiles[projectRoot] || [];
-        // Children from extension already use 'folder' type to match FileNode
-        const children = (message.children || []) as FileNode[];
-        const updatedFiles = updateDirectoryChildren(currentFiles, message.directoryPath, children);
-        useStore.getState().setProjectFiles(projectRoot, updatedFiles);
-        setLoadingDirs(prev => {
-          const next = new Set(prev);
-          next.delete(message.directoryPath);
-          return next;
-        });
-        if (message.error) {
-          console.error('Failed to load directory:', message.error);
-        }
-      }
-
-      // Handle file system changes - clear files to trigger refresh
-      if (message?.type === 'filesChanged' && message.projectRoot === projectRoot) {
-        useStore.getState().setProjectFiles(projectRoot, []);
-      }
-
-      // When a file is duplicated, start rename mode on the new file
       if (message?.type === 'fileDuplicated' && message.newRelativePath) {
-        // Small delay to let the file list refresh first
         setTimeout(() => {
           setRenamingPath(message.newRelativePath);
         }, 400);
@@ -610,7 +535,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [projectRoot, updateDirectoryChildren, expandedPaths]);
+  }, []);
 
   // Clean up drag state when drag ends anywhere (e.g., dropped outside, cancelled)
   useEffect(() => {
@@ -888,38 +813,13 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
       path: node.path,
       type: node.type,
       children: node.children?.map(mapNode),
-      lazyLoad: node.lazyLoad,
     });
 
     return files.map(mapNode);
   }, [files]);
 
-  // Helper to find a node by path in the file tree
-  const findNodeByPath = useCallback((nodes: FileNode[], targetPath: string): FileNode | null => {
-    for (const node of nodes) {
-      if (node.path === targetPath) return node;
-      if (node.children) {
-        const found = findNodeByPath(node.children, targetPath);
-        if (found) return found;
-      }
-    }
-    return null;
-  }, []);
-
   // Handle expand/collapse
   const handleToggle = useCallback((path: string) => {
-    const node = findNodeByPath(fileTree, path);
-
-    // If this is a lazy-loaded directory being expanded, request its contents
-    if (node?.type === 'folder' && node.lazyLoad && !expandedPaths.has(path) && !loadingDirs.has(path) && projectRoot) {
-      setLoadingDirs(prev => new Set([...prev, path]));
-      postToExtension({
-        type: 'loadDirectory',
-        projectRoot,
-        directoryPath: path,
-      });
-    }
-
     setExpandedPaths((prev) => {
       const next = new Set(prev);
       if (next.has(path)) {
@@ -929,7 +829,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
       }
       return next;
     });
-  }, [fileTree, expandedPaths, loadingDirs, projectRoot, findNodeByPath]);
+  }, []);
 
   // Filter tree by search query with regex and case sensitivity support
   const filteredTree = useMemo(() => {
@@ -958,13 +858,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
     // Recursively filter nodes - keep a node if:
     // 1. Its name matches the query, OR
     // 2. Any of its children match (for directories)
-    // Note: Exclude lazy-loaded directories from search (their contents aren't loaded)
     const filterNode = (node: FileNode): FileNode | null => {
-      // Skip lazy-loaded directories in search - their contents aren't loaded
-      if (node.lazyLoad) {
-        return null;
-      }
-
       const nameMatches = matcher(node.name);
 
       if (node.type === 'folder' && node.children) {

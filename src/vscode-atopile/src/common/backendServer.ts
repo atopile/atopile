@@ -13,6 +13,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import axios from 'axios';
 import * as net from 'net';
+import { WebSocket as NodeWebSocket } from 'ws';
 import { traceInfo, traceError, traceVerbose, traceMilestone } from './log/logging';
 import { resolveAtoBinForWorkspace } from './findbin';
 import { getConfiguredBackendPort, hasConfiguredBackendPort } from './environment';
@@ -26,6 +27,23 @@ interface BuildResponse {
 }
 
 type ServerState = 'stopped' | 'starting' | 'running' | 'error';
+
+export interface BackendEventMessage {
+    type: 'event';
+    event: string;
+    data: Record<string, unknown>;
+}
+
+interface BackendActionResultMessage {
+    type: 'action_result';
+    action: string;
+    payload?: Record<string, unknown>;
+    result?: {
+        success: boolean;
+        error?: string;
+        [key: string]: unknown;
+    };
+}
 
 function buildApiUrl(port: number): string {
     return `http://${BACKEND_HOST}:${port}`;
@@ -107,6 +125,14 @@ class BackendServerManager implements vscode.Disposable {
     private _internalApiUrl: string = buildApiUrl(0);
     private _recoverTimer: NodeJS.Timeout | undefined;
     private _recoverAttempts = 0;
+    private _backendEventSocket: NodeWebSocket | undefined;
+    private _backendEventReconnectTimer: NodeJS.Timeout | undefined;
+    private _backendActionRequestCounter = 0;
+    private _backendPendingRequests = new Map<string, {
+        resolve: (message: BackendActionResultMessage) => void;
+        reject: (error: Error) => void;
+        timeoutId: NodeJS.Timeout;
+    }>();
 
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
@@ -114,6 +140,8 @@ class BackendServerManager implements vscode.Disposable {
     // Event emitter for messages to be sent to the webview
     private readonly _onWebviewMessage = new vscode.EventEmitter<Record<string, unknown>>();
     public readonly onWebviewMessage = this._onWebviewMessage.event;
+    private readonly _onBackendEvent = new vscode.EventEmitter<BackendEventMessage>();
+    public readonly onBackendEvent = this._onBackendEvent.event;
 
     constructor() {
         // Create output channel for server logs (log channel when available)
@@ -420,6 +448,119 @@ class BackendServerManager implements vscode.Disposable {
         }
     }
 
+    private _clearBackendEventReconnectTimer(): void {
+        if (this._backendEventReconnectTimer) {
+            clearTimeout(this._backendEventReconnectTimer);
+            this._backendEventReconnectTimer = undefined;
+        }
+    }
+
+    private _rejectBackendPendingRequests(error: Error): void {
+        for (const [requestId, pending] of this._backendPendingRequests.entries()) {
+            clearTimeout(pending.timeoutId);
+            pending.reject(error);
+            this._backendPendingRequests.delete(requestId);
+        }
+    }
+
+    private _handleBackendSocketMessage(raw: string): void {
+        try {
+            const message = JSON.parse(raw) as BackendEventMessage | BackendActionResultMessage;
+            if (message.type === 'event') {
+                this._onBackendEvent.fire({
+                    type: 'event',
+                    event: message.event,
+                    data: message.data || {},
+                });
+                return;
+            }
+
+            if (message.type === 'action_result') {
+                const requestId = typeof message.payload?.requestId === 'string'
+                    ? message.payload.requestId
+                    : undefined;
+                if (!requestId) {
+                    return;
+                }
+                const pending = this._backendPendingRequests.get(requestId);
+                if (!pending) {
+                    return;
+                }
+                clearTimeout(pending.timeoutId);
+                this._backendPendingRequests.delete(requestId);
+                pending.resolve(message);
+            }
+        } catch (error) {
+            traceError(`BackendServer: Failed to parse backend event message: ${error}`);
+        }
+    }
+
+    private _scheduleBackendEventReconnect(): void {
+        if (this._backendEventReconnectTimer || this._serverState !== 'running' || !this._serverReady) {
+            return;
+        }
+        this._backendEventReconnectTimer = setTimeout(() => {
+            this._backendEventReconnectTimer = undefined;
+            this._connectBackendEvents();
+        }, 1000);
+    }
+
+    private _connectBackendEvents(): void {
+        if (this._backendEventSocket) {
+            const state = this._backendEventSocket.readyState;
+            if (state === NodeWebSocket.OPEN || state === NodeWebSocket.CONNECTING) {
+                return;
+            }
+        }
+        if (!this._port || this._serverState !== 'running' || !this._serverReady) {
+            return;
+        }
+
+        this._clearBackendEventReconnectTimer();
+        const targetUrl = buildWsUrl(this._port);
+        traceInfo(`BackendServer: Connecting extension event socket to ${targetUrl}`);
+        const ws = new NodeWebSocket(targetUrl);
+        this._backendEventSocket = ws;
+
+        ws.on('open', () => {
+            traceInfo('BackendServer: Extension event socket connected');
+            this._onBackendEvent.fire({
+                type: 'event',
+                event: 'backend_socket_connected',
+                data: {},
+            });
+        });
+
+        ws.on('message', (data: unknown) => {
+            this._handleBackendSocketMessage(String(data));
+        });
+
+        ws.on('close', () => {
+            if (this._backendEventSocket === ws) {
+                this._backendEventSocket = undefined;
+            }
+            this._rejectBackendPendingRequests(new Error('Backend event socket disconnected'));
+            if (this._serverState === 'running' && this._serverReady) {
+                this._scheduleBackendEventReconnect();
+            }
+        });
+
+        ws.on('error', (error) => {
+            traceVerbose(`BackendServer: Extension event socket error: ${String(error)}`);
+        });
+    }
+
+    private _disconnectBackendEvents(): void {
+        this._clearBackendEventReconnectTimer();
+        const ws = this._backendEventSocket;
+        this._backendEventSocket = undefined;
+        if (ws) {
+            ws.removeAllListeners();
+            ws.close();
+        }
+        this._rejectBackendPendingRequests(new Error('Backend event socket unavailable'));
+    }
+
     private _scheduleRecoveryCheck(): void {
         if (this._recoverTimer || this._serverState === 'starting') {
             return;
@@ -527,6 +668,7 @@ class BackendServerManager implements vscode.Disposable {
                     this._serverReady = true;
                     this._serverState = 'running';
                     this._updateStatusBar();
+                    this._connectBackendEvents();
                     this._onWebviewMessage.fire({
                         type: 'atopileInstalling',
                         message: 'Connecting to server...',
@@ -675,6 +817,7 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('info', `server: ${exitMsg}`);
                 this._process = undefined;
                 this._serverReady = false;
+                this._disconnectBackendEvents();
 
                 if (this._serverState === 'starting') {
                     const errorMsg = stderrCollected.trim() || `Process exited with code ${code}`;
@@ -701,6 +844,7 @@ class BackendServerManager implements vscode.Disposable {
                 this._serverState = 'error';
                 this._process = undefined;
                 this._serverReady = false;
+                this._disconnectBackendEvents();
                 this._updateStatusBar();
             });
 
@@ -718,6 +862,7 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('info', `server: Started successfully on port ${this.port}`);
                 this._serverState = 'running';
                 this._updateStatusBar();
+                this._connectBackendEvents();
 
                 // Send progress update: server ready (will be cleared by WebSocket connection)
                 this._onWebviewMessage.fire({
@@ -852,6 +997,7 @@ class BackendServerManager implements vscode.Disposable {
             traceInfo('BackendServer: Server stopped');
             this._log('info', 'server: Stopped');
         }
+        this._disconnectBackendEvents();
         // Note: WebSocket disconnection is handled by ui-server when the webview unloads
     }
 
@@ -961,8 +1107,44 @@ class BackendServerManager implements vscode.Disposable {
         this._onWebviewMessage.fire(message);
     }
 
+    sendBackendAction(action: string, payload: Record<string, unknown> = {}): void {
+        if (!this._backendEventSocket || this._backendEventSocket.readyState !== NodeWebSocket.OPEN) {
+            traceVerbose(`BackendServer: Dropping backend action ${action} - event socket not connected`);
+            return;
+        }
+        this._backendEventSocket.send(JSON.stringify({
+            type: 'action',
+            action,
+            payload,
+        }));
+    }
+
+    sendBackendActionWithResponse(
+        action: string,
+        payload: Record<string, unknown> = {},
+        timeoutMs: number = 10000,
+    ): Promise<BackendActionResultMessage> {
+        if (!this._backendEventSocket || this._backendEventSocket.readyState !== NodeWebSocket.OPEN) {
+            return Promise.reject(new Error('Backend event socket not connected'));
+        }
+
+        this._backendActionRequestCounter += 1;
+        const requestId = `${Date.now()}-${this._backendActionRequestCounter}`;
+
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                this._backendPendingRequests.delete(requestId);
+                reject(new Error(`Backend action timeout: ${action}`));
+            }, timeoutMs);
+
+            this._backendPendingRequests.set(requestId, { resolve, reject, timeoutId });
+            this.sendBackendAction(action, { ...payload, requestId });
+        });
+    }
+
     dispose(): void {
         this._clearRecoveryTimer();
+        this._disconnectBackendEvents();
 
         // Stop the server gracefully
         if (this._process) {
@@ -987,6 +1169,7 @@ class BackendServerManager implements vscode.Disposable {
 
         this._onStatusChange.dispose();
         this._onWebviewMessage.dispose();
+        this._onBackendEvent.dispose();
 
         for (const disposable of this._disposables) {
             disposable.dispose();
