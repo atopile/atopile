@@ -5,7 +5,6 @@ import type {
   AgentChecklistItem,
   AgentEditDiffUiPayload,
   AgentMessage,
-  AgentPackageWorker,
   AgentProgressPayload,
   AgentProgressPhase,
   AgentTraceView,
@@ -80,61 +79,6 @@ function parseDesignQuestions(payload: AgentProgressPayload): DesignQuestionsDat
   return { context, questions };
 }
 
-function parsePackageWorker(raw: unknown): AgentPackageWorker | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const worker = raw as Record<string, unknown>;
-  const workerId = typeof worker.worker_id === 'string' ? worker.worker_id : null;
-  const packageProjectPath = typeof worker.package_project_path === 'string'
-    ? worker.package_project_path
-    : null;
-  const packageProjectRoot = typeof worker.package_project_root === 'string'
-    ? worker.package_project_root
-    : null;
-  const packageName = typeof worker.package_name === 'string' ? worker.package_name : null;
-  const goal = typeof worker.goal === 'string' ? worker.goal : null;
-  if (!workerId || !packageProjectPath || !packageProjectRoot || !packageName || !goal) {
-    return null;
-  }
-
-  const rawBuilds = Array.isArray(worker.build_summaries) ? worker.build_summaries : [];
-  const buildSummaries = rawBuilds
-    .filter((build): build is Record<string, unknown> => Boolean(build) && typeof build === 'object')
-    .map((build) => ({
-      target: typeof build.target === 'string' ? build.target : null,
-      buildId: typeof build.build_id === 'string' ? build.build_id : null,
-      projectPath: typeof build.project_path === 'string' ? build.project_path : null,
-      message: typeof build.message === 'string' ? build.message : null,
-    }));
-
-  return {
-    workerId,
-    parentRunId: typeof worker.parent_run_id === 'string' ? worker.parent_run_id : null,
-    packageProjectPath,
-    packageProjectRoot,
-    packageName,
-    goal,
-    comments: typeof worker.comments === 'string' ? worker.comments : null,
-    status: (worker.status === 'running'
-      || worker.status === 'completed'
-      || worker.status === 'failed'
-      || worker.status === 'stopped')
-      ? worker.status
-      : 'running',
-    createdAt: typeof worker.created_at === 'number' ? worker.created_at : 0,
-    updatedAt: typeof worker.updated_at === 'number' ? worker.updated_at : 0,
-    activitySummary: typeof worker.activity_summary === 'string'
-      ? trimSingleLine(worker.activity_summary, 96)
-      : null,
-    resultSummary: typeof worker.result_summary === 'string'
-      ? trimSingleLine(worker.result_summary, 140)
-      : null,
-    changedFiles: asStringList(worker.changed_files),
-    buildSummaries,
-    error: typeof worker.error === 'string' ? worker.error : null,
-    stopRequested: worker.stop_requested === true,
-  };
-}
-
 export function readProgressPayload(detail: unknown): {
   sessionId: string | null;
   runId: string | null;
@@ -154,7 +98,6 @@ export function readProgressPayload(detail: unknown): {
   contextLimitTokens: number | null;
   checklist: AgentChecklist | null;
   designQuestions: DesignQuestionsData | null;
-  packageWorker: AgentPackageWorker | null;
 } {
   if (!detail || typeof detail !== 'object') {
     return {
@@ -176,7 +119,6 @@ export function readProgressPayload(detail: unknown): {
       contextLimitTokens: null,
       checklist: null,
       designQuestions: null,
-      packageWorker: null,
     };
   }
 
@@ -224,7 +166,6 @@ export function readProgressPayload(detail: unknown): {
 
   const checklist = parseChecklist(payload.checklist);
   const designQuestions = phase === 'design_questions' ? parseDesignQuestions(payload) : null;
-  const packageWorker = parsePackageWorker(payload.package_worker);
 
   return {
     sessionId,
@@ -245,7 +186,6 @@ export function readProgressPayload(detail: unknown): {
     contextLimitTokens,
     checklist,
     designQuestions,
-    packageWorker,
   };
 }
 

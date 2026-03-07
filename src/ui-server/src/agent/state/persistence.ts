@@ -69,7 +69,6 @@ export function normalizeSnapshotForPersistence(value: unknown): AgentChatSnapsh
     cancelRequested: false,
     activityElapsedSeconds: 0,
     messages,
-    packageWorkers: [],
     input,
     error: typeof candidate.error === 'string' ? candidate.error : null,
     activityLabel: resumedWithSession ? 'Ready' : 'Idle',

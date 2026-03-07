@@ -159,7 +159,6 @@ export function useAgentChatRuntime(projectRoot: string | null, selectedTargets:
     isChatsPanelOpen: panelState.isChatsPanelOpen,
     sessionId,
     messages,
-    packageWorkers: sessionState.activeChatSnapshot?.packageWorkers ?? [],
     input: composerState.input,
     isSending,
     isStopping,

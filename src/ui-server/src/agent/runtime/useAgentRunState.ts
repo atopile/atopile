@@ -100,22 +100,6 @@ export function useAgentRunState({
         return !chat.pendingRunId || chat.pendingRunId === parsed.runId || chat.activeRunId === parsed.runId;
       });
       if (!targetChat) return;
-      if (parsed.packageWorker) {
-        updateChatSnapshot(targetChat.id, (chat) => {
-          const existing = chat.packageWorkers ?? [];
-          const nextWorkers = existing.some((worker) => worker.workerId === parsed.packageWorker?.workerId)
-            ? existing.map((worker) => worker.workerId === parsed.packageWorker?.workerId ? parsed.packageWorker! : worker)
-            : [...existing, parsed.packageWorker!];
-          nextWorkers.sort((left, right) => {
-            const leftPriority = left.status === 'running' ? 0 : 1;
-            const rightPriority = right.status === 'running' ? 0 : 1;
-            if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-            return right.updatedAt - left.updatedAt;
-          });
-          return { ...chat, packageWorkers: nextWorkers };
-        });
-        return;
-      }
       const pendingId = targetChat.pendingAssistantId;
       if (!pendingId) return;
       const nextActivity = inferActivityFromProgress(parsed);

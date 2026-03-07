@@ -2,7 +2,6 @@ import { ChevronDown, Plus, Minimize2, Maximize2, MessageSquareText } from 'luci
 import { AgentComposer } from './components/AgentComposer';
 import { AgentHistoryDrawer } from './components/AgentHistoryDrawer';
 import { AgentMessagesView } from './components/AgentMessagesView';
-import { PackageWorkersPanel } from './components/PackageWorkersPanel';
 import { formatCount, renderLineDelta } from './components/viewHelpers';
 import { useAgentChatRuntime } from './useAgentChatRuntime';
 import './AgentChatPanel.css';
@@ -107,9 +106,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
               onToggleTraceExpanded={runtime.toggleTraceExpanded}
               onSubmitDesignQuestions={(answers) => void runtime.sendMessage({ directMessage: answers, hideUserMessage: true })}
             />
-
-            <PackageWorkersPanel workers={runtime.packageWorkers} />
-
             {runtime.changedFilesSummary && (
               <div className="agent-changes-summary">
                 <button

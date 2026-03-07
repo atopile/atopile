@@ -60,31 +60,6 @@ export interface AgentProgressPayload {
   checklist?: unknown;
   context?: unknown;
   questions?: unknown;
-  package_worker?: unknown;
-}
-
-export interface AgentPackageWorker {
-  workerId: string;
-  parentRunId: string | null;
-  packageProjectPath: string;
-  packageProjectRoot: string;
-  packageName: string;
-  goal: string;
-  comments: string | null;
-  status: 'running' | 'completed' | 'failed' | 'stopped';
-  createdAt: number;
-  updatedAt: number;
-  activitySummary: string | null;
-  resultSummary: string | null;
-  changedFiles: string[];
-  buildSummaries: Array<{
-    target: string | null;
-    buildId: string | null;
-    projectPath: string | null;
-    message: string | null;
-  }>;
-  error: string | null;
-  stopRequested: boolean;
 }
 
 export interface AgentTraceView extends AgentToolTrace {
@@ -123,7 +98,6 @@ export interface AgentChatSnapshot {
   cancelRequested: boolean;
   activityElapsedSeconds: number;
   messages: AgentMessage[];
-  packageWorkers: AgentPackageWorker[];
   input: string;
   error: string | null;
   activityLabel: string;
