@@ -24,7 +24,12 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.node import TraitNotFound
 from faebryk.libs.geometry.basic import Geometry
-from faebryk.libs.kicad.fileformats import UUID, Property, kicad
+from faebryk.libs.kicad.fileformats import (
+    UUID,
+    Property,
+    kicad,
+    strip_duplicate_ref_texts,
+)
 from faebryk.libs.nets import (
     bind_fbrk_nets_to_kicad_nets,
 )
@@ -1506,6 +1511,10 @@ class PCB_Transformer:
 
         lib_attrs = self._fp_common_fields_dict(lib_footprint)
 
+        # strip duplicate reference texts
+        if "fp_texts" in lib_attrs:
+            lib_attrs["fp_texts"] = strip_duplicate_ref_texts(lib_attrs["fp_texts"])
+
         lib_attrs["pads"] = [
             kicad.pcb.Pad(
                 **{
@@ -1896,7 +1905,10 @@ class PCB_Transformer:
             footprint, lib_footprint, "propertys", keep_pcb_obj_if_not_in_lib=True
         )
         Property.checksum.delete_checksum(footprint)
-        # fp_texts
+        # fp_texts: strip duplicate reference texts from both sides before merge
+        lib_footprint = kicad.copy(lib_footprint)
+        lib_footprint.fp_texts = strip_duplicate_ref_texts(lib_footprint.fp_texts)
+        footprint.fp_texts = strip_duplicate_ref_texts(footprint.fp_texts)
         PCB_Transformer.footprint_container_merge(footprint, lib_footprint, "fp_texts")
 
         # Move back to original layer(flip) and angle
