@@ -924,7 +924,10 @@ class _ConfigFlagBase[T]:
                 res = self.default
 
         if res != self.default:
-            logger.warning(f"Config flag |{self.name}={res}|")
+            # Use print instead of logger.warning to avoid circular imports
+            # when logging handlers try to import modules that are still
+            # being initialized (e.g. faebryk.libs.paths)
+            print(f"WARNING: Config flag |{self.name}={res}|", file=sys.stderr)
 
         return res
 
