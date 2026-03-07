@@ -3768,13 +3768,10 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import is_unit
 
-        if not is_unit.is_commensurable_with(self.get_is_unit(), unit):
-            raise UnitsNotCommensurableError(
-                f"Units {self.get_is_unit()} and {unit} are not commensurable",
-                incommensurable_items=[self.get_is_unit(), unit],
-            )
-
         scale, offset = is_unit.get_conversion_to(self.get_is_unit(), unit)
+        if scale == 1.0 and offset == 0.0:
+            # Already in the target unit, return self
+            return self
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -4583,7 +4580,8 @@ class Numbers(fabll.Node):
             tg=self.tg,
             unit=base_unit,
         )
-        numeric_set = as_base_units.get_numeric_set()
+        if as_base_units is not self:
+            numeric_set = as_base_units.get_numeric_set()
         type_name = (
             "Quantity_Set_Discrete"
             if numeric_set.is_discrete_set()
@@ -7709,7 +7707,7 @@ class AbstractEnums(fabll.Node):
                 return v
             try:
                 return int(v)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 return str(v)
 
         parsed_values = {k: _try_parse_int(v) for k, v in enum_values.items()}
