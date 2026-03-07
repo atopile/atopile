@@ -28,6 +28,7 @@ PRINT_DIGITS = 3
 # TODO all creating functions need g as param
 
 
+# TODO: merge this with Units.UnitsNotCommensurableError
 class UnitsNotCommensurableError(Exception):
     """
     Raised when operations are attempted on values with incompatible units.
@@ -4524,11 +4525,18 @@ class Numbers(fabll.Node):
         Two quantity sets are equal if they have commensurable units and
         the same numeric intervals (after unit conversion).
         """
+        # TODO, ......... why do we have two different units not commensurable errors?
+        from faebryk.library.Units import (
+            UnitsNotCommensurableError as UnitsUnitsNotCommensurableError,
+        )
+
         g = g or self.g
         tg = tg or self.tg
         # Convert to same units and check commensurability
         try:
             other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+        except UnitsUnitsNotCommensurableError:
+            return False
         except UnitsNotCommensurableError:
             return False
         return self.get_numeric_set().op_setic_equals(other_converted.get_numeric_set())
