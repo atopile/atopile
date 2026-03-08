@@ -714,11 +714,9 @@ class BuildQueue:
 
     def _handle_completed(self, msg: BuildCompletedMsg) -> None:
         """Handle a build-completed message."""
-        warnings = sum(
-            1 for s in msg.stages if s.get("status") == StageStatus.WARNING.value
-        )
+        warnings = sum(1 for s in msg.stages if s.status == StageStatus.WARNING)
         errors = sum(
-            1 for s in msg.stages if s.get("status") == StageStatus.ERROR.value
+            1 for s in msg.stages if s.status in (StageStatus.ERROR, StageStatus.FAILED)
         )
         status = BuildStatus.from_return_code(msg.return_code, warnings)
 
