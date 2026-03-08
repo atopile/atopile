@@ -25,6 +25,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -155,6 +156,17 @@ class CoreServer:
         self._cleanup(exc)
         os._exit(2)
 
+    def _log_thread_exception(self, args: threading.ExceptHookArgs) -> None:
+        """Log uncaught background-thread exceptions through the core logger."""
+        if args.exc_type is KeyboardInterrupt:
+            return
+        thread_name = args.thread.name if args.thread else "unknown"
+        log.critical(
+            "Uncaught exception in thread %s",
+            thread_name,
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+
     def run(self) -> None:
         """Start the server and block until interrupted."""
         signal.signal(
@@ -200,6 +212,7 @@ class CoreServer:
         loop.set_default_executor(
             ThreadPoolExecutor(max_workers=64, thread_name_prefix="ato_server_")
         )
+        threading.excepthook = self._log_thread_exception
         BuildHistory.init_db()
         Logs.init_db()
 

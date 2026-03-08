@@ -74,13 +74,16 @@ export class ProcessManager implements vscode.Disposable {
       });
 
       proc.on("error", (err) => {
+        this._output.appendLine(`[${name}] Process error: ${err.message}`);
         if (!resolved) {
           resolved = true;
           reject(new Error(`Failed to start ${name}: ${err.message}`));
         }
       });
 
-      proc.on("exit", (code) => {
+      proc.on("exit", (code, signal) => {
+        const suffix = signal ? ` (signal ${signal})` : "";
+        this._output.appendLine(`[${name}] Exited with code ${code}${suffix}`);
         if (!resolved) {
           resolved = true;
           reject(new Error(`${name} exited with code ${code} before ready`));

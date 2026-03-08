@@ -31,6 +31,9 @@ const LOG_COL_WIDTHS: Record<ResizableColumnKey, number> = {
   stage: 96,
 };
 
+const isInProgressBuild = (build: Build) =>
+  build.status === 'building' || build.status === 'queued';
+
 initLogSettings();
 
 // -- Row sub-components -------------------------------------------------------
@@ -248,6 +251,7 @@ function LogViewer() {
   const [columnWidths, setColumnWidths] = useState<Record<ResizableColumnKey, number>>(LOG_COL_WIDTHS);
   const columnWidthsRef = useRef(columnWidths);
   columnWidthsRef.current = columnWidths;
+  const previousActiveBuildIdRef = useRef('');
 
   // Scroll
   const contentRef = useRef<HTMLDivElement>(null);
@@ -306,12 +310,26 @@ function LogViewer() {
     projectState.selectedTarget,
   ]);
 
-  // Keep selected build if still visible; otherwise prefer active, then latest.
+  const activeBuildId = useMemo(
+    () => projectBuilds.find(isInProgressBuild)?.buildId ?? '',
+    [projectBuilds],
+  );
+
+  // Auto-follow newly active builds; otherwise keep the visible selection.
   useEffect(() => {
-    if (buildId && projectBuilds.some(b => b.buildId === buildId)) return;
-    const active = projectBuilds.find(b => b.status === 'building' || b.status === 'queued');
-    setBuildId(active?.buildId ?? projectBuilds[0]?.buildId ?? '');
-  }, [projectBuilds, buildId]);
+    const selectedVisible = buildId && projectBuilds.some(b => b.buildId === buildId);
+    const activeBuildChanged = activeBuildId !== previousActiveBuildIdRef.current;
+    previousActiveBuildIdRef.current = activeBuildId;
+
+    if (activeBuildId && (activeBuildChanged || !selectedVisible)) {
+      setBuildId(activeBuildId);
+      return;
+    }
+
+    if (!selectedVisible) {
+      setBuildId(projectBuilds[0]?.buildId ?? '');
+    }
+  }, [activeBuildId, buildId, projectBuilds]);
 
   // Filtering
   const searchOptions: SearchOptions = useMemo(() => ({
