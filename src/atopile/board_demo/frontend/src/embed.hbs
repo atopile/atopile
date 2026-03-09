@@ -1,0 +1,47 @@
+<div class="atopile-demo-hero">
+  <div>
+    <h2 class="atopile-demo-title">{{title}}</h2>
+    <p class="atopile-demo-subtitle">{{subtitle}}</p>
+  </div>
+  <div class="atopile-demo-badge">Marketing Embed Preview</div>
+</div>
+
+<div class="atopile-demo-content">
+  <section class="atopile-demo-pane" data-pane="layout">
+    <div class="atopile-demo-pane-header"><strong>Layout</strong> Read only</div>
+    <div class="atopile-demo-layout-shell">
+      <div class="layout-viewport">
+        <div id="editor-canvas"></div>
+        <div id="vignette"></div>
+      </div>
+      <div id="initial-loading" role="status" aria-live="polite" aria-busy="true">
+        <div class="initial-loading-content">
+          <div class="initial-loading-spinner"></div>
+          <div class="initial-loading-message">Loading PCB</div>
+          <div class="initial-loading-subtext">Building scene geometry...</div>
+        </div>
+      </div>
+      <div id="layer-panel"></div>
+      <div id="status">
+        <span id="status-coords"></span>
+        <span id="status-busy" aria-hidden="true">
+          <span class="status-busy-spinner"></span>
+          Syncing...
+        </span>
+        <span id="status-fps"></span>
+        <span id="status-help">Scroll zoom · Middle-click pan</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="atopile-demo-pane" data-pane="model">
+    <div class="atopile-demo-pane-header"><strong>3D</strong> Interactive model</div>
+    <div class="atopile-demo-model-surface"></div>
+    <div class="atopile-demo-loading" data-role="model-loading">
+      <div class="atopile-demo-loading-card">
+        <div class="atopile-demo-spinner"></div>
+        <div>Loading 3D viewer...</div>
+      </div>
+    </div>
+  </section>
+</div>
