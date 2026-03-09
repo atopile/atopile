@@ -1,11 +1,11 @@
 import logging
-import os
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
+from atopile.ato_flags import ATO_BUILD_ID
 from atopile.dataclasses import LogRow
 from atopile.logging import AtoLogger, DBLogHandler
 
@@ -155,36 +155,31 @@ def test_db_handler_raises_with_multiple_active_contexts():
 
 
 def test_activate_build_defaults_stage_to_blank():
-    prev_build_id = os.environ.get("ATO_BUILD_ID")
-    os.environ["ATO_BUILD_ID"] = f"build-{uuid.uuid4().hex}"
+    prev_value = ATO_BUILD_ID.get()
+    build_id = f"build-{uuid.uuid4().hex}"
+    ATO_BUILD_ID.set(build_id, force=True)
 
     try:
         logger = AtoLogger.activate_build(stage="")
 
-        assert logger.build_id == os.environ["ATO_BUILD_ID"]
+        assert logger.build_id == build_id
         assert logger.stage_or_test_name == ""
         assert AtoLogger._active_build_logger is logger
         assert AtoLogger._active_test_logger is None
         assert AtoLogger._active_unscoped_logger is not None
     finally:
-        if prev_build_id is None:
-            os.environ.pop("ATO_BUILD_ID", None)
-        else:
-            os.environ["ATO_BUILD_ID"] = prev_build_id
+        ATO_BUILD_ID.set(prev_value, force=True)
 
 
 def test_activate_build_requires_ato_build_id():
-    prev_build_id = os.environ.get("ATO_BUILD_ID")
-    os.environ.pop("ATO_BUILD_ID", None)
+    prev_value = ATO_BUILD_ID.get()
+    ATO_BUILD_ID.set("", force=True)
 
     try:
         with pytest.raises(KeyError):
             AtoLogger.activate_build(stage="")
     finally:
-        if prev_build_id is None:
-            os.environ.pop("ATO_BUILD_ID", None)
-        else:
-            os.environ["ATO_BUILD_ID"] = prev_build_id
+        ATO_BUILD_ID.set(prev_value, force=True)
 
 
 def test_source_file_reports_original_callsite():
