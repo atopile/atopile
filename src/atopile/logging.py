@@ -656,6 +656,63 @@ def scope(msg: str | None = None):
         _log_scope_level.set(current)
 
 
+LOGS_DEFAULT_COUNT = 500
+LOGS_MAX_COUNT = 5000
+
+
+def normalize_log_levels(value: Any) -> list[str] | None:
+    """Normalize log level filters to the uppercase Log.Level enum values."""
+    if not isinstance(value, list):
+        return None
+    allowed = {member.value for member in Log.Level}
+    normalized: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str):
+            return None
+        level = entry.strip().upper()
+        if level not in allowed:
+            return None
+        normalized.append(level)
+    return normalized
+
+
+def normalize_log_audience(value: Any) -> str | None:
+    """Normalize audience filters to the lowercase Log.Audience enum values."""
+    if not isinstance(value, str):
+        return None
+    audience = value.strip().lower()
+    return audience if audience in {member.value for member in Log.Audience} else None
+
+
+def _strip_stream_id(entry: dict[str, Any]) -> dict[str, Any]:
+    if "id" not in entry:
+        return entry
+    return {k: v for k, v in entry.items() if k != "id"}
+
+
+def load_build_logs(
+    *,
+    build_id: str,
+    stage: str | None,
+    log_levels: list[str] | None,
+    audience: str | None,
+    count: int,
+) -> list[dict[str, Any]]:
+    """Load a bounded batch of build logs for one-shot tool responses."""
+    from atopile.model.sqlite import Logs
+
+    rows, _ = Logs.fetch_chunk(
+        build_id,
+        stage=stage,
+        levels=log_levels,
+        audience=audience,
+        after_id=0,
+        count=max(1, min(count, LOGS_MAX_COUNT)),
+        order="DESC",
+    )
+    return [_strip_stream_id(row) for row in rows]
+
+
 # =============================================================================
 # Rich Log Handler
 # =============================================================================

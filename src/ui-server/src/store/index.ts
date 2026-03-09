@@ -8,6 +8,12 @@
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { postMessage, getVsCodeApi } from '../api/vscodeApi';
+import {
+  agentInitialState,
+  createAgentStoreActions,
+  type AgentStoreActions,
+  type AgentStoreState,
+} from '../agent/store';
 import type {
   AppState,
   Project,
@@ -67,8 +73,9 @@ const persistedState = getVsCodeApi()?.getState() as {
   selectedTargetNames?: string[];
 } | undefined;
 
-// Initial state for the store
-const initialState: AppState = {
+type StoreState = AppState & AgentStoreState;
+
+const initialState: StoreState = {
   // Connection
   isConnected: false,
   hasEverConnected: false,
@@ -188,6 +195,8 @@ const initialState: AppState = {
 
   // Manufacturing Wizard
   manufacturingWizard: null as ManufacturingWizardState | null,
+
+  ...agentInitialState,
 };
 
 // Store actions interface
@@ -308,7 +317,7 @@ interface StoreActions {
 }
 
 // Combined store type
-type Store = AppState & StoreActions;
+type Store = StoreState & StoreActions & AgentStoreActions;
 
 export const useStore = create<Store>()(
   subscribeWithSelector(
@@ -1064,6 +1073,8 @@ export const useStore = create<Store>()(
             },
           };
         }),
+
+      ...createAgentStoreActions(set),
 
       // Reset
       reset: () => set(initialState),

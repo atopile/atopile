@@ -25,6 +25,8 @@ export interface ProjectDependency {
   hasUpdate?: boolean;
   isDirect?: boolean;
   via?: string[];
+  dependencyType?: string;
+  sourcePath?: string;  // Absolute canonical source path for local/project dependencies
   installedPath?: string;  // Absolute path where dependency is installed
   summary?: string;  // Package summary/description from ato.yaml
   usageContent?: string;  // Content of usage.ato if it exists
@@ -33,11 +35,9 @@ export interface ProjectDependency {
 }
 
 // Convert a ProjectDependency to a Project for use with ProjectCard
-// Uses installedPath from backend if available, otherwise falls back to identifier
+// Prefer canonical sourcePath for local project dependencies, otherwise installedPath.
 function dependencyToProject(dependency: ProjectDependency): Project {
-  // Use the actual installed path from the backend
-  // If not installed (installedPath is null), fall back to identifier
-  const root = dependency.installedPath || dependency.identifier;
+  const root = dependency.sourcePath || dependency.installedPath || dependency.identifier;
 
   return {
     id: dependency.identifier,
