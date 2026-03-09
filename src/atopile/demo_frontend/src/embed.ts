@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 declare global {
     interface Window {
@@ -489,7 +490,25 @@ function ensureStyles(): void {
       .atopile-demo-model-surface {
         background:
           radial-gradient(circle at 50% 28%, rgba(249, 80, 21, 0.035), transparent 26%),
-          linear-gradient(180deg, rgba(249, 80, 21, 0.025), rgba(249, 80, 21, 0));
+          linear-gradient(180deg, rgba(249, 80, 21, 0.025), rgba(249, 80, 21, 0)),
+          #0a0f18;
+      }
+      .atopile-demo-model-stats {
+        position: absolute;
+        right: 14px;
+        bottom: 14px;
+        z-index: 3;
+        min-width: 168px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        background: rgba(7, 12, 20, 0.82);
+        border: 1px solid rgba(249, 80, 21, 0.18);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+        backdrop-filter: blur(14px);
+        color: rgba(237, 241, 251, 0.86);
+        font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        white-space: pre-line;
+        pointer-events: none;
       }
       .atopile-demo-model-surface model-viewer {
         width: 100%;
@@ -663,9 +682,147 @@ function buildBackgroundGrid(bounds: THREE.Box3): THREE.Object3D {
     return grid;
 }
 
-function applyBoardMaterialStyle(node: THREE.Mesh, material: THREE.Material): void {
+/** Convert any non-Float32 (quantized/normalized) attributes to Float32
+ *  so that applyMatrix4 produces correct results. */
+function deQuantizeGeometry(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+    for (const name of Object.keys(geometry.attributes)) {
+        const attr = geometry.getAttribute(name);
+        if (attr.array instanceof Float32Array) continue;
+        const count = attr.count;
+        const itemSize = attr.itemSize;
+        const float32 = new Float32Array(count * itemSize);
+        for (let i = 0; i < count; i++) {
+            for (let j = 0; j < itemSize; j++) {
+                float32[i * itemSize + j] = attr.getComponent(i, j);
+            }
+        }
+        geometry.setAttribute(
+            name,
+            new THREE.BufferAttribute(float32, itemSize, false),
+        );
+    }
+    const index = geometry.getIndex();
+    if (index && !(index.array instanceof Uint32Array)) {
+        const uint32 = new Uint32Array(index.count);
+        for (let i = 0; i < index.count; i++) {
+            uint32[i] = index.getX(i);
+        }
+        geometry.setIndex(new THREE.BufferAttribute(uint32, 1, false));
+    }
+    return geometry;
+}
+
+function buildMergedScene(root: THREE.Object3D): THREE.Object3D {
+    root.updateMatrixWorld(true);
+
+    const mergedRoot = new THREE.Group();
+    const mergeBuckets = new Map<string, {
+        material: THREE.Material;
+        renderOrder: number;
+        geometries: THREE.BufferGeometry[];
+    }>();
+
+    const addToBucket = (
+        geometry: THREE.BufferGeometry,
+        material: THREE.Material,
+        worldMatrix: THREE.Matrix4,
+        renderOrder: number,
+    ) => {
+        const transformed = deQuantizeGeometry(geometry.clone());
+        transformed.applyMatrix4(worldMatrix);
+
+        // Flip winding order for mirrored instances (negative determinant)
+        if (worldMatrix.determinant() < 0) {
+            const index = transformed.getIndex();
+            if (index) {
+                const arr = index.array;
+                for (let i = 0; i < arr.length; i += 3) {
+                    const tmp = arr[i + 1]!;
+                    arr[i + 1] = arr[i + 2]!;
+                    arr[i + 2] = tmp;
+                }
+                index.needsUpdate = true;
+            }
+        }
+
+        const key = `${material.uuid}::${renderOrder}`;
+        const entry = mergeBuckets.get(key) ?? {
+            material,
+            renderOrder,
+            geometries: [],
+        };
+        entry.geometries.push(transformed);
+        mergeBuckets.set(key, entry);
+    };
+
+    root.traverse((node) => {
+        if (!(node instanceof THREE.Mesh)) return;
+
+        const geometry = node.geometry;
+        const material = node.material;
+        if (!(geometry instanceof THREE.BufferGeometry)) return;
+
+        if (Array.isArray(material) || Object.keys(geometry.morphAttributes).length > 0) {
+            const preserved = new THREE.Mesh(
+                deQuantizeGeometry(geometry.clone()),
+                material,
+            );
+            preserved.position.setFromMatrixPosition(node.matrixWorld);
+            preserved.quaternion.setFromRotationMatrix(node.matrixWorld);
+            preserved.scale.setFromMatrixScale(node.matrixWorld);
+            preserved.matrixAutoUpdate = false;
+            preserved.updateMatrix();
+            preserved.renderOrder = node.renderOrder;
+            mergedRoot.add(preserved);
+            return;
+        }
+
+        // Expand InstancedMesh instances into individual transformed geometries
+        if ((node as THREE.InstancedMesh).isInstancedMesh) {
+            const instanced = node as THREE.InstancedMesh;
+            const instanceMatrix = new THREE.Matrix4();
+            const combinedMatrix = new THREE.Matrix4();
+            for (let i = 0; i < instanced.count; i++) {
+                instanced.getMatrixAt(i, instanceMatrix);
+                combinedMatrix.multiplyMatrices(node.matrixWorld, instanceMatrix);
+                addToBucket(geometry, material, combinedMatrix, node.renderOrder);
+            }
+            return;
+        }
+
+        addToBucket(geometry, material, node.matrixWorld, node.renderOrder);
+    });
+
+    for (const bucket of mergeBuckets.values()) {
+        const mergedGeometry = bucket.geometries.length === 1
+            ? bucket.geometries[0]!
+            : mergeGeometries(bucket.geometries, false);
+        if (!mergedGeometry) continue;
+
+        const mesh = new THREE.Mesh(mergedGeometry, bucket.material);
+        mesh.renderOrder = bucket.renderOrder;
+        mesh.matrixAutoUpdate = false;
+        mesh.updateMatrix();
+        mergedRoot.add(mesh);
+    }
+
+    return mergedRoot;
+}
+
+function applyBoardMaterialStyle(
+    node: THREE.Mesh,
+    material: THREE.Material,
+    materialCache: Map<string, THREE.Material>,
+): THREE.Material {
     const meshName = node.name.toLowerCase();
     const materialName = material.name.toLowerCase();
+    const styleKind = looksLikeBoardSilkscreen(materialName, meshName) ? "silkscreen" : "surface";
+    const cacheKey = `${material.type}:${materialName}:${styleKind}`;
+    const cached = materialCache.get(cacheKey);
+    if (cached) {
+        node.renderOrder = styleKind === "silkscreen" ? 10 : 0;
+        return cached;
+    }
 
     if (looksLikeBoardSilkscreen(materialName, meshName)) {
         const overlay = new THREE.MeshBasicMaterial({
@@ -678,52 +835,63 @@ function applyBoardMaterialStyle(node: THREE.Mesh, material: THREE.Material): vo
             polygonOffsetFactor: -4,
             polygonOffsetUnits: -4,
         });
-        node.material = Array.isArray(node.material)
-            ? (node.material as THREE.Material[]).map(() => overlay.clone())
-            : overlay;
         node.renderOrder = 10;
-        return;
+        materialCache.set(cacheKey, overlay);
+        return overlay;
     }
 
     if (!(material instanceof THREE.MeshStandardMaterial)) {
-        return;
+        node.renderOrder = 0;
+        materialCache.set(cacheKey, material);
+        return material;
     }
 
+    const styled = material.clone();
+
     if (materialName === "mat_24" || materialName === "mat_25") {
-        material.color = new THREE.Color("#161719");
-        material.roughness = 0.88;
-        material.metalness = 0.01;
-        material.envMapIntensity = 0.035;
-        material.opacity = 1;
-        material.transparent = false;
-        material.needsUpdate = true;
-        return;
+        styled.color = new THREE.Color("#161719");
+        styled.roughness = 0.88;
+        styled.metalness = 0.01;
+        styled.envMapIntensity = 0.035;
+        styled.opacity = 1;
+        styled.transparent = false;
+        styled.needsUpdate = true;
+        node.renderOrder = 0;
+        materialCache.set(cacheKey, styled);
+        return styled;
     }
 
     if (materialName === "mat_26" || materialName === "mat_6") {
-        material.color = new THREE.Color("#202225");
-        material.roughness = 0.9;
-        material.metalness = 0.01;
-        material.envMapIntensity = 0.03;
-        material.needsUpdate = true;
-        return;
+        styled.color = new THREE.Color("#202225");
+        styled.roughness = 0.9;
+        styled.metalness = 0.01;
+        styled.envMapIntensity = 0.03;
+        styled.needsUpdate = true;
+        node.renderOrder = 0;
+        materialCache.set(cacheKey, styled);
+        return styled;
     }
 
     if (materialName === "mat_20" || materialName === "mat_21") {
-        material.color = new THREE.Color(
+        styled.color = new THREE.Color(
             materialName === "mat_20" ? "#c8a24a" : "#c7ccd3",
         );
-        material.roughness = materialName === "mat_20" ? 0.42 : 0.3;
-        material.metalness = 0.88;
-        material.envMapIntensity = materialName === "mat_20" ? 0.22 : 0.16;
-        material.needsUpdate = true;
-        return;
+        styled.roughness = materialName === "mat_20" ? 0.42 : 0.3;
+        styled.metalness = 0.88;
+        styled.envMapIntensity = materialName === "mat_20" ? 0.22 : 0.16;
+        styled.needsUpdate = true;
+        node.renderOrder = 0;
+        materialCache.set(cacheKey, styled);
+        return styled;
     }
 
-    material.envMapIntensity = 0.08;
-    material.roughness = Math.max(material.roughness, 0.72);
-    material.metalness = Math.min(material.metalness, 0.28);
-    material.needsUpdate = true;
+    styled.envMapIntensity = 0.08;
+    styled.roughness = Math.max(styled.roughness, 0.72);
+    styled.metalness = Math.min(styled.metalness, 0.28);
+    styled.needsUpdate = true;
+    node.renderOrder = 0;
+    materialCache.set(cacheKey, styled);
+    return styled;
 }
 
 async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise<() => void> {
@@ -732,6 +900,11 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     canvas.style.height = "100%";
     canvas.style.display = "block";
     surface.appendChild(canvas);
+
+    const stats = document.createElement("div");
+    stats.className = "atopile-demo-model-stats";
+    stats.textContent = "fps --\ncalls --\ntris --\nmem --";
+    surface.appendChild(stats);
 
     const renderer = new THREE.WebGLRenderer({
         canvas,
@@ -745,13 +918,14 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
     const scene = new THREE.Scene();
+    scene.background = null;
     const camera = new THREE.PerspectiveCamera(34, 1, 0.0001, 10);
     camera.position.set(0, 45, 120);
     scene.add(camera);
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
-    controls.autoRotate = true;
+    controls.autoRotate = false;
     controls.autoRotateSpeed = 0.8;
     controls.enablePan = false;
     controls.minDistance = 20;
@@ -759,6 +933,7 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
 
     const envMap = createEnvironmentMap(renderer);
     scene.environment = envMap;
+    scene.background = null;
 
     const hemi = new THREE.HemisphereLight(0xe7dccd, 0x0b0d10, 1.0);
     scene.add(hemi);
@@ -788,26 +963,31 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     const gltf = await loader.loadAsync(modelUrl);
     const root = gltf.scene;
     scene.add(root);
+    const materialCache = new Map<string, THREE.Material>();
 
     root.traverse((node) => {
         if (!(node instanceof THREE.Mesh)) return;
         node.castShadow = false;
         node.receiveShadow = false;
         const materials = Array.isArray(node.material) ? node.material : [node.material];
-        for (const material of materials) {
-            if (!material) continue;
-            applyBoardMaterialStyle(node, material);
-        }
+        const styledMaterials = materials
+            .filter((material): material is THREE.Material => Boolean(material))
+            .map((material) => applyBoardMaterialStyle(node, material, materialCache));
+        node.material = Array.isArray(node.material) ? styledMaterials : styledMaterials[0]!;
     });
 
     const bounds = new THREE.Box3().setFromObject(root);
     const center = bounds.getCenter(new THREE.Vector3());
-    const size = bounds.getSize(new THREE.Vector3());
     root.position.sub(center);
     const centeredBounds = bounds.clone().translate(new THREE.Vector3(-center.x, -center.y, -center.z));
+    const mergedRoot = buildMergedScene(root);
+    scene.remove(root);
+    scene.add(mergedRoot);
     scene.add(buildBackgroundGrid(centeredBounds));
 
     let currentRadius = 0.01;
+
+    let requestRender: (() => void) | null = null;
 
     const setTopDownView = () => {
         const distance = currentRadius * 2.35;
@@ -816,6 +996,7 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
         controls.target.set(0, 0, 0);
         camera.lookAt(0, 0, 0);
         controls.update();
+        requestRender?.();
     };
 
     const setPerspectiveView = () => {
@@ -831,6 +1012,7 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
         controls.target.set(0, 0, 0);
         camera.lookAt(0, 0, 0);
         controls.update();
+        requestRender?.();
     };
 
     window.__ATOPILE_DEMO_SET_TOP_DOWN__ = setTopDownView;
@@ -854,18 +1036,54 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     resizeObserver.observe(surface);
 
     let disposed = false;
-    const animate = () => {
-        if (disposed) return;
-        controls.update();
-        renderer.render(scene, camera);
-        window.requestAnimationFrame(animate);
+    let animationFrameId: number | null = null;
+    let framesSinceSample = 0;
+    let sampleStart = performance.now();
+
+    const updateStats = (now: number) => {
+        framesSinceSample += 1;
+        const elapsed = now - sampleStart;
+        if (elapsed < 300) return;
+        const fps = Math.round((framesSinceSample * 1000) / elapsed);
+        const { render, memory } = renderer.info;
+        stats.textContent = [
+            `fps ${fps}`,
+            `calls ${render.calls} tris ${render.triangles} lines ${render.lines}`,
+            `pts ${render.points} geoms ${memory.geometries}`,
+            `tex ${memory.textures} autoRotate off`,
+        ].join("\n");
+        framesSinceSample = 0;
+        sampleStart = now;
     };
-    animate();
+
+    const renderFrame = (now: number) => {
+        animationFrameId = null;
+        if (disposed) return;
+        const changed = controls.update();
+        renderer.render(scene, camera);
+        updateStats(now);
+        if (changed) {
+            requestRender?.();
+        }
+    };
+
+    requestRender = () => {
+        if (disposed || animationFrameId !== null) return;
+        animationFrameId = window.requestAnimationFrame(renderFrame);
+    };
+
+    controls.addEventListener("change", () => {
+        requestRender?.();
+    });
+    requestRender();
 
     return () => {
         disposed = true;
         window.__ATOPILE_DEMO_SET_TOP_DOWN__ = null;
         resizeObserver.disconnect();
+        if (animationFrameId !== null) {
+            window.cancelAnimationFrame(animationFrameId);
+        }
         controls.dispose();
         envMap.dispose();
         renderer.dispose();

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -227,7 +228,8 @@ def _optimize_demo_glb(paths: DemoPaths) -> None:
             ("instance", tmpdir_path / "1.glb", tmpdir_path / "2.glb"),
             ("weld", tmpdir_path / "2.glb", tmpdir_path / "3.glb"),
             ("prune", tmpdir_path / "3.glb", tmpdir_path / "4.glb"),
-            ("meshopt", tmpdir_path / "4.glb", paths.glb_path),
+            ("join", tmpdir_path / "4.glb", tmpdir_path / "5.glb"),
+            ("meshopt", tmpdir_path / "5.glb", paths.glb_path),
         ]
         for command, src, dst in stages:
             subprocess.run(
@@ -242,6 +244,46 @@ def _optimize_demo_glb(paths: DemoPaths) -> None:
                 cwd=str(bundle_dir),
                 check=True,
             )
+    _verify_meshopt_compression(paths.glb_path)
+
+
+def _verify_meshopt_compression(glb_path: Path) -> None:
+    metadata = _read_glb_json_chunk(glb_path)
+    extensions_used = set(metadata.get("extensionsUsed", []))
+    if "EXT_meshopt_compression" not in extensions_used:
+        raise RuntimeError(
+            f"Demo GLB optimization did not produce EXT_meshopt_compression: {glb_path}"
+        )
+
+
+def _read_glb_json_chunk(glb_path: Path) -> dict[str, Any]:
+    payload = glb_path.read_bytes()
+    if len(payload) < 20:
+        raise RuntimeError(f"GLB is too small to parse: {glb_path}")
+
+    magic, version, declared_length = struct.unpack_from("<4sII", payload, 0)
+    if magic != b"glTF":
+        raise RuntimeError(f"Invalid GLB magic header: {glb_path}")
+    if version != 2:
+        raise RuntimeError(f"Unsupported GLB version {version}: {glb_path}")
+    if declared_length != len(payload):
+        raise RuntimeError(
+            f"GLB length header mismatch for {glb_path}: "
+            f"header={declared_length} actual={len(payload)}"
+        )
+
+    offset = 12
+    while offset + 8 <= len(payload):
+        chunk_length, chunk_type = struct.unpack_from("<II", payload, offset)
+        offset += 8
+        chunk_end = offset + chunk_length
+        if chunk_end > len(payload):
+            raise RuntimeError(f"Corrupt GLB chunk table: {glb_path}")
+        if chunk_type == 0x4E4F534A:
+            return json.loads(payload[offset:chunk_end].decode("utf-8"))
+        offset = chunk_end
+
+    raise RuntimeError(f"GLB JSON chunk missing: {glb_path}")
 
 
 def _ensure_bun_install(bundle_dir: Path) -> None:
