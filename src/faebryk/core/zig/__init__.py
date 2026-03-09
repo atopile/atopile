@@ -44,7 +44,6 @@ RELEASEMODE = ConfigFlagEnum(
 NORECOMPILE = ConfigFlag("ZIG_NORECOMPILE", default=False)
 
 _source_hash_file = _build_dir / ".zig-source-hash"
-_BUILD_LOCK_TIMEOUT_S = 300
 
 
 def _extension_suffix() -> str:
@@ -98,9 +97,7 @@ def compile_zig():
     ]
 
     logger.info(f"Building with command: {' '.join(cmd)}")
-    # VS Code often launches the LSP and backend in parallel in editable installs.
-    # Let the second process wait for the first Zig build instead of failing startup.
-    with global_lock(_build_dir / "lock", timeout_s=_BUILD_LOCK_TIMEOUT_S):
+    with global_lock(_build_dir / "lock", timeout_s=60):
         run_live(cmd, cwd=Path(__file__).parent)
 
     # Process all generated pyi files
