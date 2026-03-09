@@ -21,8 +21,8 @@ def demo(
     """
     Generate a static demo bundle for a single build target.
     """
+    from atopile.board_demo.artifacts import build_demo_bundle
     from atopile.config import config
-    from atopile.demo_artifacts import build_demo_bundle
 
     config.apply_options(
         entry=entry,

@@ -20,11 +20,11 @@ from typing import Annotated
 import typer
 
 from atopile import version
+from atopile.board_demo import cli as demo
 from atopile.cli import (
     build,
     configure,
     create,
-    demo,
     dev,
     inspect_,
     install,

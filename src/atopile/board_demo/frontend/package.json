@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "build": "bun run ./src/build.ts",
-    "build-scene": "bun run ./src/build-scene.ts",
     "validate": "bun run ./src/validate.ts"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
-import { StaticLayoutViewer } from "../../layout_server/frontend/src/static_viewer";
-import { getLayerColor } from "../../layout_server/frontend/src/colors";
-import type { LayerModel, RenderModel } from "../../layout_server/frontend/src/types";
+import { StaticLayoutViewer } from "../../../layout_server/frontend/src/static_viewer";
+import { getLayerColor } from "../../../layout_server/frontend/src/colors";
+import type { LayerModel, RenderModel } from "../../../layout_server/frontend/src/types";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
