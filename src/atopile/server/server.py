@@ -46,7 +46,7 @@ from atopile.model.sqlite import AgentLogs, BuildHistory
 from atopile.server.connections import server_state
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import projects as projects_domain
-from atopile.server.events import event_bus
+from atopile.server.events import INTERNAL_EVENT_BUILD_COMPLETED, event_bus
 from atopile.server.file_watcher import FileChangeResult, FileWatcher
 
 log = logging.getLogger(__name__)
@@ -541,26 +541,23 @@ def create_app(
             event_bus.emit_sync(
                 EventType.BOM_CHANGED, {"project_root": build.project_root}
             )
-            # Notify the agent if it has an active run for this project
-            try:
-                from atopile.server.routes.agent.utils import (
-                    inject_build_completed_steering,
-                )
-
-                inject_build_completed_steering(
-                    project_root=build.project_root or "",
-                    build_id=build.build_id or "",
-                    target=build.target or "default",
-                    status=build.status.value
-                    if hasattr(build.status, "value")
-                    else str(build.status),
-                    warnings=build.warnings,
-                    errors=build.errors,
-                    error=build.error,
-                    elapsed_seconds=build.elapsed_seconds,
-                )
-            except Exception:
-                log.debug("Failed to inject build steering", exc_info=True)
+            event_bus.emit_internal(
+                INTERNAL_EVENT_BUILD_COMPLETED,
+                {
+                    "project_root": build.project_root or "",
+                    "build_id": build.build_id or "",
+                    "target": build.target or "default",
+                    "status": (
+                        build.status.value
+                        if hasattr(build.status, "value")
+                        else str(build.status)
+                    ),
+                    "warnings": build.warnings,
+                    "errors": build.errors,
+                    "error": build.error,
+                    "elapsed_seconds": build.elapsed_seconds,
+                },
+            )
 
         _build_queue.on_change = _handle_build_change
         _build_queue.on_completed = _handle_build_completed

@@ -21,7 +21,7 @@ from atopile.server.agent.execution_context import AgentExecutionContext
 from atopile.server.agent.provider import OpenAIProvider
 from atopile.server.agent.registry import ToolRegistry
 from atopile.server.agent.runner import TraceCallback
-from atopile.server.events import get_event_bus
+from atopile.server.events import INTERNAL_EVENT_BUILD_COMPLETED, get_event_bus
 
 from .models import (
     ASSISTANT_ROLE,
@@ -514,6 +514,26 @@ def inject_build_completed_steering(
                 )
                 return True
     return False
+
+
+def _handle_build_completed_event(payload: dict[str, Any] | None) -> None:
+    if not isinstance(payload, dict):
+        return
+    inject_build_completed_steering(
+        project_root=str(payload.get("project_root") or ""),
+        build_id=str(payload.get("build_id") or ""),
+        target=str(payload.get("target") or "default"),
+        status=str(payload.get("status") or ""),
+        warnings=int(payload.get("warnings") or 0),
+        errors=int(payload.get("errors") or 0),
+        error=payload.get("error") if isinstance(payload.get("error"), str) else None,
+        elapsed_seconds=float(payload.get("elapsed_seconds") or 0.0),
+    )
+
+
+get_event_bus().subscribe_internal(
+    INTERNAL_EVENT_BUILD_COMPLETED, _handle_build_completed_event
+)
 
 
 async def run_turn_in_background(

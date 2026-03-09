@@ -1,9 +1,10 @@
-"""Event types and emission for WebSocket clients."""
+"""Event types and emission for WebSocket clients and internal subscribers."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from collections import defaultdict
 from typing import Any, Callable, Coroutine, Optional
 
 from atopile.dataclasses import EventType
@@ -13,6 +14,8 @@ log = logging.getLogger(__name__)
 
 # Callback for emitting events (registered by server at startup)
 EventEmitter = Callable[[str, Optional[dict]], Coroutine[Any, Any, None]]
+InternalSubscriber = Callable[[Optional[dict]], None]
+INTERNAL_EVENT_BUILD_COMPLETED = "internal.build_completed"
 
 
 class EventBus:
@@ -27,6 +30,9 @@ class EventBus:
     def __init__(self) -> None:
         self._event_loop: Optional[asyncio.AbstractEventLoop] = None
         self._event_emitter: Optional[EventEmitter] = None
+        self._internal_subscribers: dict[str, list[InternalSubscriber]] = defaultdict(
+            list
+        )
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Store the event loop for background thread emits."""
@@ -37,6 +43,26 @@ class EventBus:
         """Register callback for event emission (called by server)."""
         self._event_emitter = emitter
         log.info("EventBus: Event emitter registered")
+
+    def subscribe_internal(
+        self, event_type: EventType | str, callback: InternalSubscriber
+    ) -> None:
+        """Register a synchronous callback for server-only events."""
+        event_name = self._event_str(event_type)
+        subscribers = self._internal_subscribers[event_name]
+        if callback not in subscribers:
+            subscribers.append(callback)
+
+    def emit_internal(
+        self, event_type: EventType | str, data: Optional[dict] = None
+    ) -> None:
+        """Emit an event to in-process subscribers without notifying clients."""
+        event_name = self._event_str(event_type)
+        for callback in list(self._internal_subscribers.get(event_name, [])):
+            try:
+                callback(data)
+            except Exception:
+                log.exception("Internal event subscriber failed for '%s'", event_name)
 
     def _event_str(self, event_type: EventType | str) -> str:
         """Convert event type to string."""
