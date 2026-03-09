@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import struct
 import subprocess
 import time
@@ -43,23 +44,33 @@ class Board3DModel:
 
     def optimize_demo_glb(self, frontend_dir: Path) -> None:
         now = time.monotonic()
+        command = self._optimizer_command()
         subprocess.run(
             [
-                "bun",
-                "x",
-                "@gltf-transform/cli",
-                "optimize",
-                str(self.source_glb_path),
-                str(self.glb_path),
-                "--compress",
-                "meshopt",
+                *command,
+                "-i",
+                str(self.source_glb_path.resolve()),
+                "-o",
+                str(self.glb_path.resolve()),
+                "-c",
             ],
             cwd=str(frontend_dir),
             check=True,
         )
         duration = time.monotonic() - now
-        logger.info("Optimized GLB in %.0fms", duration * 1000)
+        logger.info(
+            "Optimized GLB with %s in %.0fms",
+            " ".join(command),
+            duration * 1000,
+        )
         self.verify_meshopt_compression()
+
+    @staticmethod
+    def _optimizer_command() -> list[str]:
+        native = shutil.which("gltfpack")
+        if native:
+            return [native]
+        return ["bun", "x", "gltfpack"]
 
     def verify_meshopt_compression(self) -> None:
         metadata = self._read_glb_json_chunk(self.glb_path)
