@@ -450,7 +450,7 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
             "name": "project_create_path",
             "description": (
                 "Create an in-scope directory or allowed file type. Allowed file "
-                "extensions: .ato, .md, and .py (restricted to "
+                "extensions: .ato, .md, .yaml, .yml, and .py (restricted to "
                 "src/faebryk/library for fabll modules)."
             ),
             "parameters": {

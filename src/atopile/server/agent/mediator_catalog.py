@@ -219,7 +219,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
     "project_create_path": ToolDirectoryItem(
         name="project_create_path",
         category="edit",
-        purpose="Create allowed files (.ato/.md/fabll .py) and directories.",
+        purpose="Create allowed files (.ato/.md/.yaml/.yml/fabll .py) and directories.",
         tooltip=(
             "Create files or folders in project scope with extension/path policy "
             "enforcement."

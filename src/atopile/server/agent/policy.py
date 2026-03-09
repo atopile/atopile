@@ -17,7 +17,13 @@ _MAX_WRITE_FILE_BYTES = 600_000
 _MAX_UI_DIFF_BYTES = 220_000
 _HASH_HEX_CHARS = 4
 _HASHLINE_CONTEXT_LINES = 2
-_ALLOWED_CREATE_FILE_EXTENSIONS: tuple[str, ...] = (".ato", ".md", ".py")
+_ALLOWED_CREATE_FILE_EXTENSIONS: tuple[str, ...] = (
+    ".ato",
+    ".md",
+    ".py",
+    ".yaml",
+    ".yml",
+)
 _FABLL_PY_CREATE_ROOTS: tuple[Path, ...] = (Path("src/faebryk/library"),)
 
 _ANCHOR_RE = re.compile(r"^(\d+)\s*:\s*([0-9A-Za-z]{1,16})$")
