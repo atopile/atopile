@@ -28,6 +28,7 @@ PRINT_DIGITS = 3
 # TODO all creating functions need g as param
 
 
+# TODO: merge this with Units.UnitsNotCommensurableError
 class UnitsNotCommensurableError(Exception):
     """
     Raised when operations are attempted on values with incompatible units.
@@ -3768,13 +3769,10 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import is_unit
 
-        if not is_unit.is_commensurable_with(self.get_is_unit(), unit):
-            raise UnitsNotCommensurableError(
-                f"Units {self.get_is_unit()} and {unit} are not commensurable",
-                incommensurable_items=[self.get_is_unit(), unit],
-            )
-
         scale, offset = is_unit.get_conversion_to(self.get_is_unit(), unit)
+        if scale == 1.0 and offset == 0.0:
+            # Already in the target unit, return self
+            return self
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -3849,6 +3847,44 @@ class Numbers(fabll.Node):
         return Numbers.create_instance(g=g, tg=tg).setup(
             numeric_set=out_numeric_set, unit=None
         )
+
+    def convert_to_with_unit(
+        self,
+        unit: "is_unit",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Numbers":
+        # Do the unit conversion in pure Python math instead of creating
+        # 6+ graph nodes for interval arithmetic.
+        # Formula: result_value = (base_value - offset) / multiplier
+        multiplier = unit._extract_multiplier()
+        offset = unit._extract_offset()
+
+        _g = g or self.g
+        _tg = tg or self.tg
+
+        numeric_set = self.get_numeric_set()
+        intervals = numeric_set.get_intervals()
+        converted_values = []
+        for iv in intervals:
+            min_v = iv.get_min_value()
+            max_v = iv.get_max_value()
+            new_min = (min_v - offset) / multiplier
+            new_max = (max_v - offset) / multiplier
+            if multiplier < 0:
+                new_min, new_max = new_max, new_min
+            converted_values.append((new_min, new_max))
+
+        new_numeric_set = NumericSet.create_instance(g=_g, tg=_tg).setup_from_values(
+            values=converted_values
+        )
+        result_numbers = Numbers.create_instance(g=_g, tg=_tg).setup(
+            numeric_set=new_numeric_set,
+            unit=unit,
+        )
+
+        return result_numbers
 
     def op_add_intervals(
         self: "Numbers",
@@ -4527,11 +4563,18 @@ class Numbers(fabll.Node):
         Two quantity sets are equal if they have commensurable units and
         the same numeric intervals (after unit conversion).
         """
+        # TODO, ......... why do we have two different units not commensurable errors?
+        from faebryk.library.Units import (
+            UnitsNotCommensurableError as UnitsUnitsNotCommensurableError,
+        )
+
         g = g or self.g
         tg = tg or self.tg
         # Convert to same units and check commensurability
         try:
             other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+        except UnitsUnitsNotCommensurableError:
+            return False
         except UnitsNotCommensurableError:
             return False
         return self.get_numeric_set().op_setic_equals(other_converted.get_numeric_set())
@@ -4583,7 +4626,8 @@ class Numbers(fabll.Node):
             tg=self.tg,
             unit=base_unit,
         )
-        numeric_set = as_base_units.get_numeric_set()
+        if as_base_units is not self:
+            numeric_set = as_base_units.get_numeric_set()
         type_name = (
             "Quantity_Set_Discrete"
             if numeric_set.is_discrete_set()
@@ -7709,7 +7753,7 @@ class AbstractEnums(fabll.Node):
                 return v
             try:
                 return int(v)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 return str(v)
 
         parsed_values = {k: _try_parse_int(v) for k, v in enum_values.items()}

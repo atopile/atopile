@@ -183,6 +183,7 @@ def cli(
         handler.tracebacks_suppress_map = {}  # Traceback through atopile infra
     elif verbose >= 3:
         logger.root.setLevel(logging.DEBUG)
+        handler.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
 
     # FIXME: this won't work properly when configs
