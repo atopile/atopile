@@ -842,7 +842,7 @@ class ConsoleLogHandler(RichHandler):
         source_id = os.environ.get("ATO_BUILD_ID", "")[:4] if log_source else ""
 
         # Prefix components: [id] time L logger_name
-        timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
+        timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S.%f")[:-3]
         level_name = record.levelname
         level_char = LEVEL_CHAR.get(level_name, level_name[0])
         logger_name = record.name

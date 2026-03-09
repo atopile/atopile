@@ -999,23 +999,7 @@ class MutationMap:
         if lit_n.are_units_compatible(param_unit):
             return lit
 
-        N = F.Literals.Numbers.bind_typegraph(tg or lit_n.tg)
-        NumberLit = lambda value, unit: N.create_instance(  # noqa: E731
-            g=g or lit_n.g
-        ).setup_from_singleton(value=value, unit=unit)
-        return (
-            # return ((lit - offset) / multiplier) * param_unit
-            lit_n.op_subtract_intervals(
-                NumberLit(param_unit._extract_offset(), lit_n.get_is_unit()),
-            )
-            .op_div_intervals(
-                NumberLit(param_unit._extract_multiplier(), lit_n.get_is_unit()),
-            )
-            .op_mul_intervals(
-                NumberLit(1, param_unit),
-            )
-            .is_literal.get()
-        )
+        return lit_n.convert_to_with_unit(param_unit).is_literal.get()
 
     def try_extract_superset(
         self,
