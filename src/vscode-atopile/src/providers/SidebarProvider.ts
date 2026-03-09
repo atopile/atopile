@@ -6,8 +6,7 @@
  *
  * Heavy logic is delegated to focused modules in ./sidebar/:
  * - types.ts: Message interfaces
- * - file-watcher.ts: File system watching
- * - file-operations.ts: File CRUD + listing
+ * - file-operations.ts: File CRUD
  * - action-handlers.ts: Open signals, KiCad, 3D, selection
  * - settings-handlers.ts: atopile settings sync + browse dialogs
  */
@@ -28,7 +27,6 @@ import { renderTemplate, serializeJsonForHtml } from '../common/template';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 import { openMigratePreview } from '../ui/migrate';
 import type { WebviewMessage } from './sidebar/types';
-import { SidebarFileWatcher } from './sidebar/file-watcher';
 import { SidebarFileOperations } from './sidebar/file-operations';
 import { SidebarActionHandlers } from './sidebar/action-handlers';
 import { SidebarSettingsHandlers } from './sidebar/settings-handlers';
@@ -60,7 +58,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   // Delegated modules
   private readonly _bridge: WebviewProxyBridge;
-  private readonly _fileWatcher: SidebarFileWatcher;
   private readonly _fileOps: SidebarFileOperations;
   private readonly _actions: SidebarActionHandlers;
   private readonly _settings: SidebarSettingsHandlers;
@@ -76,14 +73,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       postToWebview,
       logTag: 'SidebarProvider',
     });
-    this._fileWatcher = new SidebarFileWatcher({ postToWebview });
-    this._fileOps = new SidebarFileOperations({
-      postToWebview,
-      notifyFilesChanged: () => this._fileWatcher.notifyFilesChanged(),
-    });
-    this._actions = new SidebarActionHandlers({
-      onProjectSelected: (root) => root ? this._fileWatcher.watch(root) : this._fileWatcher.unwatch(),
-    });
+    this._fileOps = new SidebarFileOperations({ postToWebview });
+    this._actions = new SidebarActionHandlers({});
     this._settings = new SidebarSettingsHandlers({ postToWebview });
 
     this._disposables.push(
@@ -126,7 +117,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       d.dispose();
     }
     this._disposables = [];
-    this._fileWatcher.dispose();
     this._bridge.dispose();
   }
 
@@ -169,14 +159,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         (message: WebviewMessage) => this._handleWebviewMessage(message),
         undefined
       )
-    );
-
-    // Listen to VS Code workspace file events as a fallback for file system
-    // watcher failures in containerized environments (Docker, Fly.io).
-    this._disposables.push(
-      vscode.workspace.onDidCreateFiles(() => this._fileWatcher.notifyFilesChanged()),
-      vscode.workspace.onDidDeleteFiles(() => this._fileWatcher.notifyFilesChanged()),
-      vscode.workspace.onDidRenameFiles(() => this._fileWatcher.notifyFilesChanged()),
     );
 
     this._refreshWebview();
@@ -322,12 +304,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'openInTerminal':
         this._fileOps.openInTerminal(message.path);
-        break;
-      case 'listFiles':
-        this._fileOps.listFiles(message.projectRoot, message.includeAll ?? true);
-        break;
-      case 'loadDirectory':
-        this._fileOps.loadDirectory(message.projectRoot, message.directoryPath);
         break;
       case 'threeDModelBuildResult':
         this._actions.handleThreeDModelBuildResult(message.success, message.error);

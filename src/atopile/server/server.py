@@ -202,14 +202,6 @@ def _has_affected_paths(result: "FileChangeResult") -> bool:
     return any(_is_path_in_workspace(p) for p in changed_paths)
 
 
-async def _emit_project_files_changed() -> None:
-    root = model_state.workspace_path
-    if root:
-        await server_state.emit_event(
-            "project_files_changed", {"project_root": str(root)}
-        )
-
-
 async def _emit_project_modules_changed() -> None:
     root = model_state.workspace_path
     if root:
@@ -271,7 +263,6 @@ async def _handle_project_sources_change(
 ) -> None:
     if not _has_affected_paths(result):
         return
-    _debounce("project-files", UI_DEBOUNCE_S, _emit_project_files_changed)
     _debounce("project-modules", UI_DEBOUNCE_S, _emit_project_modules_changed)
 
 
@@ -280,7 +271,6 @@ async def _handle_project_python_change(
 ) -> None:
     if not _has_affected_paths(result):
         return
-    _debounce("project-files", UI_DEBOUNCE_S, _emit_project_files_changed)
 
 
 async def _handle_project_dependencies_change(
@@ -368,7 +358,17 @@ def cleanup_server(exc: BaseException | None = None) -> None:
     except Exception:
         log.exception("Failed to close logging contexts during cleanup")
 
-    # 3. Capture exception for telemetry (if provided)
+    # 3. Stop selected-project file watcher
+    try:
+        from atopile.server.project_files import ProjectFilesWatcher
+        from atopile.server.resource_files import ResourceFileWatcher
+
+        ProjectFilesWatcher.clear()
+        ResourceFileWatcher.clear()
+    except Exception:
+        pass
+
+    # 4. Capture exception for telemetry (if provided)
     try:
         from atopile import telemetry
 
@@ -378,7 +378,7 @@ def cleanup_server(exc: BaseException | None = None) -> None:
     except Exception:
         log.exception("Failed to flush telemetry during cleanup")
 
-    # 4. Flush logging handlers
+    # 5. Flush logging handlers
     try:
         logging.shutdown()
     except Exception:

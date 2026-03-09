@@ -3,7 +3,7 @@ import { BaseWebview } from './webview-base';
 import { traceInfo } from '../common/log/logging';
 import { runAtoCommandInTerminal } from '../common/findbin';
 import { getBuildTarget, onBuildTargetChanged } from '../common/target';
-import { getPackageDependency } from '../common/manifest';
+import { backendServer } from '../common/backendServer';
 import * as path from 'path';
 import { renderTemplate } from '../common/template';
 import { getNonce } from '../common/webview';
@@ -18,7 +18,7 @@ class PackageExplorerWebview extends BaseWebview {
     private themeChangeDisposable?: vscode.Disposable;
     private messageDisposable?: vscode.Disposable;
     private buildTargetChangeDisposable?: vscode.Disposable;
-    private fileWatcher?: vscode.FileSystemWatcher;
+    private backendEventDisposable?: vscode.Disposable;
     private subscribedPackage?: string;
 
     constructor() {
@@ -105,22 +105,25 @@ class PackageExplorerWebview extends BaseWebview {
         // Listen for build target changes
         this.buildTargetChangeDisposable = onBuildTargetChanged(() => {
             this.sendProjectNameToWebview();
-            this.setupManifestWatcher();
             // Update subscribed package status if any
             if (this.subscribedPackage) {
-                this.sendPackageStatus(this.subscribedPackage);
+                void this.sendPackageStatus(this.subscribedPackage);
             }
         });
-
-        // Watch for ato.yaml changes
-        this.setupManifestWatcher();
+        this.backendEventDisposable = backendServer.onBackendEvent((message) => {
+            if (message.event === 'backend_socket_connected' || message.event === 'packages_changed') {
+                if (this.subscribedPackage) {
+                    void this.sendPackageStatus(this.subscribedPackage);
+                }
+            }
+        });
     }
 
     protected onDispose(): void {
         this.themeChangeDisposable?.dispose();
         this.messageDisposable?.dispose();
         this.buildTargetChangeDisposable?.dispose();
-        this.fileWatcher?.dispose();
+        this.backendEventDisposable?.dispose();
     }
 
     private sendThemeToWebview(): void {
@@ -194,36 +197,12 @@ class PackageExplorerWebview extends BaseWebview {
         }
     }
 
-    private setupManifestWatcher(): void {
-        // Dispose existing watcher if any
-        this.fileWatcher?.dispose();
-
-        const build = getBuildTarget();
-        if (!build) return;
-
-        // Watch the ato.yaml file for the current build target
-        const pattern = new vscode.RelativePattern(build.root, 'ato.yaml');
-        this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-
-        // Send package status when file changes
-        this.fileWatcher.onDidChange(() => {
-            if (this.subscribedPackage) {
-                this.sendPackageStatus(this.subscribedPackage);
-            }
-        });
-        this.fileWatcher.onDidCreate(() => {
-            if (this.subscribedPackage) {
-                this.sendPackageStatus(this.subscribedPackage);
-            }
-        });
-    }
-
     private subscribeToPackage(packageId: string): void {
         // Replace existing subscription
         this.subscribedPackage = packageId;
 
         // Send immediate status update
-        this.sendPackageStatus(packageId);
+        void this.sendPackageStatus(packageId);
     }
 
     private async sendPackageStatus(packageId: string): Promise<void> {
@@ -239,15 +218,29 @@ class PackageExplorerWebview extends BaseWebview {
             return;
         }
 
-        // Get package dependency status
-        const atoYamlPath = vscode.Uri.file(path.join(build.root, 'ato.yaml'));
-        const dependency = await getPackageDependency(atoYamlPath, packageId);
+        let installed = false;
+        let version: string | undefined;
+        try {
+            const response = await backendServer.sendBackendActionWithResponse(
+                'getPackageDependencyStatus',
+                {
+                    projectRoot: build.root,
+                    packageId,
+                },
+            );
+            const result = response.result;
+            installed = Boolean(result?.success && result.installed);
+            version = typeof result?.version === 'string' ? result.version : undefined;
+        } catch {
+            installed = false;
+            version = undefined;
+        }
 
         this.panel.webview.postMessage({
             type: 'package-status',
             packageId: packageId,
-            installed: dependency.installed,
-            version: dependency.version
+            installed,
+            version,
         });
     }
 }
