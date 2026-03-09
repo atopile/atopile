@@ -3260,34 +3260,32 @@ class Numbers(fabll.Node):
         if unit is not None and unit is not Dimensionless:
             from faebryk.library.Units import has_display_unit
 
-            # Store display unit (user's original unit, e.g., mV)
-            display_unit_child = unit.MakeChild()
-            out.add_dependant(display_unit_child)
-            out.add_dependant(
-                fabll.Traits.MakeEdge(
-                    has_display_unit.MakeChild([display_unit_child]), [out]
-                )
-            )
-
             unit_info = extract_unit_info(unit)
             if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
-                # Base unit - use same child as has_unit (display and base are the same)
+                # Base unit - point to shared type-level is_unit (no copies)
                 out.add_dependant(
                     fabll.Traits.MakeEdge(
-                        has_unit.MakeChild([display_unit_child]), [out]
+                        has_display_unit.MakeChild_FromType(unit), [out]
                     )
                 )
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(has_unit.MakeChild_FromType(unit), [out])
+                )
             else:
-                # Prefixed unit - create base unit for has_unit
-                # Values are stored in base units, so has_unit must reflect this
+                # Prefixed unit - point to type-level is_unit singletons
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(
+                        has_display_unit.MakeChild_FromType(unit), [out]
+                    )
+                )
+
                 from faebryk.library.Parameters import NumericParameter
 
-                base_unit_child = NumericParameter._make_1_0_unit(
-                    unit_info.basis_vector
-                ).MakeChild()
-                out.add_dependant(base_unit_child)
+                base_unit_type = NumericParameter._make_1_0_unit(unit_info.basis_vector)
                 out.add_dependant(
-                    fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
+                    fabll.Traits.MakeEdge(
+                        has_unit.MakeChild_FromType(base_unit_type), [out]
+                    )
                 )
 
         return out

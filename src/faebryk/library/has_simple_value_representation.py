@@ -505,19 +505,16 @@ class TestHasSimpleValueRepresentation:
     def _make_kiloohm_unit(
         self, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "F.Units.is_unit":
-        from faebryk.library.Units import BasisVector, is_unit, is_unit_type
+        from faebryk.library.Units import BasisVector, is_unit
 
         class _Kiloohm(fabll.Node):
             unit_vector_arg = BasisVector(kilogram=1, meter=2, second=-3, ampere=-2)
-            is_unit_type_trait = fabll.Traits.MakeEdge(
-                is_unit_type.MakeChild(("kΩ", "kohm"), unit_vector_arg)
-            ).put_on_type()
             is_unit_trait = fabll.Traits.MakeEdge(
                 is_unit.MakeChild(("kΩ", "kohm"), unit_vector_arg, multiplier=1000.0)
-            )
+            ).put_on_type()
             can_be_operand = fabll.Traits.MakeEdge(
                 F.Parameters.can_be_operand.MakeChild()
-            )
+            ).put_on_type()
 
         kohm_instance = _Kiloohm.bind_typegraph(tg=tg).create_instance(g=g)
         return kohm_instance.is_unit_trait.get()
@@ -564,19 +561,16 @@ class TestHasSimpleValueRepresentation:
     def _make_milliohm_unit(
         self, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "F.Units.is_unit":
-        from faebryk.library.Units import BasisVector, is_unit, is_unit_type
+        from faebryk.library.Units import BasisVector, is_unit
 
         class _Milliohm(fabll.Node):
             unit_vector_arg = BasisVector(kilogram=1, meter=2, second=-3, ampere=-2)
-            is_unit_type_trait = fabll.Traits.MakeEdge(
-                is_unit_type.MakeChild(("mΩ", "mohm"), unit_vector_arg)
-            ).put_on_type()
             is_unit_trait = fabll.Traits.MakeEdge(
                 is_unit.MakeChild(("mΩ", "mohm"), unit_vector_arg, multiplier=0.001)
-            )
+            ).put_on_type()
             can_be_operand = fabll.Traits.MakeEdge(
                 F.Parameters.can_be_operand.MakeChild()
-            )
+            ).put_on_type()
 
         mohm_instance = _Milliohm.bind_typegraph(tg=tg).create_instance(g=g)
         return mohm_instance.is_unit_trait.get()

@@ -243,16 +243,20 @@ class BoundExpressions:
         self._letters = (letter for letter in string.ascii_uppercase)
 
     def _resolve_unit(self, unit: type[fabll.Node]) -> F.Units.is_unit | None:
-        instance = unit.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        bound = unit.bind_typegraph(tg=self.tg)
+
+        # Check type-level is_unit first (singleton units)
+        if type_trait := bound.try_get_type_trait(F.Units.is_unit):
+            return type_trait
+
+        # Fall back to instance-level (e.g., unit expressions that need setup)
+        instance = bound.create_instance(g=self.g)
 
         if is_unit_expr := instance.try_get_trait(F.Units.is_unit_expression):
             is_unit_expr.get_obj().setup(cast(type[F.Units.UnitExpression], unit))
-            resolved = F.Units.resolve_unit_expression(
+            return F.Units.resolve_unit_expression(
                 g=self.g, tg=self.tg, expr=instance.instance
             )
-            if resolved is None:
-                return None
-            return resolved.get_trait(F.Units.is_unit)
 
         return instance.get_trait(F.Units.is_unit)
 

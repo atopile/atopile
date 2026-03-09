@@ -884,10 +884,22 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         # overrides fields in instance
         for locator, field in type(self).__fields.items():
             if isinstance(field, _ChildField):
+                # For type-level fields, look up the child on the type node
+                # instead of the instance node
+                if field._type_child:
+                    type_edge = fbrk.EdgeType.get_type_edge(bound_node=instance)
+                    if type_edge is not None:
+                        lookup_instance = instance.g().bind(
+                            node=fbrk.EdgeType.get_type_node(edge=type_edge.edge())
+                        )
+                    else:
+                        lookup_instance = instance
+                else:
+                    lookup_instance = instance
                 child = InstanceChildBoundInstance(
                     nodetype=field.nodetype,
                     identifier=field.get_identifier(),
-                    instance=instance,
+                    instance=lookup_instance,
                 )
                 setattr(self, locator, child)
             elif isinstance(field, Traits.ImpliedTrait):
@@ -1059,6 +1071,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     source_chunk_node=source_chunk_node,
                 )
         elif isinstance(field, _EdgeField):
+            # Ensure any type references in RefPaths are registered
+            # with the TypeGraph before processing the edge.
+            for path in [field.lhs, field.rhs]:
+                for elem in path:
+                    if isinstance(elem, type) and issubclass(elem, Node):
+                        elem.bind_typegraph(tg=t.tg).get_or_create_type()
             if type_field:
                 type_node = t.get_or_create_type()
                 edge_instance = field.edge.create_edge(
@@ -1442,9 +1460,14 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     def get_type_name(self) -> str | None:
         type_node = self.get_type_node()
-        if type_node is None:
+        if type_node is not None:
+            return fbrk.TypeGraph.get_type_name(type_node=type_node)
+        # If no type edge, this node might BE a type node (e.g. from
+        # type-level singleton traits).  Try using it directly.
+        try:
+            return fbrk.TypeGraph.get_type_name(type_node=self.instance)
+        except Exception:
             return None
-        return fbrk.TypeGraph.get_type_name(type_node=type_node)
 
     def isinstance(self, *type_node: "type[NodeT]") -> bool:
         """

@@ -915,7 +915,7 @@ class NumericParameter(fabll.Node):
     @staticmethod
     @once
     def _make_1_0_unit(basis_vector: "F.Units.BasisVector") -> type[fabll.Node]:
-        from faebryk.library.Units import is_unit, is_unit_type
+        from faebryk.library.Units import is_unit
 
         is_unit_trait_child = is_unit.MakeChild(
             symbols=(),
@@ -926,11 +926,10 @@ class NumericParameter(fabll.Node):
 
         class _BaseUnit(fabll.Node):
             _override_type_identifier = f"BaseUnit<{basis_vector}>"
-            is_unit_type_trait = fabll.Traits.MakeEdge(
-                is_unit_type.MakeChild(())
+            is_unit = fabll.Traits.MakeEdge(is_unit_trait_child).put_on_type()
+            can_be_operand_trait = fabll.Traits.MakeEdge(
+                can_be_operand.MakeChild()
             ).put_on_type()
-            is_unit = fabll.Traits.MakeEdge(is_unit_trait_child)
-            can_be_operand_trait = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
         return _BaseUnit
 
@@ -954,30 +953,29 @@ class NumericParameter(fabll.Node):
         out = fabll._ChildField(cls)
 
         if unit is not None:
-            # Create display unit from the provided type
-            display_unit_child = unit.MakeChild()
-            out.add_dependant(display_unit_child)
-            out.add_dependant(
-                fabll.Traits.MakeEdge(
-                    has_display_unit.MakeChild([display_unit_child]), [out]
-                )
-            )
-
             unit_info = extract_unit_info(unit)
             if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
-                # Base unit - use same child for has_unit
+                # Base unit - point to shared type-level is_unit (no copies)
                 out.add_dependant(
                     fabll.Traits.MakeEdge(
-                        has_unit.MakeChild([display_unit_child]), [out]
+                        has_display_unit.MakeChild_FromType(unit), [out]
                     )
                 )
-            else:
-                base_unit_child = NumericParameter._make_1_0_unit(
-                    unit_info.basis_vector
-                ).MakeChild()
-                out.add_dependant(base_unit_child)
                 out.add_dependant(
-                    fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
+                    fabll.Traits.MakeEdge(has_unit.MakeChild_FromType(unit), [out])
+                )
+            else:
+                # Prefixed unit - point to type-level is_unit singletons
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(
+                        has_display_unit.MakeChild_FromType(unit), [out]
+                    )
+                )
+                base_unit_type = NumericParameter._make_1_0_unit(unit_info.basis_vector)
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(
+                        has_unit.MakeChild_FromType(base_unit_type), [out]
+                    )
                 )
 
         if domain is not NumericParameter.DOMAIN_SKIP:
@@ -1079,11 +1077,8 @@ class NumericParameter(fabll.Node):
             param_unit = -1
             for operand_op in constraining_operands:
                 op_obj = operand_op.get_obj_raw()
-                operand_unit_node = resolve_unit_expression(
+                operand_unit = resolve_unit_expression(
                     g=param.g, tg=param.tg, expr=op_obj.instance
-                )
-                operand_unit = (
-                    operand_unit_node.get_is_unit() if operand_unit_node else None
                 )
                 if isinstance(param_unit, int) and param_unit == -1:
                     param_unit = operand_unit
@@ -1137,10 +1132,9 @@ class NumericParameter(fabll.Node):
             for operand in operands:
                 op_obj = operand.get_obj_raw()
                 try:
-                    unit_node = resolve_unit_expression(
+                    unit = resolve_unit_expression(
                         g=root.g, tg=root.tg, expr=op_obj.instance
                     )
-                    unit = unit_node.get_is_unit() if unit_node else None
                 except Exception:
                     # If we can't resolve the unit, skip this operand
                     unit = None

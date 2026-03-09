@@ -3618,10 +3618,9 @@ class TestMakeChildDeduplication:
         assert literal is not None
         assert param.get_values() == [10000.0, 10000.0]
         assert param.force_get_display_units().get_symbols() == ["Ω", "ohm", "ohms"]
-        assert (
-            fabll.Traits(param.force_get_units()).get_obj_raw().get_type_node()
-            == F.Units.Ohm.bind_typegraph(tg=tg).as_type_node().instance
-        )
+        # With type-level singleton units, the trait owner IS the type node
+        unit_owner = fabll.Traits(param.force_get_units()).get_obj_raw()
+        assert unit_owner.get_type_name() == "Ohm"
 
     def test_inherited_explicit_with_implicit_constraint(self):
         """Derived type constrains inherited explicit parameter.
