@@ -30,6 +30,7 @@ import {
 } from './sidebar-modules';
 import { ManufacturingPanel } from './manufacturing';
 import { AgentChatPanel } from '../agent/AgentChatPanel';
+import { ENABLE_CHAT } from '../api/config';
 import './Sidebar.css';
 import '../styles.css';
 
@@ -50,7 +51,6 @@ export function Sidebar() {
 
   // Granular selectors - only re-render when specific state changes
   const isConnected = useStore((s) => s.isConnected);
-  const chatEnabled = useStore((s) => s.features.chat);
   const hasEverConnected = useStore((s) => s.hasEverConnected);
   const projects = useStore((s) => s.projects);
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
@@ -570,7 +570,7 @@ export function Sidebar() {
           </div>
         </div>
 
-        {chatEnabled && (
+        {ENABLE_CHAT && (
           <AgentChatPanel
             projectRoot={selectedProjectRoot}
             selectedTargets={selectedTargetNames}

@@ -68,13 +68,12 @@ export const WS_STATE_URL = `${WS_BASE_URL}/ws/state`;
 export const WS_LOGS_URL = `${WS_BASE_URL}/ws/logs`;
 
 /**
- * Chat feature override from VS Code extension (window global) or build-time env.
- * `null` means no override; backend capabilities are used instead.
+ * Chat feature flag from the VS Code extension (window global) or build-time env.
  */
-export const ENABLE_CHAT_OVERRIDE: boolean | null =
+export const ENABLE_CHAT =
   win.__ATOPILE_ENABLE_CHAT__ !== undefined
     ? Boolean(win.__ATOPILE_ENABLE_CHAT__)
-    : parseOptionalBoolean(import.meta.env.VITE_ENABLE_CHAT);
+    : (parseOptionalBoolean(import.meta.env.VITE_ENABLE_CHAT) ?? false);
 
 /**
  * True when running inside the browser-based web-ide container.

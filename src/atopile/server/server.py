@@ -588,14 +588,6 @@ def create_app(
         """Simple health check endpoint."""
         return {"status": "ok"}
 
-    @app.get("/api/features")
-    async def get_features():
-        """Return backend-controlled UI feature capabilities."""
-        raw = os.getenv("UI_ENABLE_CHAT") or os.getenv("FBRK_UI_ENABLE_CHAT") or ""
-        chat_enabled = raw.lower() in ("1", "true", "yes", "y")
-        log.info(f"GET /api/features: UI_ENABLE_CHAT={raw!r} → chat={chat_enabled}")
-        return {"features": {"chat": chat_enabled}}
-
     from atopile.server.routes import (
         agent as agent_routes,
     )
