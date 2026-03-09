@@ -4,26 +4,188 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
-function createEnvironmentMap(renderer: THREE.WebGLRenderer): THREE.Texture {
+interface PointLightPreset {
+    color: number | string;
+    intensity: number;
+    position: [number, number, number];
+    distance?: number;
+    decay?: number;
+}
+
+interface DirectionalLightPreset {
+    color: number | string;
+    intensity: number;
+    position: [number, number, number];
+}
+
+interface HemisphereLightPreset {
+    skyColor: number | string;
+    groundColor: number | string;
+    intensity: number;
+}
+
+interface EnvironmentPreset {
+    skyColor: string;
+    skyRadius: number;
+    skySegments: [number, number];
+    lights: PointLightPreset[];
+}
+
+interface GridPreset {
+    baseCellSize: number;
+    majorCellInterval: number;
+    minMinorDivisions: number;
+    minorColor: number;
+    majorColor: number;
+    minorOpacity: number;
+    majorOpacity: number;
+}
+
+interface CameraPreset {
+    fov: number;
+    initialPosition: [number, number, number];
+    perspectiveDirection: [number, number, number];
+    perspectiveDistanceScale: number;
+    topDownDistanceScale: number;
+}
+
+interface ControlsPreset {
+    enableDamping: boolean;
+    autoRotate: boolean;
+    autoRotateSpeed: number;
+    enablePan: boolean;
+    minDistance: number;
+    maxDistance: number;
+}
+
+interface RendererPreset {
+    antialias: boolean;
+    alpha: boolean;
+    powerPreference: WebGLPowerPreference;
+    toneMappingExposure: number;
+    maxPixelRatio: number;
+}
+
+interface MaterialStylePreset {
+    silkscreenColor: string;
+    solderMaskColors: Record<string, string>;
+    metallicColors: Record<string, string>;
+}
+
+interface ScenePreset {
+    renderer: RendererPreset;
+    camera: CameraPreset;
+    controls: ControlsPreset;
+    environment: EnvironmentPreset;
+    hemisphereLight: HemisphereLightPreset;
+    directionalLights: DirectionalLightPreset[];
+    pointLights: PointLightPreset[];
+    grid: GridPreset;
+    materials: MaterialStylePreset;
+}
+
+const STUDIO_PRESET: ScenePreset = {
+    renderer: {
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+        toneMappingExposure: 1.22,
+        maxPixelRatio: 2,
+    },
+    camera: {
+        fov: 46,
+        initialPosition: [0, 45, 120],
+        perspectiveDirection: [1.15, 0.62, 0.9],
+        perspectiveDistanceScale: 1.95,
+        topDownDistanceScale: 2.35,
+    },
+    controls: {
+        enableDamping: true,
+        autoRotate: true,
+        autoRotateSpeed: 0.8,
+        enablePan: false,
+        minDistance: 20,
+        maxDistance: 500,
+    },
+    environment: {
+        skyColor: "#b8b2a8",
+        skyRadius: 20,
+        skySegments: [32, 16],
+        lights: [
+            { color: 0xffddb0, intensity: 14, position: [7, 8, 5], distance: 0, decay: 2 },
+            { color: 0xf95015, intensity: 5.5, position: [-3, 3.5, 9], distance: 0, decay: 2 },
+            { color: 0x8cb9e6, intensity: 6, position: [-8, 6, -10], distance: 0, decay: 2 },
+        ],
+    },
+    hemisphereLight: {
+        skyColor: 0xe7dccd,
+        groundColor: 0x0b0d10,
+        intensity: 1.0,
+    },
+    directionalLights: [
+        { color: 0xffe4bd, intensity: 2.4, position: [46, 72, 34] },
+        { color: 0x9bb8d4, intensity: 0.35, position: [-54, 28, -56] },
+        { color: 0xfff1dc, intensity: 0.28, position: [-12, 18, 62] },
+    ],
+    pointLights: [
+        { color: 0xf95015, intensity: 0.7, position: [-28, 22, 18], distance: 0, decay: 2 },
+        { color: 0xff671f, intensity: 0.4, position: [32, 14, -6], distance: 0, decay: 2 },
+    ],
+    grid: {
+        baseCellSize: 22,
+        majorCellInterval: 4,
+        minMinorDivisions: 28,
+        minorColor: 0xf95015,
+        majorColor: 0xf95015,
+        minorOpacity: 0.18,
+        majorOpacity: 0.42,
+    },
+    materials: {
+        silkscreenColor: "#f4f3ea",
+        solderMaskColors: {
+            mat_24: "#161719",
+            mat_25: "#161719",
+            mat_26: "#202225",
+            mat_6: "#202225",
+        },
+        metallicColors: {
+            mat_20: "#c8a24a",
+            mat_21: "#c7ccd3",
+        },
+    },
+};
+
+function applyRendererPreset(
+    renderer: THREE.WebGLRenderer,
+    preset: RendererPreset,
+): void {
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = preset.toneMappingExposure;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preset.maxPixelRatio));
+}
+
+function createEnvironmentMap(
+    renderer: THREE.WebGLRenderer,
+    preset: EnvironmentPreset,
+): THREE.Texture {
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envScene = new THREE.Scene();
     const sky = new THREE.Mesh(
-        new THREE.SphereGeometry(20, 32, 16),
+        new THREE.SphereGeometry(
+            preset.skyRadius,
+            preset.skySegments[0],
+            preset.skySegments[1],
+        ),
         new THREE.MeshBasicMaterial({
-            color: new THREE.Color("#b8b2a8"),
+            color: new THREE.Color(preset.skyColor),
             side: THREE.BackSide,
         }),
     );
     envScene.add(sky);
-    const warm = new THREE.PointLight(0xffddb0, 14, 0, 2);
-    warm.position.set(7, 8, 5);
-    envScene.add(warm);
-    const accent = new THREE.PointLight(0xf95015, 5.5, 0, 2);
-    accent.position.set(-3, 3.5, 9);
-    envScene.add(accent);
-    const cool = new THREE.PointLight(0x8cb9e6, 6, 0, 2);
-    cool.position.set(-8, 6, -10);
-    envScene.add(cool);
+    for (const light of preset.lights) {
+        envScene.add(createPointLight(light));
+    }
     const envTarget = pmrem.fromScene(envScene);
     const texture = envTarget.texture;
     pmrem.dispose();
@@ -38,37 +200,75 @@ function looksLikeBoardSilkscreen(materialName: string, meshName: string): boole
 }
 
 function buildBackgroundGrid(bounds: THREE.Box3): THREE.Object3D {
-    const spanX = Math.max(bounds.max.x - bounds.min.x, 1);
-    const spanZ = Math.max(bounds.max.z - bounds.min.z, 1);
-    const baseCellSize = 14;
-    const majorCellInterval = 3;
+    const spanX = bounds.max.x - bounds.min.x;
+    const spanZ = bounds.max.z - bounds.min.z;
+    const maxSpan = Math.max(spanX, spanZ, 0.001);
 
-    const targetSpan = Math.max(Math.max(spanX, spanZ) + baseCellSize * 4, baseCellSize * 6);
-    const baseDivisions = Math.max(
-        majorCellInterval * 2,
-        Math.ceil(targetSpan / baseCellSize),
-    );
-    const spanDivisions = Math.ceil(baseDivisions / majorCellInterval) * majorCellInterval;
+    const { majorCellInterval } = STUDIO_PRESET.grid;
 
-    const width = spanDivisions * baseCellSize;
-    const height = spanDivisions / majorCellInterval;
+    const idealMinorStep = maxSpan / 25;
+    const exponent = Math.floor(Math.log10(idealMinorStep));
+    const fraction = idealMinorStep / Math.pow(10, exponent);
+
+    let niceFraction;
+    if (fraction < 1.5) niceFraction = 1;
+    else if (fraction < 3) niceFraction = 2;
+    else if (fraction < 7) niceFraction = 5;
+    else niceFraction = 10;
+
+    const step = niceFraction * Math.pow(10, exponent);
+    
+    const planeSize = maxSpan * 4;
+    const halfSteps = Math.ceil((planeSize / 2) / step);
+    const actualHalf = halfSteps * step;
+
     const floorHeight = bounds.max.y - bounds.min.y;
-    const floorY = bounds.min.y - Math.max(floorHeight * 0.08, 0.02);
+    const floorY = bounds.min.y - Math.max(floorHeight * 0.08, maxSpan * 0.02);
 
-    const minorGrid = new THREE.GridHelper(width, spanDivisions, 0x202a36, 0x101922);
-    minorGrid.material.opacity = 0.2;
-    minorGrid.material.transparent = true;
-    minorGrid.position.y = floorY;
-    minorGrid.material.depthWrite = false;
+    const minorVertices: number[] = [];
+    const majorVertices: number[] = [];
+    
+    for (let i = -halfSteps; i <= halfSteps; i++) {
+        const p = i * step;
+        const target = i % majorCellInterval === 0 ? majorVertices : minorVertices;
+        target.push(-actualHalf, floorY, p, actualHalf, floorY, p);
+        target.push(p, floorY, -actualHalf, p, floorY, actualHalf);
+    }
 
-    const majorGrid = new THREE.GridHelper(width, height, 0x2a3b4f, 0x2a3b4f);
-    majorGrid.material.opacity = 0.4;
-    majorGrid.material.transparent = true;
-    majorGrid.position.y = floorY;
-    majorGrid.material.depthWrite = false;
+    const minorGrid = new THREE.LineSegments(
+        new THREE.BufferGeometry(),
+        new THREE.LineBasicMaterial({
+            color: STUDIO_PRESET.grid.minorColor,
+            transparent: true,
+            opacity: STUDIO_PRESET.grid.minorOpacity,
+            depthWrite: false,
+            toneMapped: false,
+        }),
+    );
+    minorGrid.geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(minorVertices, 3),
+    );
+    minorGrid.renderOrder = -2;
+
+    const majorGrid = new THREE.LineSegments(
+        new THREE.BufferGeometry(),
+        new THREE.LineBasicMaterial({
+            color: STUDIO_PRESET.grid.majorColor,
+            transparent: true,
+            opacity: STUDIO_PRESET.grid.majorOpacity,
+            depthWrite: false,
+            toneMapped: false,
+        }),
+    );
+    majorGrid.geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(majorVertices, 3),
+    );
+    majorGrid.renderOrder = -1;
 
     const grid = new THREE.Group();
-    grid.add(majorGrid, minorGrid);
+    grid.add(minorGrid, majorGrid);
     return grid;
 }
 
@@ -212,7 +412,7 @@ function applyBoardMaterialStyle(
 
     if (looksLikeBoardSilkscreen(materialName, meshName)) {
         const overlay = new THREE.MeshBasicMaterial({
-            color: new THREE.Color("#f4f3ea"),
+            color: new THREE.Color(STUDIO_PRESET.materials.silkscreenColor),
             side: THREE.DoubleSide,
             toneMapped: false,
             transparent: false,
@@ -234,8 +434,10 @@ function applyBoardMaterialStyle(
 
     const styled = material.clone();
 
-    if (materialName === "mat_24" || materialName === "mat_25") {
-        styled.color = new THREE.Color("#161719");
+    if (materialName in STUDIO_PRESET.materials.solderMaskColors) {
+        styled.color = new THREE.Color(
+            STUDIO_PRESET.materials.solderMaskColors[materialName]!,
+        );
         styled.roughness = 0.88;
         styled.metalness = 0.01;
         styled.envMapIntensity = 0.035;
@@ -248,7 +450,9 @@ function applyBoardMaterialStyle(
     }
 
     if (materialName === "mat_26" || materialName === "mat_6") {
-        styled.color = new THREE.Color("#202225");
+        styled.color = new THREE.Color(
+            STUDIO_PRESET.materials.solderMaskColors[materialName]!,
+        );
         styled.roughness = 0.9;
         styled.metalness = 0.01;
         styled.envMapIntensity = 0.03;
@@ -258,9 +462,9 @@ function applyBoardMaterialStyle(
         return styled;
     }
 
-    if (materialName === "mat_20" || materialName === "mat_21") {
+    if (materialName in STUDIO_PRESET.materials.metallicColors) {
         styled.color = new THREE.Color(
-            materialName === "mat_20" ? "#c8a24a" : "#c7ccd3",
+            STUDIO_PRESET.materials.metallicColors[materialName]!,
         );
         styled.roughness = materialName === "mat_20" ? 0.42 : 0.3;
         styled.metalness = 0.88;
@@ -280,6 +484,49 @@ function applyBoardMaterialStyle(
     return styled;
 }
 
+function createDirectionalLight(preset: DirectionalLightPreset): THREE.DirectionalLight {
+    const light = new THREE.DirectionalLight(preset.color, preset.intensity);
+    light.position.set(...preset.position);
+    return light;
+}
+
+function createPointLight(preset: PointLightPreset): THREE.PointLight {
+    const light = new THREE.PointLight(
+        preset.color,
+        preset.intensity,
+        preset.distance ?? 0,
+        preset.decay ?? 2,
+    );
+    light.position.set(...preset.position);
+    return light;
+}
+
+function createHemisphereLight(preset: HemisphereLightPreset): THREE.HemisphereLight {
+    return new THREE.HemisphereLight(
+        preset.skyColor,
+        preset.groundColor,
+        preset.intensity,
+    );
+}
+
+function createCamera(preset: CameraPreset): THREE.PerspectiveCamera {
+    const camera = new THREE.PerspectiveCamera(preset.fov, 1, 0.0001, 10);
+    camera.position.set(...preset.initialPosition);
+    return camera;
+}
+
+function applyControlsPreset(
+    controls: OrbitControls,
+    preset: ControlsPreset,
+): void {
+    controls.enableDamping = preset.enableDamping;
+    controls.autoRotate = preset.autoRotate;
+    controls.autoRotateSpeed = preset.autoRotateSpeed;
+    controls.enablePan = preset.enablePan;
+    controls.minDistance = preset.minDistance;
+    controls.maxDistance = preset.maxDistance;
+}
+
 export async function mountModel3D(surface: HTMLElement, modelUrl: string): Promise<() => void> {
     const canvas = document.createElement("canvas");
     canvas.style.width = "100%";
@@ -294,55 +541,31 @@ export async function mountModel3D(surface: HTMLElement, modelUrl: string): Prom
 
     const renderer = new THREE.WebGLRenderer({
         canvas,
-        antialias: true,
-        alpha: true,
-        powerPreference: "high-performance",
+        antialias: STUDIO_PRESET.renderer.antialias,
+        alpha: STUDIO_PRESET.renderer.alpha,
+        powerPreference: STUDIO_PRESET.renderer.powerPreference,
     });
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.22;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    applyRendererPreset(renderer, STUDIO_PRESET.renderer);
 
     const scene = new THREE.Scene();
     scene.background = null;
-    const camera = new THREE.PerspectiveCamera(34, 1, 0.0001, 10);
-    camera.position.set(0, 45, 120);
+    const camera = createCamera(STUDIO_PRESET.camera);
     scene.add(camera);
 
     const controls = new OrbitControls(camera, canvas);
-    controls.enableDamping = true;
-    controls.autoRotate = false;
-    controls.autoRotateSpeed = 0.8;
-    controls.enablePan = false;
-    controls.minDistance = 20;
-    controls.maxDistance = 500;
+    applyControlsPreset(controls, STUDIO_PRESET.controls);
 
-    const envMap = createEnvironmentMap(renderer);
+    const envMap = createEnvironmentMap(renderer, STUDIO_PRESET.environment);
     scene.environment = envMap;
     scene.background = null;
 
-    const hemi = new THREE.HemisphereLight(0xe7dccd, 0x0b0d10, 1.0);
-    scene.add(hemi);
-
-    const key = new THREE.DirectionalLight(0xffe4bd, 2.4);
-    key.position.set(46, 72, 34);
-    scene.add(key);
-
-    const fill = new THREE.DirectionalLight(0x9bb8d4, 0.35);
-    fill.position.set(-54, 28, -56);
-    scene.add(fill);
-
-    const rim = new THREE.DirectionalLight(0xfff1dc, 0.28);
-    rim.position.set(-12, 18, 62);
-    scene.add(rim);
-
-    const glow = new THREE.PointLight(0xf95015, 0.7, 0, 2);
-    glow.position.set(-28, 22, 18);
-    scene.add(glow);
-
-    const glowSecondary = new THREE.PointLight(0xff671f, 0.4, 0, 2);
-    glowSecondary.position.set(32, 14, -6);
-    scene.add(glowSecondary);
+    scene.add(createHemisphereLight(STUDIO_PRESET.hemisphereLight));
+    for (const light of STUDIO_PRESET.directionalLights) {
+        scene.add(createDirectionalLight(light));
+    }
+    for (const light of STUDIO_PRESET.pointLights) {
+        scene.add(createPointLight(light));
+    }
 
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
@@ -375,7 +598,7 @@ export async function mountModel3D(surface: HTMLElement, modelUrl: string): Prom
     let requestRender: (() => void) | null = null;
 
     const setTopDownView = () => {
-        const distance = currentRadius * 2.35;
+        const distance = currentRadius * STUDIO_PRESET.camera.topDownDistanceScale;
         camera.up.set(0, 0, -1);
         camera.position.set(0, distance, 0.00001);
         controls.target.set(0, 0, 0);
@@ -388,11 +611,13 @@ export async function mountModel3D(surface: HTMLElement, modelUrl: string): Prom
         camera.up.set(0, 1, 0);
         const verticalFov = THREE.MathUtils.degToRad(camera.fov);
         const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
-        const distance = 1.12 * Math.max(
+        const distance = STUDIO_PRESET.camera.perspectiveDistanceScale * Math.max(
             currentRadius / Math.tan(verticalFov / 2),
             currentRadius / Math.tan(horizontalFov / 2),
         );
-        const viewDirection = new THREE.Vector3(0.72, 1.15, 0.88).normalize();
+        const viewDirection = new THREE.Vector3(
+            ...STUDIO_PRESET.camera.perspectiveDirection,
+        ).normalize();
         camera.position.copy(viewDirection.multiplyScalar(distance));
         controls.target.set(0, 0, 0);
         camera.lookAt(0, 0, 0);
@@ -435,7 +660,7 @@ export async function mountModel3D(surface: HTMLElement, modelUrl: string): Prom
             `fps ${fps}`,
             `calls ${render.calls} tris ${render.triangles} lines ${render.lines}`,
             `pts ${render.points} geoms ${memory.geometries}`,
-            `tex ${memory.textures} autoRotate off`,
+            `tex ${memory.textures} autoRotate ${STUDIO_PRESET.controls.autoRotate ? "on" : "off"}`,
         ].join("\n");
         framesSinceSample = 0;
         sampleStart = now;
