@@ -553,7 +553,7 @@ class ModuleDefinition(CamelModel):
     children: list[ModuleChild] = Field(default_factory=list)  # Nested children
 
 
-class ModulesResponse(BaseModel):
+class ModulesResponse(CamelModel):
     """Response for /api/modules endpoint."""
 
     modules: list[ModuleDefinition]
@@ -575,7 +575,7 @@ class DependencyInfo(CamelModel):
     status: Optional[str] = None
 
 
-class DependenciesResponse(BaseModel):
+class DependenciesResponse(CamelModel):
     """Response for /api/dependencies endpoint."""
 
     dependencies: list[DependencyInfo]
@@ -599,7 +599,7 @@ class RenameProjectRequest(BaseModel):
     new_name: str
 
 
-class RenameProjectResponse(BaseModel):
+class RenameProjectResponse(CamelModel):
     success: bool
     message: str
     old_root: str
@@ -862,7 +862,7 @@ class PackageInfoVeryBrief(CamelModel):
 # =============================================================================
 
 
-class Problem(BaseModel):
+class Problem(CamelModel):
     """A problem (error or warning) from a build log."""
 
     id: str
@@ -880,7 +880,7 @@ class Problem(BaseModel):
     exc_info: Optional[str] = None
 
 
-class ProblemFilter(BaseModel):
+class ProblemFilter(CamelModel):
     """Filter settings for problems."""
 
     levels: list[Literal["error", "warning"]] = Field(
@@ -890,7 +890,7 @@ class ProblemFilter(BaseModel):
     stage_ids: list[str] = Field(default_factory=list)
 
 
-class ProblemsResponse(BaseModel):
+class ProblemsResponse(CamelModel):
     """Response for /api/problems endpoint."""
 
     problems: list[Problem]
