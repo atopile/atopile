@@ -4,6 +4,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
+import { createWebviewLogger } from "../shared/logger";
 
 interface ThreeDPreviewProps {
   modelUri: string;
@@ -16,6 +17,8 @@ type TexturedMaterial = THREE.MeshStandardMaterial & {
   };
   color?: THREE.Color;
 };
+
+const logger = createWebviewLogger("Panel3D");
 
 export function ThreeDPreview({ modelUri }: ThreeDPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -64,7 +67,7 @@ export function ThreeDPreview({ modelUri }: ThreeDPreviewProps) {
       const height = container.clientHeight || 1;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(width, height, false);
+      renderer.setSize(width, height);
     };
 
     const loadEnvironment = async () => {
@@ -83,7 +86,9 @@ export function ThreeDPreview({ modelUri }: ThreeDPreviewProps) {
         scene.background = bgColor;
         renderer.setClearColor(bgColor);
       } catch (error) {
-        console.warn("Failed to load HDR", error);
+        logger.warn(
+          `Failed to load HDR: ${error instanceof Error ? error.message : String(error)}`,
+        );
         scene.background = bgColor;
         renderer.setClearColor(bgColor);
       }
@@ -201,7 +206,9 @@ export function ThreeDPreview({ modelUri }: ThreeDPreviewProps) {
         rimLight.position.set(0, 5, -10);
         scene.add(rimLight);
       } catch (error) {
-        console.error("Failed to load model:", error);
+        logger.error(
+          `Failed to load model: ${error instanceof Error ? error.message : String(error)}`,
+        );
       } finally {
         dracoLoader.dispose();
       }
@@ -231,6 +238,7 @@ export function ThreeDPreview({ modelUri }: ThreeDPreviewProps) {
 
     loadEnvironment();
     loadModel();
+    resize();
     animate();
 
     return () => {

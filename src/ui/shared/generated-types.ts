@@ -98,6 +98,11 @@ export interface ModuleDefinition {
   children: ModuleChild[];
 }
 
+export interface OpenLayoutRequest {
+  projectRoot: string;
+  target: string;
+}
+
 export interface PackageActionRequest {
   packageIdentifier: string;
   projectRoot: string;

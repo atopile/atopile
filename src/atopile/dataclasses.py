@@ -648,6 +648,11 @@ class UpdateDependencyVersionResponse(BaseModel):
     message: str
 
 
+class OpenLayoutRequest(CamelModel):
+    project_root: str
+    target: str
+
+
 # =============================================================================
 # Package-related Pydantic Models
 # =============================================================================

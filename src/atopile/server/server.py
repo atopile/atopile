@@ -31,11 +31,14 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
+import uvicorn
 import websockets
 
 from atopile.dataclasses import AppContext
+from atopile.layout_server.__main__ import create_app_for_service
 from atopile.model.build_queue import _build_queue
 from atopile.model.sqlite import BuildHistory, Logs
+from atopile.server.domains.layout import layout_service
 from atopile.server.websocket import CoreSocket
 
 log = logging.getLogger(__name__)
@@ -98,6 +101,8 @@ class CoreServer:
         self.port = port
         self.force = force
         self.ctx = ctx or AppContext()
+        self._layout_http_server: _UvicornServerNoSignals | None = None
+        self._layout_http_task: asyncio.Task[None] | None = None
 
     def _cleanup(self, exc: BaseException | None = None) -> None:
         """
@@ -105,6 +110,14 @@ class CoreServer:
 
         All steps are best-effort - failures don't prevent other cleanup.
         """
+        try:
+            if self._layout_http_server:
+                self._layout_http_server.should_exit = True
+            if self._layout_http_task:
+                self._layout_http_task.cancel()
+        except Exception:
+            pass
+
         try:
             _build_queue.stop()
         except Exception:
@@ -167,6 +180,45 @@ class CoreServer:
             exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
         )
 
+    async def _start_layout_server(self) -> None:
+        port = int(os.getenv("ATOPILE_LAYOUT_SERVER_PORT", "0"))
+        if port <= 0:
+            return
+
+        if is_port_in_use(port):
+            if self.force:
+                if not kill_process_on_port(port):
+                    raise RuntimeError(f"Failed to stop process on layout port {port}")
+            else:
+                raise RuntimeError(f"Layout server port {port} is already in use")
+
+        self._layout_http_server = _UvicornServerNoSignals(
+            uvicorn.Config(
+                create_app_for_service(layout_service),
+                host="127.0.0.1",
+                port=port,
+                log_level="warning",
+                access_log=False,
+            )
+        )
+        self._layout_http_task = asyncio.create_task(self._layout_http_server.serve())
+
+        deadline = time.monotonic() + 5
+        while not self._layout_http_server.started:
+            if self._layout_http_task.done():
+                if self._layout_http_task.cancelled():
+                    raise RuntimeError("Layout server startup was cancelled")
+                exc = self._layout_http_task.exception()
+                if exc:
+                    raise RuntimeError("Layout server exited during startup") from exc
+                raise RuntimeError("Layout server exited before startup")
+            if time.monotonic() >= deadline:
+                self._layout_http_server.should_exit = True
+                raise RuntimeError("Layout server did not start within 5 seconds")
+            await asyncio.sleep(0.05)
+
+        log.info("Layout server ready on http://127.0.0.1:%s", port)
+
     def run(self) -> None:
         """Start the server and block until interrupted."""
         signal.signal(
@@ -216,6 +268,7 @@ class CoreServer:
         BuildHistory.init_db()
         Logs.init_db()
 
+        await self._start_layout_server()
         core = CoreSocket()
 
         async with websockets.serve(
@@ -226,3 +279,8 @@ class CoreServer:
             print("ATOPILE_SERVER_READY", flush=True)
             log.info("Core server ready")
             await asyncio.Future()  # run forever
+
+
+class _UvicornServerNoSignals(uvicorn.Server):
+    def install_signal_handlers(self) -> None:
+        return

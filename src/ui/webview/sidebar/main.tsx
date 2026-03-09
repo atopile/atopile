@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { render, logoUrl } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
+import { createWebviewLogger } from "../shared/logger";
 import type { Build } from "../../shared/types";
 import { Spinner, Button, Alert, AlertTitle, AlertDescription } from "../shared/components";
 import { getCurrentStage } from "../shared/utils";
@@ -24,6 +25,7 @@ import { MigrateDialog } from "../sidebar-details/MigrateDialog";
 import "./sidebar.css";
 
 const POST_CONNECT_DISCONNECT_GRACE_MS = 5_000;
+const logger = createWebviewLogger("Sidebar");
 
 function DisconnectedOverlay({
   isConnected,
@@ -257,7 +259,17 @@ function App() {
           title="Settings"
           style={{ marginLeft: "auto" }}
           onClick={() => {
-            void rpcClient?.requestAction("vscode.openPanel", { panelId: "panel-settings" });
+            logger.info("openPanel click panelId=panel-settings");
+            void rpcClient?.requestAction("vscode.openPanel", { panelId: "panel-settings" }).then(
+              () => {
+                logger.info("openPanel resolved panelId=panel-settings");
+              },
+              (error) => {
+                logger.error(
+                  `openPanel failed panelId=panel-settings error=${error instanceof Error ? error.message : String(error)}`,
+                );
+              },
+            );
           }}
         >
           <Settings size={14} />

@@ -5,6 +5,7 @@ import type {
   ExtensionRequestMessage,
   ExtensionRequestResult,
 } from "./extensionRequestHandler";
+import { ExtensionLogger } from "./logger";
 
 type BootstrapState = {
   key: string;
@@ -22,7 +23,7 @@ export const EXTENSION_SESSION_ID = "extension";
 
 export class RpcProxy implements vscode.Disposable {
   private readonly _corePort: number;
-  private readonly _output: vscode.OutputChannel;
+  private readonly _logger: ExtensionLogger;
   private readonly _handleExtensionRequest: (
     webview: vscode.Webview,
     message: ExtensionRequestMessage,
@@ -37,14 +38,14 @@ export class RpcProxy implements vscode.Disposable {
 
   constructor(
     corePort: number,
-    output: vscode.OutputChannel,
+    logger: ExtensionLogger,
     handleExtensionRequest: (
       webview: vscode.Webview,
       message: ExtensionRequestMessage,
     ) => Promise<ExtensionRequestResult>,
   ) {
     this._corePort = corePort;
-    this._output = output;
+    this._logger = logger.scope("RpcProxy");
     this._handleExtensionRequest = handleExtensionRequest;
   }
 
@@ -57,17 +58,17 @@ export class RpcProxy implements vscode.Disposable {
     this._bootstrapState.delete(key);
   }
 
-  registerWebview(sessionId: string, webview: vscode.Webview): vscode.Disposable {
+  connectWebviewSession(sessionId: string, webview: vscode.Webview): vscode.Disposable {
     const sessionDisposable = this._attachSession(sessionId, {
       onOpen: () => {
-        void webview.postMessage({ type: "rpc:open" });
+        this._postWebviewMessage(webview, { type: "rpc:open" }, `${sessionId}:open`);
         this._sendBootstrapState(webview);
       },
       onClose: () => {
-        void webview.postMessage({ type: "rpc:close" });
+        this._postWebviewMessage(webview, { type: "rpc:close" }, `${sessionId}:close`);
       },
       onMessage: (data) => {
-        void webview.postMessage({ type: "rpc:recv", data });
+        this._postWebviewMessage(webview, { type: "rpc:recv", data }, `${sessionId}:recv`);
       },
       onExtensionRequest: (message) => this._handleExtensionRequest(webview, message),
     });
@@ -128,7 +129,13 @@ export class RpcProxy implements vscode.Disposable {
   private _attachSession(sessionId: string, callbacks: SessionCallbacks): vscode.Disposable {
     const existing = this._sessions.get(sessionId);
     if (existing && existing !== callbacks) {
-      existing.onClose?.();
+      try {
+        existing.onClose?.();
+      } catch (error) {
+        this._logger.warn(
+          `Ignoring stale session close failure for ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
     this._sessions.set(sessionId, callbacks);
     this._connect();
@@ -149,14 +156,18 @@ export class RpcProxy implements vscode.Disposable {
   private _sendBootstrapState(webview: vscode.Webview): void {
     for (const [key, data] of this._bootstrapState.entries()) {
       const entry: BootstrapState = { key, data };
-      void webview.postMessage({
-        type: "rpc:recv",
-        data: JSON.stringify({
-          type: "state",
-          key: entry.key,
-          data: entry.data,
-        }),
-      });
+      this._postWebviewMessage(
+        webview,
+        {
+          type: "rpc:recv",
+          data: JSON.stringify({
+            type: "state",
+            key: entry.key,
+            data: entry.data,
+          }),
+        },
+        `bootstrap:${entry.key}`,
+      );
     }
   }
 
@@ -189,7 +200,7 @@ export class RpcProxy implements vscode.Disposable {
         sessionId,
       });
     } catch {
-      this._output.appendLine(`[RpcProxy] Dropping invalid JSON from session ${sessionId}`);
+      this._logger.warn(`Dropping invalid JSON from session ${sessionId}`);
     }
   }
 
@@ -241,7 +252,7 @@ export class RpcProxy implements vscode.Disposable {
     });
 
     socket.on("error", (error) => {
-      this._output.appendLine(`[RpcProxy] ${error.message}`);
+      this._logger.error(error.message);
     });
   }
 
@@ -269,7 +280,7 @@ export class RpcProxy implements vscode.Disposable {
     try {
       message = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      this._output.appendLine("[RpcProxy] Dropping invalid backend JSON");
+      this._logger.warn("Dropping invalid backend JSON");
       return;
     }
 
@@ -279,7 +290,7 @@ export class RpcProxy implements vscode.Disposable {
         : EXTENSION_SESSION_ID;
     const callbacks = this._sessions.get(sessionId);
     if (!callbacks) {
-      this._output.appendLine(`[RpcProxy] No registered session for ${sessionId}`);
+      this._logger.warn(`No registered session for ${sessionId}`);
       return;
     }
 
@@ -298,17 +309,19 @@ export class RpcProxy implements vscode.Disposable {
     message: Record<string, unknown>,
   ): Promise<void> {
     if (!callbacks.onExtensionRequest) {
-      this._output.appendLine(
-        `[RpcProxy] Session ${sessionId} cannot handle extension_request`,
-      );
+      this._logger.warn(`Session ${sessionId} cannot handle extension_request`);
       return;
     }
 
     const request = message as ExtensionRequestMessage;
     if (typeof request.requestId !== "string" || !request.requestId) {
-      this._output.appendLine("[RpcProxy] Dropping extension_request without requestId");
+      this._logger.warn("Dropping extension_request without requestId");
       return;
     }
+
+    this._logger.info(
+      `extension_request session=${sessionId} action=${request.action} requestId=${request.requestId}`,
+    );
 
     let response: ExtensionRequestResult;
     try {
@@ -320,6 +333,10 @@ export class RpcProxy implements vscode.Disposable {
       };
     }
 
+    this._logger.info(
+      `extension_response session=${sessionId} action=${request.action} requestId=${request.requestId} ok=${response.ok}`,
+    );
+
     this.sendSessionPayload(sessionId, {
       type: "extension_response",
       requestId: request.requestId,
@@ -330,6 +347,28 @@ export class RpcProxy implements vscode.Disposable {
 
   private _isSocketOpen(): boolean {
     return this._socket?.readyState === WebSocket.OPEN;
+  }
+
+  private _postWebviewMessage(
+    webview: vscode.Webview,
+    message: unknown,
+    context: string,
+  ): void {
+    try {
+      const result = webview.postMessage(message);
+      void result.then(
+        undefined,
+        (error) => {
+          this._logger.warn(
+            `Ignoring webview postMessage failure for ${context}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        },
+      );
+    } catch (error) {
+      this._logger.warn(
+        `Ignoring webview postMessage failure for ${context}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }
 

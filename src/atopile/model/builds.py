@@ -14,6 +14,7 @@ from atopile.dataclasses import (
     BuildRequest,
     BuildStatus,
     MaxConcurrentRequest,
+    OpenLayoutRequest,
 )
 from atopile.model import build_history
 from atopile.model.build_queue import (
@@ -89,6 +90,23 @@ def _resolve_request_targets(request: BuildRequest) -> list[str]:
             "falling back to 'default'"
         )
         return ["default"]
+
+
+def resolve_layout_path(request: OpenLayoutRequest) -> Path:
+    project_path = Path(request.project_root)
+    project_config = ProjectConfig.from_path(project_path)
+    if project_config is None:
+        raise FileNotFoundError(f"No ato.yaml found in: {request.project_root}")
+
+    try:
+        layout_path = project_config.builds[request.target].paths.layout
+    except KeyError as exc:
+        raise ValueError(f'Unknown build target: "{request.target}"') from exc
+
+    if not layout_path.exists():
+        raise FileNotFoundError(f"Layout not found: {layout_path}")
+
+    return layout_path
 
 
 def handle_start_build(request: BuildRequest) -> None:

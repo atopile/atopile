@@ -33,9 +33,7 @@ export function CopyableCodeBlock({
       await navigator.clipboard.writeText(code)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch (error) {
-      console.warn('Failed to copy', error)
-    }
+    } catch {}
   }
 
   return (

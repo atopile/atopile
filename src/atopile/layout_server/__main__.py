@@ -1,10 +1,6 @@
 """Standalone layout-editor server.
 
 CLI entry point: ``python -m atopile.layout_server <path.kicad_pcb> [--port 8100]``.
-
-Only the CLI, the ``create_app`` factory, and the index / static-file serving
-live here.  All API routes and the ``LayoutService`` are shared with the
-backend integration server.
 """
 
 from __future__ import annotations
@@ -32,11 +28,6 @@ FRONTEND_DIR = Path(__file__).parent / "frontend"
 TEMPLATE_PATH = STATIC_DIR / "layout-editor.hbs"
 
 
-# ---------------------------------------------------------------------------
-# Template rendering
-# ---------------------------------------------------------------------------
-
-
 def _render_layout_template(
     *,
     api_url: str,
@@ -60,15 +51,7 @@ def _render_layout_template(
     return template
 
 
-# ---------------------------------------------------------------------------
-# FastAPI application factory
-# ---------------------------------------------------------------------------
-
-
-def create_app(pcb_path: Path) -> FastAPI:
-    service = LayoutService()
-    service.load(pcb_path)
-
+def create_app_for_service(service: LayoutService) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         await service.start_watcher()
@@ -83,13 +66,10 @@ def create_app(pcb_path: Path) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Shared layout routes at /api/* and /ws
     app.include_router(create_layout_router(service, api_prefix="/api", ws_path="/ws"))
 
-    # --- Static files & index page ---
-
     @app.get("/")
-    async def index():
+    async def index() -> HTMLResponse:
         html = _render_layout_template(
             api_url="",
             api_prefix="/api",
@@ -104,18 +84,14 @@ def create_app(pcb_path: Path) -> FastAPI:
         )
         return HTMLResponse(html)
 
-    app.mount(
-        "/static",
-        StaticFiles(directory=str(STATIC_DIR)),
-        name="static",
-    )
-
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     return app
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
+def create_app(pcb_path: Path) -> FastAPI:
+    service = LayoutService()
+    service.load(pcb_path)
+    return create_app_for_service(service)
 
 
 def _ensure_editor_bundle() -> None:

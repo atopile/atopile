@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { getBuildTarget, openKicadForBuild } from "./kicad";
+import { ExtensionLogger } from "./logger";
 
 export type ExtensionRequestMessage = {
   type: "extension_request";
@@ -20,11 +21,11 @@ export type ExtensionRequestResult =
 
 export class ExtensionRequestHandler {
   private readonly _openPanel: (panelId: string) => void;
-  private readonly _output: vscode.OutputChannel;
+  private readonly _logger: ExtensionLogger;
 
-  constructor(openPanel: (panelId: string) => void, output: vscode.OutputChannel) {
+  constructor(openPanel: (panelId: string) => void, logger: ExtensionLogger) {
     this._openPanel = openPanel;
-    this._output = output;
+    this._logger = logger.scope("ExtensionRequest");
   }
 
   async handle(
@@ -34,7 +35,15 @@ export class ExtensionRequestHandler {
     switch (message.action) {
       case "vscode.openPanel": {
         const panelId = this._requireString(message.panelId, "panelId");
-        this._openPanel(panelId);
+        this._logger.info(`openPanel requested panelId=${panelId}`);
+        try {
+          this._openPanel(panelId);
+        } catch (error) {
+          const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+          this._logger.error(`openPanel failed panelId=${panelId}\n${detail}`);
+          throw error;
+        }
+        this._logger.info(`openPanel completed panelId=${panelId}`);
         return { ok: true };
       }
 
@@ -86,9 +95,13 @@ export class ExtensionRequestHandler {
       case "vscode.log": {
         const level = typeof message.level === "string" ? message.level : "log";
         const text = typeof message.message === "string" ? message.message : "";
-        const prefix =
-          level === "error" ? "[Webview] ERR" : level === "warn" ? "[Webview] WARN" : "[Webview]";
-        this._output.appendLine(`${prefix} ${text}`);
+        if (level === "error") {
+          this._logger.error(`[Webview] ${text}`);
+        } else if (level === "warn") {
+          this._logger.warn(`[Webview] ${text}`);
+        } else {
+          this._logger.info(`[Webview] ${text}`);
+        }
         return { ok: true };
       }
 

@@ -50,12 +50,12 @@ export function ProjectTargetSelector({
             onSelect={onSelectProject}
           />
           <Button
-            variant="ghost"
-            size="icon"
-            className="new-project-btn"
-            title="Create new project"
-            onClick={() => console.log("Create project (placeholder)")}
-          >
+          variant="ghost"
+          size="icon"
+          className="new-project-btn"
+          title="Create new project"
+          onClick={() => {}}
+        >
             <Plus size={14} />
           </Button>
         </div>

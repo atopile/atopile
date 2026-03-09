@@ -52,7 +52,6 @@ export default function StepViewer({ src, className, style }: StepViewerProps) {
             }
           })
         } catch (wasmError) {
-          console.error('WASM load error:', wasmError)
           throw new Error('3D viewer not available in this environment')
         }
 

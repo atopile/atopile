@@ -19,6 +19,7 @@ from websockets.asyncio.server import ServerConnection
 
 from atopile.dataclasses import (
     BuildRequest,
+    OpenLayoutRequest,
     PackageDetails,
     PackagesSummaryData,
     PackageSummaryItem,
@@ -43,6 +44,7 @@ from atopile.model.builds import (
     get_active_builds,
     get_finished_builds,
     handle_start_build,
+    resolve_layout_path,
 )
 from atopile.model.file_watcher import FileWatcher
 from atopile.model.module_introspection import introspect_module_definition
@@ -756,6 +758,26 @@ class CoreSocket:
                 except ValueError as e:
                     log.warning("startBuild failed: %s", e)
 
+            case "openLayout":
+                try:
+                    request = OpenLayoutRequest.model_validate(msg)
+                    layout_path = await self._open_layout(request)
+                    await self._send_action_result(
+                        ws,
+                        session_id,
+                        action,
+                        request_id,
+                        result={"path": str(layout_path)},
+                    )
+                except Exception as exc:
+                    await self._send_action_result(
+                        ws,
+                        session_id,
+                        action,
+                        request_id,
+                        error=str(exc),
+                    )
+
             case "getPackagesSummary":
                 project_root = msg.get("projectRoot", "")
                 root = Path(project_root) if project_root else None
@@ -1283,6 +1305,17 @@ class CoreSocket:
                 }
             )
         )
+
+    async def _open_layout(self, request: OpenLayoutRequest) -> Path:
+        from atopile.layout_server.models import WsMessage
+        from atopile.server.domains.layout import layout_service
+
+        layout_path = resolve_layout_path(request)
+        await asyncio.to_thread(layout_service.load, layout_path)
+        await layout_service.start_watcher()
+        model = await asyncio.to_thread(layout_service.manager.get_render_model)
+        await layout_service.broadcast(WsMessage(type="layout_updated", model=model))
+        return layout_path
 
     async def _broadcast_state(self, field_name: str, data: Any) -> None:
         wire_key = self._store.wire_key(field_name)

@@ -6,6 +6,7 @@ import { RpcProxy } from "./rpcProxy";
 import { findFreePort } from "./utils";
 import { openKicadForBuild } from "./kicad";
 import { ExtensionRequestHandler } from "./extensionRequestHandler";
+import { ExtensionLogger } from "./logger";
 import {
   HostedWebviewViewProvider,
   LOGS_VIEW_ID,
@@ -27,15 +28,18 @@ let coreClient: CoreClient | undefined;
 // -- Activate -----------------------------------------------------------------
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const output = vscode.window.createOutputChannel("atopile");
-  output.appendLine("atopile extension activating");
+  const output = vscode.window.createOutputChannel("atopile", { log: true });
+  const logger = new ExtensionLogger(output);
+  logger.info("atopile extension activating");
 
   const coreServerPort = await findFreePort();
+  const layoutServerPort = await findFreePort();
   const workspaceFolders =
     vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
 
   const portEnv = {
     ATOPILE_CORE_SERVER_PORT: String(coreServerPort),
+    ATOPILE_LAYOUT_SERVER_PORT: String(layoutServerPort),
   };
 
   const version: string = context.extension.packageJSON.version;
@@ -46,12 +50,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let panelHost!: PanelHost;
   const requestHandler = new ExtensionRequestHandler(
     (panelId) => panelHost.openPanel(panelId),
-    output,
+    logger,
   );
-  const proxy = new RpcProxy(coreServerPort, output, (webview, message) =>
+  const proxy = new RpcProxy(coreServerPort, logger, (webview, message) =>
     requestHandler.handle(webview, message)
   );
-  panelHost = new PanelHost(context.extensionUri, proxy);
+  panelHost = new PanelHost(context.extensionUri, proxy, layoutServerPort, logger);
   const sidebarProvider = new HostedWebviewViewProvider(context.extensionUri, proxy, "sidebar");
   const logsProvider = new HostedWebviewViewProvider(context.extensionUri, proxy, "panel-logs");
 
@@ -86,7 +90,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   coreClient.sendActiveFile(vscode.window.activeTextEditor?.document.uri.fsPath ?? null);
 
-  output.appendLine("atopile extension activated");
+  logger.info("atopile extension activated");
 }
 
 export function deactivate(): void {

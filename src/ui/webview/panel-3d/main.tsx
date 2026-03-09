@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
+import { createWebviewLogger } from "../shared/logger";
 import { ThreeDPreview } from "./threeDPreviewManager";
 import {
   getSelectedThreeDBuild,
@@ -8,6 +9,8 @@ import {
   type ResolvedThreeDModel,
 } from "./threeDViewerState";
 import "./panel-3d.css";
+
+const logger = createWebviewLogger("Panel3D");
 
 function App() {
   const projectState = WebviewRpcClient.useSubscribe("projectState");
@@ -53,7 +56,9 @@ function App() {
       const result = await resolveThreeDModel(selectedProject, selectedTarget);
       setModel(result);
     } catch (error) {
-      console.error("Failed to resolve 3D model", error);
+      logger.error(
+        `Failed to resolve 3D model: ${error instanceof Error ? error.message : String(error)}`,
+      );
       setModel(null);
     } finally {
       setIsResolving(false);
