@@ -218,7 +218,7 @@ def discover_configflags(*roots: Path) -> list[ConfigFlagDef]:
         k = (f.env_name, f.kind, str(f.file), f.line, f.python_name)
         uniq[k] = f
     return sorted(
-        uniq.values(), key=lambda f: (f.env_name, f.kind, str(f.file), f.line)
+        uniq.values(), key=lambda f: (f.prefix, f.env_name, f.kind, str(f.file), f.line)
     )
 
 

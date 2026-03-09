@@ -8,6 +8,7 @@ import tempfile
 import webbrowser
 from collections import Counter
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -587,7 +588,16 @@ def _count_callsites(
 
 
 @dev_app.command()
-def flags():
+def flags(
+    ato: Annotated[
+        bool,
+        typer.Option("--ato/--no-ato", help="Show ATO_* flags"),
+    ] = True,
+    faebryk: Annotated[
+        bool,
+        typer.Option("--faebryk/--no-faebryk", help="Show FBRK_* flags"),
+    ] = True,
+):
     """
     Discover ConfigFlags in `src/atopile` and `src/faebryk` and print a rich table.
 
@@ -620,10 +630,19 @@ def flags():
         )
     roots = [here / p for p in roots]
     discovered = discover_configflags(*roots)
+
+    # Filter by prefix
+    prefixes: set[str] = set()
+    if ato:
+        prefixes.add("ATO_")
+    if faebryk:
+        prefixes.add("FBRK_")
+    discovered = [f for f in discovered if f.prefix in prefixes]
+
     uses_by_def = _count_callsites(discovered, roots=roots)
 
     table = Table(title="ConfigFlags", show_lines=True)
-    table.add_column("Env", style="bold", no_wrap=True)
+    table.add_column("Environment Variable", style="bold", no_wrap=True)
     table.add_column("Type", overflow="fold")
     table.add_column("Py Name", overflow="fold")
     table.add_column("Default", overflow="fold")
