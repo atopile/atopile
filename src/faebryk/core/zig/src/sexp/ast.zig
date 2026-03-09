@@ -324,7 +324,7 @@ pub fn writeEscapedString(str: []const u8, writer: anytype) !void {
             '"' => try writer.writeAll("\\\""),
             '\n' => try writer.writeAll("\\n"),
             '\r' => try writer.writeAll("\\r"),
-            '\t' => try writer.writeAll("\\t"),
+            // KiCad writes literal tabs (not \t), so preserve them as-is
             else => try writer.writeByte(c),
         }
     }
