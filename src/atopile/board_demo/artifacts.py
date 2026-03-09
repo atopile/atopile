@@ -16,7 +16,6 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
     export_glb,
     export_pcb_summary,
-    export_step,
     githash_layout,
 )
 
@@ -28,7 +27,6 @@ class DemoPaths:
     build_name: str
     build_dir: Path
     output_dir: Path
-    step_path: Path
     source_glb_path: Path
     pcb_path: Path
     summary_path: Path
@@ -45,7 +43,6 @@ class DemoBundleBuilder:
         self.frontend_dir = Path(__file__).parent / "frontend"
         self.paths = self._make_paths(output_dir=output_dir)
         self.model3d = Board3DModel(
-            step_path=self.paths.step_path,
             source_glb_path=self.paths.source_glb_path,
             pcb_path=self.paths.pcb_path,
             summary_path=self.paths.summary_path,
@@ -53,13 +50,40 @@ class DemoBundleBuilder:
         )
 
     def build(self) -> DemoPaths:
-        self._prepare_output_dir()
-        self._prepare_model_inputs()
-        self._export_layout_render_model()
-        self._build_3d_model()
-        self._build_frontend_bundle()
-        self._write_bundle_files()
-        self._validate_bundle()
+        # Start from a clean output directory for the generated demo bundle.
+        if self.paths.output_dir.exists():
+            shutil.rmtree(self.paths.output_dir)
+        self.paths.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Ensure the KiCad-derived PCB, GLB, and summary inputs exist.
+        _ensure_layout_derived_artifacts(
+            layout_path=config.build.paths.layout,
+            output_base=config.build.paths.output_base,
+            model3d=self.model3d,
+        )
+
+        # Export the read-only layout render model consumed by the frontend.
+        _export_layout_render_model(self.paths.pcb_path, self.paths.render_model_path)
+
+        # Build the optimized 3D board model used by the demo viewer.
+        log.info(
+            "Building demo 3D model for %s",
+            self.paths.build_name,
+        )
+        self.model3d.build_demo_model(
+            frontend_dir=self.frontend_dir,
+        )
+
+        # Build the frontend bundle and copy the embed script into the demo output.
+        _build_embed_bundle(self.paths, frontend_dir=self.frontend_dir)
+
+        # Write the demo manifest and static HTML entrypoint.
+        _write_manifest(self.paths)
+        _write_index_html(self.paths)
+
+        # Render screenshots, then rewrite the manifest with the generated poster.
+        _validate_with_puppeteer(self.paths, frontend_dir=self.frontend_dir)
+        _write_manifest(self.paths, poster_path="poster.png")
         return self.paths
 
     def _make_paths(self, *, output_dir: Path | None) -> DemoPaths:
@@ -70,7 +94,6 @@ class DemoBundleBuilder:
             build_name=build_name,
             build_dir=build_dir,
             output_dir=demo_dir,
-            step_path=config.build.paths.output_base.with_suffix(".pcba.step"),
             source_glb_path=config.build.paths.output_base.with_suffix(".pcba.glb"),
             pcb_path=config.build.paths.output_base.with_suffix(".kicad_pcb"),
             summary_path=config.build.paths.output_base.with_suffix(
@@ -82,41 +105,6 @@ class DemoBundleBuilder:
             manifest_path=demo_dir / "demo-manifest.json",
             index_path=demo_dir / "index.html",
         )
-
-    def _prepare_output_dir(self) -> None:
-        if self.paths.output_dir.exists():
-            shutil.rmtree(self.paths.output_dir)
-        self.paths.output_dir.mkdir(parents=True, exist_ok=True)
-
-    def _prepare_model_inputs(self) -> None:
-        _ensure_layout_derived_artifacts(
-            layout_path=config.build.paths.layout,
-            output_base=config.build.paths.output_base,
-            model3d=self.model3d,
-        )
-
-    def _export_layout_render_model(self) -> None:
-        _export_render_model(self.paths.pcb_path, self.paths.render_model_path)
-
-    def _build_3d_model(self) -> None:
-        log.info(
-            "Building demo 3D model for %s",
-            self.paths.build_name,
-        )
-        self.model3d.build_demo_model(
-            frontend_dir=self.frontend_dir,
-        )
-
-    def _build_frontend_bundle(self) -> None:
-        _build_embed_bundle(self.paths, frontend_dir=self.frontend_dir)
-
-    def _write_bundle_files(self) -> None:
-        _write_manifest(self.paths)
-        _write_index_html(self.paths)
-
-    def _validate_bundle(self) -> None:
-        _validate_with_puppeteer(self.paths, frontend_dir=self.frontend_dir)
-        _write_manifest(self.paths, poster_path="poster.png")
 
 
 def build_demo_bundle(*, output_dir: Path | None = None) -> DemoPaths:
@@ -149,7 +137,6 @@ def _ensure_layout_derived_artifacts(
 
     missing_exports = [
         not model3d.source_glb_path.exists(),
-        not model3d.step_path.exists(),
         not model3d.summary_path.exists(),
     ]
     if not any(missing_exports):
@@ -167,15 +154,6 @@ def _ensure_layout_derived_artifacts(
                 )
             except KicadCliExportError as exc:
                 raise RuntimeError(f"Failed to generate demo GLB: {exc}") from exc
-        if not model3d.step_path.exists():
-            try:
-                export_step(
-                    tmp_layout,
-                    step_file=model3d.step_path,
-                    project_dir=project_dir,
-                )
-            except KicadCliExportError as exc:
-                raise RuntimeError(f"Failed to generate demo STEP: {exc}") from exc
         if not model3d.summary_path.exists():
             try:
                 export_pcb_summary(tmp_layout, summary_file=model3d.summary_path)
@@ -185,7 +163,7 @@ def _ensure_layout_derived_artifacts(
                 ) from exc
 
 
-def _export_render_model(pcb_path: Path, output_path: Path) -> None:
+def _export_layout_render_model(pcb_path: Path, output_path: Path) -> None:
     from atopile.layout_server.pcb_manager import PcbManager
 
     mgr = PcbManager()
