@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 import math
+from collections.abc import Iterable
 from typing import NamedTuple
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.symbolic.invariants import AliasClass
+from faebryk.core.solver.symbolic.invariants import AliasClass, AliasClassIs
 from faebryk.core.solver.symbolic.pure_literal import (
     exec_pure_literal_operands,
 )
@@ -165,31 +166,6 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 # Estimation algorithms ----------------------------------------------------------------
 
 
-def _fold_pure_literal_exprs(
-    mutator: Mutator,
-    expr_e: F.Expressions.is_expression,
-    mapped_operands: list[F.Parameters.can_be_operand],
-) -> F.Literals.is_literal | None:
-    return exec_pure_literal_operands(
-        mutator.G_transient,
-        mutator.tg_in,
-        mutator.utils.hack_get_expr_type(expr_e),
-        mapped_operands,
-    )
-
-
-def _intersect_literals(
-    mutator: Mutator,
-    left: F.Literals.is_literal,
-    right: F.Literals.is_literal,
-) -> F.Literals.is_literal:
-    return left.op_setic_intersect(
-        right,
-        g=mutator.G_transient,
-        tg=mutator.tg_in,
-    )
-
-
 def _evaluate_outer(
     mutator: Mutator,
     node: F.Parameters.can_be_operand,
@@ -207,7 +183,12 @@ def _evaluate_outer(
                 return None
             mapped_operands.append(lit.as_operand.get())
 
-        return _fold_pure_literal_exprs(mutator, expr, mapped_operands)
+        return exec_pure_literal_operands(
+            mutator.G_transient,
+            mutator.tg_in,
+            mutator.utils.hack_get_expr_type(expr),
+            mapped_operands,
+        )
 
     if not (po := node.as_parameter_operatable.try_get()):
         return None
@@ -215,13 +196,51 @@ def _evaluate_outer(
     return mutator.utils.try_extract_superset(po, domain_default=True)
 
 
+def _iter_alias_targets(mutator: Mutator) -> Iterable[
+    tuple[F.Parameters.is_parameter_operatable, tuple[F.Expressions.is_expression, ...]]
+]:
+    for target_po in mutator.get_parameter_operatables():
+        if target_po.try_get_sibling_trait(F.Expressions.is_predicate) is not None:
+            continue
+
+        target = target_po.as_operand.get()
+        alias = AliasClass.of(target)
+        if not isinstance(alias, AliasClassIs):
+            continue
+        alias_params = alias.get_with_trait(F.Parameters.is_parameter)
+        if len(alias_params) != 1:
+            continue
+        if not next(iter(alias_params)).as_operand.get().is_same(target):
+            continue
+        rhs = tuple(_iter_alias_rhs(target_po, alias))
+        if rhs:
+            yield target_po, rhs
+
+
+def _iter_alias_rhs(
+    target_po: F.Parameters.is_parameter_operatable,
+    alias: AliasClassIs,
+) -> Iterable[F.Expressions.is_expression]:
+    for expr in alias.expressions():
+        if expr.try_get_sibling_trait(F.Expressions.is_predicate) is not None:
+            continue
+        if expr.try_get_sibling_trait(F.Expressions.is_setic) is not None:
+            continue
+        if target_po in expr.get_operand_leaves_operatable():
+            continue
+        yield expr
+
+
 @algorithm("Upper estimation", terminal=False)
 def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
     """
-    Fold predicate expressions and aliased target params from current outer bounds.
+    Fold direct expressions from the current outer bounds only.
+
+    This pass is intentionally incremental: it estimates existing expressions, then
+    lets the outer solver loop stage the result through the rest of the alias graph.
     """
     for expr in mutator.get_expressions(
-        required_traits=(F.Expressions.is_expression,),
+        required_traits=(F.Expressions.is_predicate,),
         include_terminated=True,
     ):
         if expr.expr_isinstance(F.Expressions.Is):
@@ -231,8 +250,6 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
         if expr.expr_isinstance(F.Expressions.IsSuperset):
             continue
         if expr.try_get_sibling_trait(F.Expressions.is_setic) is not None:
-            continue
-        if expr.try_get_sibling_trait(F.Expressions.is_predicate) is None:
             continue
         if not (out := _evaluate_outer(mutator, expr.as_operand.get())):
             continue
@@ -247,35 +264,28 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
             assert_=True,
         )
 
-    for target_po in mutator.get_parameter_operatables():
-        if target_po.try_get_sibling_trait(F.Expressions.is_predicate) is not None:
-            continue
+    for target_po, rhs_exprs in _iter_alias_targets(mutator):
         target = target_po.as_operand.get()
-        alias = AliasClass.of(target)
-        alias_params = alias.get_with_trait(F.Parameters.is_parameter)
-        if len(alias_params) != 1:
-            continue
-        if not next(iter(alias_params)).as_operand.get().is_same(target):
-            continue
-
-        if not (candidate := mutator.utils.try_extract_superset(target_po, domain_default=True)):
+        if not (
+            candidate := mutator.utils.try_extract_superset(
+                target_po, domain_default=True
+            )
+        ):
             continue
 
-        changed = False
-        for rhs in alias.get_with_trait(F.Expressions.is_expression):
-            if rhs.try_get_sibling_trait(F.Expressions.is_predicate) is not None:
-                continue
-            if rhs.try_get_sibling_trait(F.Expressions.is_setic) is not None:
-                continue
-            if target_po in rhs.get_operand_leaves_operatable():
-                continue
-            if not (out := _evaluate_outer(mutator, rhs.as_operand.get())):
-                continue
-            changed = True
-            candidate = _intersect_literals(mutator, candidate, out)
-
-        if not changed:
+        rhs_outers = [
+            out
+            for rhs in rhs_exprs
+            if (out := _evaluate_outer(mutator, rhs.as_operand.get())) is not None
+        ]
+        if not rhs_outers:
             continue
+        for out in rhs_outers:
+            candidate = candidate.op_setic_intersect(
+                out,
+                g=mutator.G_transient,
+                tg=mutator.tg_in,
+            )
         if candidate.op_setic_equals_singleton(True):
             continue
         mutator.create_check_and_insert_expression(
@@ -286,23 +296,25 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
             assert_=True,
         )
 
+
 class _UncertaintySummary(NamedTuple):
     outer: F.Literals.Numbers
     robust_min: float
     robust_max: float
-    source_count: int
+    uncertain: bool
 
 
-def _make_summary(
-    outer: F.Literals.Numbers, source_count: int = 0
-) -> _UncertaintySummary:
+def _make_summary(outer: F.Literals.Numbers, uncertain: bool = False) -> _UncertaintySummary:
     if outer.is_empty():
-        return _UncertaintySummary(outer, math.inf, -math.inf, source_count)
+        return _UncertaintySummary(outer, math.inf, -math.inf, uncertain)
     robust_min = outer.get_min_value()
     robust_max = outer.get_max_value()
-    if source_count:
+    # A lower-bound uncertainty source means "any value in this box may occur", so
+    # the common admissible interval starts inverted and contracts back via
+    # intersections with the rest of the expression.
+    if uncertain:
         robust_min, robust_max = robust_max, robust_min
-    return _UncertaintySummary(outer, robust_min, robust_max, source_count)
+    return _UncertaintySummary(outer, robust_min, robust_max, uncertain)
 
 
 def _intersect_summaries(
@@ -319,8 +331,21 @@ def _intersect_summaries(
         outer,
         max(left.robust_min, right.robust_min),
         min(left.robust_max, right.robust_max),
-        max(left.source_count, right.source_count),
+        left.uncertain or right.uncertain,
     )
+
+
+def _intersect_summary_sequence(
+    mutator: Mutator,
+    summaries: Iterable[_UncertaintySummary],
+) -> _UncertaintySummary | None:
+    iterator = iter(summaries)
+    candidate = next(iterator, None)
+    if candidate is None:
+        return None
+    for summary in iterator:
+        candidate = _intersect_summaries(mutator, candidate, summary)
+    return candidate
 
 
 def _fold_numeric_expression(
@@ -342,7 +367,7 @@ def _summarize_uncertainty(
     mutator: Mutator,
     node: F.Parameters.can_be_operand,
     allow_alias: bool = True,
-):
+) -> _UncertaintySummary | None:
     if literal := MutatorUtils.is_numeric_literal(node):
         return _make_summary(literal)
     if expr := node.try_get_sibling_trait(F.Expressions.is_expression):
@@ -379,7 +404,7 @@ def _summarize_uncertainty(
                 return None
             return _make_summary(
                 base.outer.op_invert(g=mutator.G_transient, tg=mutator.tg_in),
-                source_count=base.source_count,
+                uncertain=base.uncertain,
             )
 
         expr_t = (
@@ -394,8 +419,8 @@ def _summarize_uncertainty(
 
         if any(part.outer.is_empty() or not part.outer.is_finite() for part in parts):
             return None
-        source_count = sum(part.source_count for part in parts)
-        if source_count > 1:
+        uncertain_count = sum(part.uncertain for part in parts)
+        if uncertain_count > 1:
             return None
 
         outer = _fold_numeric_expression(
@@ -403,11 +428,11 @@ def _summarize_uncertainty(
             expr_t,
             [part.outer for part in parts],
         )
-        if source_count == 0:
+        if uncertain_count == 0:
             return _make_summary(outer)
 
-        moving = next(part for part in parts if part.source_count)
-        fixed = [part.outer for part in parts if not part.source_count]
+        moving = next(part for part in parts if part.uncertain)
+        fixed = [part.outer for part in parts if not part.uncertain]
         assert fixed, "Unary Add/Multiply should be eliminated before uncertainty pass"
         fixed_outer = _fold_numeric_expression(mutator, expr_t, fixed)
         if expr_t is Add:
@@ -415,20 +440,22 @@ def _summarize_uncertainty(
                 outer=outer,
                 robust_min=moving.robust_min + fixed_outer.get_min_value(),
                 robust_max=moving.robust_max + fixed_outer.get_max_value(),
-                source_count=1,
+                uncertain=True,
             )
         if fixed_outer.get_min_value() > 0:
             return _UncertaintySummary(
                 outer=outer,
                 robust_min=moving.robust_min * fixed_outer.get_min_value(),
                 robust_max=moving.robust_max * fixed_outer.get_max_value(),
-                source_count=1,
+                uncertain=True,
             )
         return None
 
     if po := node.as_parameter_operatable.try_get():
-        if subset := MutatorUtils.is_numeric_literal(mutator.utils.try_extract_subset(po)):
-            return _make_summary(subset, source_count=1)
+        if subset := MutatorUtils.is_numeric_literal(
+            mutator.utils.try_extract_subset(po)
+        ):
+            return _make_summary(subset, uncertain=True)
 
         outer = MutatorUtils.is_numeric_literal(
             mutator.utils.try_extract_superset(po, domain_default=True)
@@ -437,25 +464,30 @@ def _summarize_uncertainty(
         if not allow_alias or (outer is not None and outer.is_finite()):
             return candidate
 
-        for expr in AliasClass.of(po.as_operand.get()).get_with_trait(
-            F.Expressions.is_expression
-        ):
-            if po in expr.get_operand_leaves_operatable():
-                continue
-            if not (
-                summary := _summarize_uncertainty(
-                    mutator,
-                    expr.as_operand.get(),
-                    allow_alias=False,
-                )
-            ):
-                continue
-            candidate = (
+        # If a parameter is still only bounded by its open domain, try one alias hop
+        # and let the outer solver loop stage the rest.
+        alias = AliasClass.of(po.as_operand.get())
+        if not isinstance(alias, AliasClassIs):
+            return candidate
+        alias_summary = _intersect_summary_sequence(
+            mutator,
+            (
                 summary
-                if candidate is None
-                else _intersect_summaries(mutator, candidate, summary)
-            )
-        return candidate
+                for expr in _iter_alias_rhs(po, alias)
+                if (
+                    summary := _summarize_uncertainty(
+                        mutator,
+                        expr.as_operand.get(),
+                        allow_alias=False,
+                    )
+                )
+            ),
+        )
+        if alias_summary is None:
+            return candidate
+        if candidate is None:
+            return alias_summary
+        return _intersect_summaries(mutator, candidate, alias_summary)
 
     return None
 
@@ -464,19 +496,8 @@ def _summarize_uncertainty(
 def uncertainty_estimation_single_source(mutator: Mutator):
     """Robustly narrow params from a single lower-bound uncertainty source."""
 
-    for target_po in mutator.get_parameter_operatables():
-        if not (param := target_po.as_parameter.try_get()):
-            continue
-        if fabll.Traits(param).get_obj_raw().try_cast(F.Parameters.NumericParameter) is None:
-            continue
-
+    for target_po, rhs_exprs in _iter_alias_targets(mutator):
         target = target_po.as_operand.get()
-        alias = AliasClass.of(target)
-        alias_params = alias.get_with_trait(F.Parameters.is_parameter)
-        if len(alias_params) != 1:
-            continue
-        if not next(iter(alias_params)).as_operand.get().is_same(target):
-            continue
 
         if mutator.utils.try_extract_subset(target_po) is not None:
             continue
@@ -487,27 +508,17 @@ def uncertainty_estimation_single_source(mutator: Mutator):
         if outer is None:
             continue
 
-        candidate = None
-        for expr in alias.get_with_trait(F.Expressions.is_expression):
-            if expr.try_get_sibling_trait(F.Expressions.is_predicate):
-                continue
-            if expr.try_get_sibling_trait(F.Expressions.is_setic):
-                continue
-            if target_po in expr.get_operand_leaves_operatable():
-                continue
-
-            summary = _summarize_uncertainty(mutator, expr.as_operand.get())
-            if summary is None or summary.source_count != 1:
-                continue
-            candidate = (
+        candidate = _intersect_summary_sequence(
+            mutator,
+            (
                 summary
-                if candidate is None
-                else _intersect_summaries(mutator, candidate, summary)
-            )
-
+                for expr in rhs_exprs
+                if (summary := _summarize_uncertainty(mutator, expr.as_operand.get()))
+                and summary.uncertain
+            ),
+        )
         if candidate is None:
             continue
-
         candidate = _intersect_summaries(mutator, candidate, _make_summary(outer))
         if candidate.outer.is_empty():
             raise Contradiction(

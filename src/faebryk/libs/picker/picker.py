@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-import math
 from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass
@@ -346,41 +345,6 @@ def _collect_relevant_params(
         )
         for p in pbt.get_params()
     ]
-
-
-def _constraint_span_score(
-    module: F.Pickable.is_pickable,
-    solver: Solver,
-) -> tuple[float, float]:
-    """
-    Smaller is more constrained.
-
-    1. Prefer modules whose bounded numeric params have smaller relative spans.
-    2. Break ties by absolute span when relative span is not informative.
-    """
-    if not (pickable := module.get_pickable_node().try_get_trait(F.Pickable.is_pickable_by_type)):
-        return (math.inf, math.inf)
-
-    scores: list[tuple[float, float]] = []
-    for param in pickable.get_params():
-        if not (superset := solver.extract_superset(param)):
-            continue
-        if not (numbers := fabll.Traits(superset).get_obj_raw().try_cast(F.Literals.Numbers)):
-            continue
-        if numbers.is_empty() or not numbers.is_finite():
-            continue
-
-        lo = numbers.get_min_value()
-        hi = numbers.get_max_value()
-        abs_span = hi - lo
-        rel_span = abs_span / max(abs(lo), abs(hi), 1.0)
-        scores.append((rel_span, abs_span))
-
-    if not scores:
-        return (math.inf, math.inf)
-    return max(scores)
-
-
 def _format_pcb_contradiction_error(
     contradiction: Contradiction, tg: fbrk.TypeGraph
 ) -> str:
@@ -528,12 +492,8 @@ def _pick_tree(
                     f"No candidates found for {no_candidates}", *no_candidates
                 )
 
-            # Pick the module with the tightest current solver-constrained range.
-            # Candidate count remains a tie-breaker on equally constrained modules.
-            module = min(
-                item.modules,
-                key=lambda m: (_constraint_span_score(m, item.solver), len(group_candidates[m])),
-            )
+            # Heuristic: pick most-constrained module (fewest candidates)
+            module = min(item.modules, key=lambda m: len(group_candidates[m]))
             part = next(iter(group_candidates[module]))
 
             module_name = module.get_pickable_node().get_full_name()

@@ -247,7 +247,8 @@ class MutatorUtils:
         po: F.Parameters.is_parameter_operatable,
         domain_default: bool = False,
     ) -> F.Literals.is_literal | None:
-        # TODO check if empty set?
+        # Prefer an asserted/derived bound. Some parameter types intentionally do not
+        # implement `domain_set`; for a `try_` API that should behave like "no bound".
         if lit := po.try_extract_superset():
             return lit
         if not domain_default:
@@ -472,7 +473,8 @@ class MutatorUtils:
             all_root_operands = F.Parameters.can_be_operand.get_root_operands(
                 *leaves, predicates_only=True
             )
-            # Constraining predicates: follow their operands transitively
+            # Non-constraining predicates are not themselves relevant, but they also
+            # must not block traversal through the connected constraining component.
             new_constraining_roots = (
                 OrderedSet(
                     e.get_sibling_trait(F.Expressions.is_predicate)

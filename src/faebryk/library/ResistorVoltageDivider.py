@@ -147,7 +147,7 @@ class ResistorVoltageDivider(fabll.Node):
         ),
     ]
 
-    # helper equations for the solver
+    # Forward helpers: broad pre-pick bounds from ratio/current/total resistance.
     _rewrite_equations = [
         F.Expressions.Is.MakeChild(
             [total_resistance],
@@ -169,7 +169,7 @@ class ResistorVoltageDivider(fabll.Node):
             ],
             assert_=True,
         ),
-        # r_top = total_R * (1 - ratio)
+        # r_top = total_R - r_bottom
         F.Expressions.Is.MakeChild(
             [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
             [
@@ -180,6 +180,7 @@ class ResistorVoltageDivider(fabll.Node):
             ],
             assert_=True,
         ),
+        # Backward helpers: after one pick, robustly narrow the other resistor.
         # r_bottom = r_top * ratio / (1 - ratio)
         F.Expressions.Is.MakeChild(
             [chain, _ResistorChain.resistors[1], F.Resistor.resistance],

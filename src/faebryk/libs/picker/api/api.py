@@ -22,7 +22,6 @@ from faebryk.libs.util import ConfigFlag, once
 logger = logging.getLogger(__name__)
 
 DEFAULT_API_TIMEOUT_SECONDS = 30
-
 API_LOG = ConfigFlag("API_LOG", descr="Log API calls (very verbose)", default=False)
 
 

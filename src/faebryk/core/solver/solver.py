@@ -23,7 +23,6 @@ from atopile.logging_utils import NET_LINE_WIDTH
 from faebryk.core.solver.mutator import (
     MutationMap,
     Mutator,
-    is_irrelevant,
 )
 from faebryk.core.solver.symbolic import (
     expression_groups,
@@ -161,14 +160,13 @@ class Solver:
         initial_state = (
             self.state.data.mutation_map.compressed() if self.state else None
         )
-        state = Solver.SolverState(
+        return Solver.SolverState(
             data=Solver.IterationData(
                 mutation_map=MutationMap.bootstrap(
                     tg=tg, g=g, relevant=relevant, initial_state=initial_state
                 ),
             )
         )
-        return state
 
     # @times_out(TIMEOUT)
     def simplify(

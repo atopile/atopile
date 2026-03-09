@@ -136,6 +136,7 @@ class AliasClassStub(AliasClass):
             return lit
         return self.member.as_parameter_operatable.get().try_extract_superset()
 
+
 class AliasClassIs(AliasClass):
     def __init__(self, is_: F.Expressions.Is):
         self.is_ = is_
@@ -168,6 +169,7 @@ class AliasClassIs(AliasClass):
             .as_parameter_operatable.force_get()
             .try_extract_superset()
         )
+
 
 class SubsumptionCheck:
     """
@@ -433,22 +435,26 @@ class SubsumptionCheck:
             if (p := op.try_get_sibling_trait(F.Parameters.is_parameter))
         }
 
-        if len(param_ops) > 1:
+        if len(param_ops) > 1 and len(param_ops) != len(ops):
             builder_params = {
                 p
                 for op in builder.operands
                 if (p := op.try_get_sibling_trait(F.Parameters.is_parameter))
             }
             non_builder_params = param_ops - builder_params
-            target_p = next(iter(non_builder_params or builder_params or param_ops))
-            for to_merge_p in param_ops:
-                if to_merge_p.is_same(target_p):
-                    continue
-                _merge_alias(mutator, to_merge_p, target_p)
+            # case 4: Is!(P1, P2), Is!(P2, E1, E2) -> remutate P1 to P2
+            if len(builder_params) == len(builder.operands) and not non_builder_params:
+                # TODO better candidate finding
+                ps = list(builder_params)
+                target_p, to_merge = ps[0], ps[1:]
+                for to_merge_p in to_merge:
+                    _merge_alias(mutator, to_merge_p, target_p)
+                # return alias
+                return SubsumptionCheck.Result(
+                    most_constrained_expr=SubsumptionCheck.Result._DISCARD()
+                )
 
-            return SubsumptionCheck.Result(
-                most_constrained_expr=SubsumptionCheck.Result._DISCARD()
-            )
+            raise NotImplementedError("I dont want to deal with this")
 
         # case 1: Is!(A,B,C), Is!(A, B) => Is!(A,B,C)
         if len(existing_aliases) == 1:
@@ -655,6 +661,8 @@ def _no_inconsistent_bounds(
                 mutator=mutator,
                 constraint_sources=[param_op],
             )
+
+
 def _no_predicate_literals(
     mutator: Mutator,
     builder: ExpressionBuilder[Any],
