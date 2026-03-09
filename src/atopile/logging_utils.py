@@ -50,6 +50,8 @@ if TYPE_CHECKING:
 
     from atopile.dataclasses import Build, StageStatus
 
+from atopile.ato_flags import ATO_FORCE_TERMINAL
+
 # =============================================================================
 # Shared Style Constants
 # =============================================================================
@@ -158,7 +160,8 @@ faebryk_theme = Theme(
     }
 )
 
-_FORCE_TERMINAL = os.environ.get("ATO_FORCE_TERMINAL") in {"1", "true", "yes"}
+
+_FORCE_TERMINAL = ATO_FORCE_TERMINAL.get()
 _CONSOLE_WIDTH = _get_terminal_width()
 rich.reconfigure(
     theme=faebryk_theme,

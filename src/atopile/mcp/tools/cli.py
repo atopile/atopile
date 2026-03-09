@@ -34,9 +34,11 @@ def build_project(
     config.project.open_layout_on_build = False
     config.interactive = False
 
+    from atopile.ato_flags import ATO_BUILD_ID
+
     success = True
     logs = ""
-    prev_build_id = os.environ.get("ATO_BUILD_ID")
+    prev_build_id = os.environ.get(ATO_BUILD_ID.name)
 
     with config.select_build(target_name_from_yaml):
         from atopile.buildutil import generate_build_id, generate_build_timestamp
@@ -46,7 +48,7 @@ def build_project(
             target_name_from_yaml,
             generate_build_timestamp(),
         )
-        os.environ["ATO_BUILD_ID"] = build_id
+        os.environ[ATO_BUILD_ID.name] = build_id
         try:
             from atopile.buildutil import BuildStepContext
 
@@ -60,9 +62,9 @@ def build_project(
                 logs = traceback.format_exc()
         finally:
             if prev_build_id is None:
-                os.environ.pop("ATO_BUILD_ID", None)
+                os.environ.pop(ATO_BUILD_ID.name, None)
             else:
-                os.environ["ATO_BUILD_ID"] = prev_build_id
+                os.environ[ATO_BUILD_ID.name] = prev_build_id
 
     return BuildResult(
         success=success,

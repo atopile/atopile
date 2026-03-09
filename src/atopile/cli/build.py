@@ -10,6 +10,7 @@ from pathlib import Path
 import typer
 from typing_extensions import Annotated
 
+from atopile import ato_flags
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.dataclasses import (
     Build,
@@ -181,7 +182,7 @@ def _run_single_build() -> None:
     AtoLogger.activate_build(stage=build_name)
 
     # Read build_id from environment (passed by parent process)
-    build_id = os.environ.get("ATO_BUILD_ID")
+    build_id = ato_flags.ATO_BUILD_ID.get() or None
 
     # Initialize build history DB so the worker can write stages
     BuildHistory.init_db()
@@ -328,37 +329,40 @@ def build(
         list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")
     ] = [],
     target: Annotated[
-        list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+        list[str], typer.Option("--target", "-t", envvar=ato_flags.ATO_TARGET.name)
     ] = [],
     exclude_target: Annotated[
-        list[str], typer.Option("--exclude-target", "-x", envvar="ATO_EXCLUDE_TARGET")
+        list[str],
+        typer.Option(
+            "--exclude-target", "-x", envvar=ato_flags.ATO_EXCLUDE_TARGET.name
+        ),
     ] = [],
     frozen: Annotated[
         bool | None,
         typer.Option(
             help="PCB must be rebuilt without changes. Useful in CI",
-            envvar="ATO_FROZEN",
+            envvar=ato_flags.ATO_FROZEN.name,
         ),
     ] = None,
     keep_picked_parts: Annotated[
         bool | None,
         typer.Option(
             help="Keep previously picked parts from PCB",
-            envvar="ATO_KEEP_PICKED_PARTS",
+            envvar=ato_flags.ATO_KEEP_PICKED_PARTS.name,
         ),
     ] = None,
     keep_net_names: Annotated[
         bool | None,
         typer.Option(
             help="Keep net names from PCB",
-            envvar="ATO_KEEP_NET_NAMES",
+            envvar=ato_flags.ATO_KEEP_NET_NAMES.name,
         ),
     ] = None,
     keep_designators: Annotated[
         bool | None,
         typer.Option(
             help="Keep designators from PCB",
-            envvar="ATO_KEEP_DESIGNATORS",
+            envvar=ato_flags.ATO_KEEP_DESIGNATORS.name,
         ),
     ] = None,
     standalone: bool = False,
@@ -403,17 +407,17 @@ def build(
     from faebryk.libs.project.dependencies import ProjectDependencies
 
     # Check for verbose mode from CLI flag or environment variable (for workers)
-    if verbose or os.environ.get("ATO_VERBOSE") == "1":
+    if verbose or ato_flags.ATO_VERBOSE.get():
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Enable faulthandler for crash debugging in workers
-    if os.environ.get("ATO_SAFE"):
+    if ato_flags.ATO_SAFE.get():
         import faulthandler
 
         faulthandler.enable()
 
     # Worker mode - run single build directly (no config needed yet)
-    if os.environ.get("ATO_BUILD_WORKER"):
+    if ato_flags.ATO_BUILD_WORKER.get():
         config.apply_options(
             entry=entry,
             selected_builds=selected_builds,

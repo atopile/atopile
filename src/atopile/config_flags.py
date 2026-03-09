@@ -15,18 +15,19 @@ from pathlib import Path
 class ConfigFlagDef:
     """A discovered ConfigFlag definition."""
 
-    env_name: str  # The raw env var name (without FBRK_ prefix)
+    env_name: str  # The raw env var name (without prefix)
     kind: str  # ConfigFlag, ConfigFlagInt, ConfigFlagFloat, ConfigFlagString, etc.
     python_name: str | None  # The Python variable name
     file: Path  # Source file path
     line: int  # Line number in source
     default: str | None  # Default value as string
     descr: str | None  # Description text
+    prefix: str = "FBRK_"  # Environment variable prefix
 
     @property
     def full_env_name(self) -> str:
-        """The full environment variable name with FBRK_ prefix."""
-        return f"FBRK_{self.env_name}"
+        """The full environment variable name with prefix."""
+        return f"{self.prefix}{self.env_name}"
 
     @property
     def current_value(self) -> str:
@@ -125,6 +126,7 @@ def _find_configflags_in_assignment(
 
         default: str | None = None
         descr: str | None = None
+        prefix: str = "FBRK_"
         for kw in node.keywords:
             if kw.arg == "default":
                 default = _extract_literal_repr(kw.value)
@@ -132,6 +134,10 @@ def _find_configflags_in_assignment(
                 descr = _extract_str_constant(kw.value) or _extract_literal_repr(
                     kw.value
                 )
+            elif kw.arg == "prefix":
+                extracted = _extract_str_constant(kw.value)
+                if extracted is not None:
+                    prefix = extracted
 
         # Common positional patterns used in this repo:
         # - ConfigFlag("NAME", False, "descr")
@@ -152,6 +158,7 @@ def _find_configflags_in_assignment(
                 line=line,
                 default=default,
                 descr=descr,
+                prefix=prefix,
             )
         )
 

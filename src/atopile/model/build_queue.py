@@ -71,7 +71,9 @@ MAX_CONCURRENT_BUILDS = 4
 
 def _build_subprocess_command(build: Build) -> list[str]:
     """Build the subprocess command for a given build."""
-    ato_binary = os.environ.get("ATO_BINARY") or os.environ.get("ATO_BINARY_PATH")
+    from atopile.ato_flags import ATO_BINARY, ATO_BINARY_PATH
+
+    ato_binary = ATO_BINARY.get() or ATO_BINARY_PATH.get()
     resolved_ato = ato_binary or shutil.which("ato")
     if resolved_ato:
         cmd = [resolved_ato, "build"]
@@ -95,37 +97,53 @@ def _build_subprocess_command(build: Build) -> list[str]:
 
 def _build_subprocess_env(build: Build) -> dict[str, str]:
     """Build environment variables for the build subprocess."""
+    from atopile.ato_flags import (
+        ATO_BUILD_HISTORY_DB,
+        ATO_BUILD_ID,
+        ATO_BUILD_WORKER,
+        ATO_EXCLUDE_TARGET,
+        ATO_FORCE_TERMINAL,
+        ATO_FROZEN,
+        ATO_KEEP_DESIGNATORS,
+        ATO_KEEP_NET_NAMES,
+        ATO_KEEP_PICKED_PARTS,
+        ATO_LOG_SOURCE,
+        ATO_SAFE,
+        ATO_TARGET,
+        ATO_VERBOSE,
+    )
+
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    env["ATO_BUILD_WORKER"] = "1"
+    ATO_BUILD_WORKER.export(env, True)
 
     # Force Rich to output ANSI colors even when piped (for verbose mode)
     if build.verbose:
         env["FORCE_COLOR"] = "1"
         # Set log source for prefix in log output
-        env["ATO_LOG_SOURCE"] = build.display_name or build.name or "build"
+        ATO_LOG_SOURCE.export(env, build.display_name or build.name or "build")
 
     if build.build_id:
-        env["ATO_BUILD_ID"] = build.build_id
+        ATO_BUILD_ID.export(env, build.build_id)
 
-    env["ATO_BUILD_HISTORY_DB"] = str(BUILD_HISTORY_DB)
+    ATO_BUILD_HISTORY_DB.export(env, str(BUILD_HISTORY_DB))
 
     if build.include_targets:
-        env["ATO_TARGET"] = ",".join(build.include_targets)
+        ATO_TARGET.export(env, ",".join(build.include_targets))
     if build.exclude_targets:
-        env["ATO_EXCLUDE_TARGET"] = ",".join(build.exclude_targets)
+        ATO_EXCLUDE_TARGET.export(env, ",".join(build.exclude_targets))
     if build.frozen is not None:
-        env["ATO_FROZEN"] = "1" if build.frozen else "0"
+        ATO_FROZEN.export(env, build.frozen)
     if build.keep_picked_parts is not None:
-        env["ATO_KEEP_PICKED_PARTS"] = "1" if build.keep_picked_parts else "0"
+        ATO_KEEP_PICKED_PARTS.export(env, build.keep_picked_parts)
     if build.keep_net_names is not None:
-        env["ATO_KEEP_NET_NAMES"] = "1" if build.keep_net_names else "0"
+        ATO_KEEP_NET_NAMES.export(env, build.keep_net_names)
     if build.keep_designators is not None:
-        env["ATO_KEEP_DESIGNATORS"] = "1" if build.keep_designators else "0"
+        ATO_KEEP_DESIGNATORS.export(env, build.keep_designators)
     if build.verbose:
-        env["ATO_VERBOSE"] = "1"
+        ATO_VERBOSE.export(env, True)
         # Force Rich to emit ANSI formatting even when stdout is piped.
-        env["ATO_FORCE_TERMINAL"] = "1"
+        ATO_FORCE_TERMINAL.export(env, True)
         # Propagate parent width so rich bars scale correctly in subprocess.
         try:
             from atopile.logging_utils import get_terminal_width
@@ -135,8 +153,8 @@ def _build_subprocess_env(build: Build) -> dict[str, str]:
             env["TERMINAL_WIDTH"] = width
         except Exception:
             pass
-    if os.environ.get("ATO_SAFE"):
-        env["ATO_SAFE"] = "1"
+    if ATO_SAFE.get():
+        ATO_SAFE.export(env, True)
 
     return env
 
@@ -167,8 +185,10 @@ def _run_build_subprocess(
         cmd = _build_subprocess_command(build)
         env = _build_subprocess_env(build)
 
+        from atopile.ato_flags import ATO_SAFE
+
         preexec_fn = None
-        if env.get("ATO_SAFE"):
+        if env.get(ATO_SAFE.name):
 
             def enable_core_dumps():
                 import resource
@@ -178,7 +198,7 @@ def _run_build_subprocess(
                         resource.RLIMIT_CORE,
                         (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
                     )
-                except (ValueError, OSError):
+                except ValueError, OSError:
                     pass
 
             preexec_fn = enable_core_dumps
