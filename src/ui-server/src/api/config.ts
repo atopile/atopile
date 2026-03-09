@@ -13,16 +13,6 @@ interface AtopileWindow extends Window {
 
 const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
 
-function parseOptionalBoolean(value: unknown): boolean | null {
-  if (typeof value === 'boolean') return value;
-  if (typeof value !== 'string') return null;
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'true') return true;
-  if (normalized === 'false') return false;
-  return null;
-}
-
 /**
  * Derive WebSocket URL from HTTP URL.
  * e.g., http://127.0.0.1:12345 -> ws://127.0.0.1:12345
@@ -68,12 +58,9 @@ export const WS_STATE_URL = `${WS_BASE_URL}/ws/state`;
 export const WS_LOGS_URL = `${WS_BASE_URL}/ws/logs`;
 
 /**
- * Chat feature flag from the VS Code extension (window global) or build-time env.
+ * Chat feature flag injected by the host webview.
  */
-export const ENABLE_CHAT =
-  win.__ATOPILE_ENABLE_CHAT__ !== undefined
-    ? Boolean(win.__ATOPILE_ENABLE_CHAT__)
-    : (parseOptionalBoolean(import.meta.env.VITE_ENABLE_CHAT) ?? false);
+export const ENABLE_CHAT = Boolean(win.__ATOPILE_ENABLE_CHAT__);
 
 /**
  * True when running inside the browser-based web-ide container.
