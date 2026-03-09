@@ -231,3 +231,5 @@ src/atopile/layout_server/static/editor.js.map
 # vscode layout editor webview bundle artifacts
 src/vscode-atopile/resources/layout-editor/editor.js
 src/vscode-atopile/resources/layout-editor/editor.js.map
+
+src/faebryk/libs/jlcpcb/jlcpcb_stackups/**/*.json
