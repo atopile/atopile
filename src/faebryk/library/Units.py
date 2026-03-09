@@ -481,6 +481,9 @@ class is_unit(fabll.Node):
         return is_unit._extract_offset(self) != 0.0
 
     def is_commensurable_with(self: "is_unit | None", other: "is_unit|None") -> bool:
+        # Same node — trivially commensurable
+        if self is not None and other is not None and self.is_same(other):
+            return True
         self_vector = is_unit._extract_basis_vector(self)
         other_vector = is_unit._extract_basis_vector(other)
 
@@ -663,6 +666,10 @@ class is_unit(fabll.Node):
     def get_conversion_to(
         self: "is_unit | None", target: "is_unit|None"
     ) -> tuple[float, float]:
+        # Same node — identity conversion, skip basis vector extraction
+        if self is not None and target is not None and self.is_same(target):
+            return (1.0, 0.0)
+
         if not is_unit.is_commensurable_with(self, target):
             raise UnitsNotCommensurableError(
                 f"Units {self} and {target} are not commensurable",
@@ -1014,21 +1021,9 @@ def decode_symbol(
     )
 
 
-# TODO: remove?
-# Cache keyed by (g_uuid, symbol) for resolved units
-_decode_symbol_cache: dict[tuple[int, str], "is_unit | None"] = {}
-
-
 def decode_symbol_runtime(
     g: graph.GraphView, tg: fbrk.TypeGraph, symbol: str
 ) -> "is_unit | None":
-    g_uuid = g.get_self_node().node().get_uuid()
-    cache_key = (g_uuid, symbol)
-
-    if cached := _decode_symbol_cache.get(cache_key):
-        return cached
-
-    # Build symbol map fresh each cache miss (graph may have grown)
     all_units: list[is_unit] = list(
         fabll.Traits.get_implementors(is_unit.bind_typegraph(tg), g)
     )
@@ -1036,7 +1031,6 @@ def decode_symbol_runtime(
 
     # 1. Exact match
     if symbol in symbol_map:
-        _decode_symbol_cache[cache_key] = symbol_map[symbol]
         return symbol_map[symbol]
 
     # 2. Prefixed
@@ -1062,7 +1056,6 @@ def decode_symbol_runtime(
             result = unit.scaled_copy(
                 g=g, tg=tg, multiplier=scale_factor, symbol=symbol
             )
-            _decode_symbol_cache[cache_key] = result
             return result
 
     raise UnitNotFoundError(symbol, _get_close_matches(symbol, list(symbol_map.keys())))

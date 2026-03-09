@@ -2,94 +2,112 @@
 Baseline test for unit-related node counts.
 
 Builds a small ato program with multiple literals sharing the same unit
-and counts unit-related nodes via tg.get_type_instance_overview().
+and counts unit-related nodes by recursively walking composition children
+of is_unit, has_unit, has_display_unit, and unit type nodes.
 """
 
 import time
 
 import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.library.Units import has_display_unit, has_unit, is_unit
 from test.compiler.conftest import build_instance
 
-UNIT_RELATED_TYPES = {
-    "is_unit",
-    "is_unit_type",
-    "has_unit",
-    "has_display_unit",
-    "_BasisVector",
-    "Counts",
-    "is_unit_expression",
-    "UnitExpression",
-    "is_si_unit",
-    "is_si_prefixed_unit",
-    "is_binary_prefixed_unit",
-    "is_base_unit",
-    "Ohm",
-    "Volt",
-    "Ampere",
-    "Hertz",
-    "Farad",
-    "Henry",
-    "Watt",
-    "Second",
-    "Meter",
-    "Kelvin",
-    "Mole",
-    "Candela",
-    "Radian",
-    "Steradian",
-    "Newton",
-    "Pascal",
-    "Joule",
-    "Coulomb",
-    "Siemens",
-    "Weber",
-    "Tesla",
-    "DegreeCelsius",
-    "Lumen",
-    "Lux",
-    "Becquerel",
-    "Gray",
-    "Sievert",
-    "Katal",
-    "Gram",
-    "Bit",
-    "Byte",
-    "Percent",
-    "Ppm",
-    "Degree",
-    "ArcMinute",
-    "ArcSecond",
-    "Minute",
-    "Hour",
-    "Day",
-    "Week",
-    "Month",
-    "Year",
-    "Liter",
-    "Rpm",
-    "AmpereHour",
-    "Dimensionless",
-    "_AnonymousUnit",
-}
+
+def _count_recursive_children(bound_node: graph.BoundNode) -> int:
+    """Count a node plus all its recursive composition children."""
+    count = 1  # the node itself
+    children: list[graph.BoundEdge] = []
+
+    def collect(ctx: list[graph.BoundEdge], edge: graph.BoundEdge) -> None:
+        ctx.append(edge)
+
+    fbrk.EdgeComposition.visit_children_edges(
+        bound_node=bound_node, ctx=children, f=collect
+    )
+    for edge in children:
+        count += 1  # direct child
+        # recurse into grandchildren
+        child_node = edge.g().bind(node=edge.edge().target())
+        count += _count_recursive_children(child_node) - 1  # -1: already counted child
+    return count
+
+
+def _count_unit_nodes(g: graph.GraphView, tg: fbrk.TypeGraph) -> dict[str, int]:
+    """
+    Count unit-related nodes by walking composition children of:
+    - is_unit instances (the singleton unit definitions)
+    - has_unit instances (per-literal trait pointing to is_unit)
+    - has_display_unit instances (per-literal trait pointing to display unit)
+    - unit type nodes (Volt, Ohm, etc. — the parent types)
+    """
+    seen: set[int] = set()  # node UUIDs to avoid double-counting
+    category_counts: dict[str, int] = {}
+
+    def _walk_instances(label: str, instances: list) -> None:
+        total = 0
+        for inst in instances:
+            node = inst.instance.node() if hasattr(inst, "instance") else inst.node()
+            uuid = node.get_uuid()
+            if uuid not in seen:
+                seen.add(uuid)
+                n = _count_recursive_children(
+                    inst.instance if hasattr(inst, "instance") else inst
+                )
+                total += n
+                # Mark all children as seen too
+                children: list[graph.BoundEdge] = []
+
+                def collect(ctx: list, edge: graph.BoundEdge) -> None:
+                    ctx.append(edge)
+
+                fbrk.EdgeComposition.visit_children_edges(
+                    bound_node=(inst.instance if hasattr(inst, "instance") else inst),
+                    ctx=children,
+                    f=collect,
+                )
+                for edge in children:
+                    seen.add(edge.edge().target().get_uuid())
+        category_counts[label] = total
+
+    # is_unit singletons (type-level, should be constant)
+    is_unit_instances = list(
+        fabll.Traits.get_implementors(is_unit.bind_typegraph(tg), g)
+    )
+    _walk_instances("is_unit", is_unit_instances)
+
+    # has_unit instances (per-literal)
+    has_unit_instances = list(
+        fabll.Traits.get_implementors(has_unit.bind_typegraph(tg), g)
+    )
+    _walk_instances("has_unit", has_unit_instances)
+
+    # has_display_unit instances (per-literal)
+    has_disp_instances = list(
+        fabll.Traits.get_implementors(has_display_unit.bind_typegraph(tg), g)
+    )
+    _walk_instances("has_display_unit", has_disp_instances)
+
+    category_counts["total_seen"] = len(seen)
+    category_counts["is_unit_count"] = len(is_unit_instances)
+    category_counts["has_unit_count"] = len(has_unit_instances)
+    category_counts["has_display_unit_count"] = len(has_disp_instances)
+
+    return category_counts
 
 
 def _build_and_measure(source: str, n_params: int, param_prefix: str = "v"):
     """Build source, count nodes, and time serialization of all parameters."""
     g, tg, stdlib, result, app_root = build_instance(source, root="App")
 
-    # Count nodes
+    # Total node count from overview
     overview = tg.get_type_instance_overview()
-    total = 0
-    unit_related = 0
-    counts: dict[str, int] = {}
-    for type_name, count in overview:
-        total += count
-        counts[type_name] = counts.get(type_name, 0) + count
-        base = type_name.split("<")[0]
-        if base in UNIT_RELATED_TYPES:
-            unit_related += count
+    total = sum(count for _, count in overview)
+
+    # Unit node counts via recursive traversal
+    unit_counts = _count_unit_nodes(g, tg)
 
     # Collect parameters
     params = []
@@ -107,23 +125,25 @@ def _build_and_measure(source: str, n_params: int, param_prefix: str = "v"):
         p.get_values()
     elapsed_ms = (time.perf_counter() - t0) * 1000
 
-    return total, unit_related, counts, elapsed_ms
+    return total, unit_counts, elapsed_ms
 
 
-def _print_table(rows: list[tuple[int, int, int, int, int, int, int, float]]) -> None:
+def _print_table(
+    rows: list[tuple[int, int, int, int, int, int, int, float]],
+) -> None:
     header = (
-        f"{'lits':>5} {'total':>7} {'unit':>7}"
+        f"{'lits':>5} {'total':>7} {'u_nodes':>8}"
         f" {'is_unit':>8} {'has_unit':>9} {'has_disp':>9}"
-        f" {'is_unit_type':>13} {'ser_ms':>8}"
+        f" {'ser_ms':>8}"
     )
     sep = "-" * len(header)
     print(f"\n{header}")
     print(sep)
-    for n_lit, total, unit_rel, is_u, has_u, has_d, is_ut, ser in rows:
+    for n_lit, total, u_nodes, is_u, has_u, has_d, ser in rows:
         print(
-            f"{n_lit:>5} {total:>7} {unit_rel:>7}"
+            f"{n_lit:>5} {total:>7} {u_nodes:>8}"
             f" {is_u:>8} {has_u:>9} {has_d:>9}"
-            f" {is_ut:>13} {ser:>8.1f}"
+            f" {ser:>8.1f}"
         )
 
 
@@ -146,36 +166,34 @@ def test_unit_node_counts_basic():
         r3 = 100ohm
     """
 
-    total, unit_rel, counts, ser_ms = _build_and_measure(source, 3, "v")
+    total, uc, ser_ms = _build_and_measure(source, 3, "v")
     row = (
         6,
         total,
-        unit_rel,
-        counts.get("is_unit", 0),
-        counts.get("has_unit", 0),
-        counts.get("has_display_unit", 0),
-        counts.get("is_unit_type", 0),
+        uc["total_seen"],
+        uc["is_unit_count"],
+        uc["has_unit_count"],
+        uc["has_display_unit_count"],
         ser_ms,
     )
     _print_table([row])
 
     assert total > 0, "Expected some total nodes"
-    assert counts.get("has_unit", 0) > 0, "Expected some has_unit nodes"
+    assert uc["has_unit_count"] > 0, "Expected some has_unit nodes"
 
 
 def test_unit_node_counts_many_same_unit():
     """
     Build a program with 10 Volt literals.  Shows scaling with singleton units.
     """
-    total, unit_rel, counts, ser_ms = _build_and_measure(_make_volt_source(10), 10)
+    total, uc, ser_ms = _build_and_measure(_make_volt_source(10), 10)
     row = (
         10,
         total,
-        unit_rel,
-        counts.get("is_unit", 0),
-        counts.get("has_unit", 0),
-        counts.get("has_display_unit", 0),
-        counts.get("is_unit_type", 0),
+        uc["total_seen"],
+        uc["is_unit_count"],
+        uc["has_unit_count"],
+        uc["has_display_unit_count"],
         ser_ms,
     )
     _print_table([row])
@@ -184,31 +202,30 @@ def test_unit_node_counts_many_same_unit():
 def test_unit_type_sharing():
     """
     Build programs with varying Volt literal counts via the compiler.
-    Verify that unit-related instance counts grow sublinearly
+    Verify that is_unit instance counts stay constant
     (all point to the shared type-level is_unit singleton).
     """
     rows = []
-    all_counts = {}
+    all_uc = {}
     for n in (5, 10, 15, 20, 50, 100, 1000):
-        total, unit_rel, counts, ser_ms = _build_and_measure(_make_volt_source(n), n)
+        total, uc, ser_ms = _build_and_measure(_make_volt_source(n), n)
         rows.append(
             (
                 n,
                 total,
-                unit_rel,
-                counts.get("is_unit", 0),
-                counts.get("has_unit", 0),
-                counts.get("has_display_unit", 0),
-                counts.get("is_unit_type", 0),
+                uc["total_seen"],
+                uc["is_unit_count"],
+                uc["has_unit_count"],
+                uc["has_display_unit_count"],
                 ser_ms,
             )
         )
-        all_counts[n] = counts
+        all_uc[n] = uc
 
     _print_table(rows)
 
     # is_unit instances should NOT scale with literal count (type-level singletons)
-    is_unit_counts = {n: c.get("is_unit", 0) for n, c in all_counts.items()}
+    is_unit_counts = {n: c["is_unit_count"] for n, c in all_uc.items()}
     assert len(set(is_unit_counts.values())) == 1, (
         f"is_unit should be constant across literal counts: {is_unit_counts}"
     )

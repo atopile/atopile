@@ -3777,11 +3777,13 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import is_unit
 
-        scale, offset = is_unit.get_conversion_to(self.get_is_unit(), unit)
-        if scale == 1.0 and offset == 0.0:
-            # Already in the target unit, return self
+        self_unit = self.get_is_unit()
+
+        # Same is_unit node — skip all conversion work
+        if self_unit is not None and unit is not None and self_unit.is_same(unit):
             return self
 
+        scale, offset = is_unit.get_conversion_to(self_unit, unit)
         # Identity conversion — no graph work needed
         if scale == 1.0 and offset == 0.0:
             return self
