@@ -119,6 +119,30 @@ function App() {
   );
 
   useEffect(() => {
+    const firstProject = projects[0];
+    if (!firstProject) {
+      return;
+    }
+
+    if (!projectState.selectedProject) {
+      rpcClient?.sendAction("selectProject", { projectRoot: firstProject.root });
+      return;
+    }
+
+    if (!selectedProject) {
+      return;
+    }
+
+    const firstTarget = selectedProject.targets[0]?.name;
+    const hasSelectedTarget = selectedProject.targets.some(
+      (target) => target.name === projectState.selectedTarget,
+    );
+    if (!hasSelectedTarget && firstTarget) {
+      rpcClient?.sendAction("selectTarget", { target: firstTarget });
+    }
+  }, [projects, projectState.selectedTarget, selectedProject]);
+
+  useEffect(() => {
     if (!projectState.selectedProject) {
       return;
     }

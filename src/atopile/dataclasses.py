@@ -587,7 +587,7 @@ class CreateProjectRequest(BaseModel):
     name: str | None = None
 
 
-class CreateProjectResponse(BaseModel):
+class CreateProjectResponse(CamelModel):
     success: bool
     message: str
     project_root: str | None = None

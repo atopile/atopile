@@ -864,7 +864,9 @@ export function ProjectTargetSelector({
                 description: data.description,
               });
               const projectRoot = result?.projectRoot;
-              if (projectRoot) onSelectProject(projectRoot);
+              if (projectRoot) {
+                onSelectProject(projectRoot);
+              }
               setShowNewProjectForm(false);
             } catch (error) {
               setCreateProjectError(
