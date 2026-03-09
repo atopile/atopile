@@ -30,7 +30,7 @@ from more_itertools import first
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
-from faebryk.libs.kicad.fileformats import kicad
+from faebryk.libs.kicad.fileformats import kicad, strip_duplicate_ref_texts
 from faebryk.libs.picker.picker import PickedPart, PickSupplier
 from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none, once
 
@@ -195,6 +195,10 @@ class EasyEDAFootprint:
     cache: dict[Path, "EasyEDAFootprint"] = {}
 
     def __init__(self, footprint: kicad.footprint.FootprintFile):
+        # strip duplicate reference texts
+        footprint.footprint.fp_texts = strip_duplicate_ref_texts(
+            footprint.footprint.fp_texts
+        )
         self.footprint = footprint
 
     def serialize(self) -> bytes:
