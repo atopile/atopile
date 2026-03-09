@@ -69,11 +69,23 @@ log = logging.getLogger(__name__)
 MAX_CONCURRENT_BUILDS = 4
 COMPLETED_BUILD_RETENTION_S = float(os.getenv("ATO_BUILD_COMPLETED_RETENTION_S", "30"))
 STALE_BUILD_THRESHOLD_S = float(os.getenv("ATO_BUILD_STALE_SECONDS", "600"))
+_build_runtime = {
+    "ato_binary_override": None,
+}
+
+
+def set_build_subprocess_ato_binary(path: str | None) -> None:
+    """Set the ato executable path used for build subprocesses."""
+    _build_runtime["ato_binary_override"] = path
 
 
 def _build_subprocess_command(build: Build) -> list[str]:
     """Build the subprocess command for a given build."""
-    ato_binary = os.environ.get("ATO_BINARY") or os.environ.get("ATO_BINARY_PATH")
+    ato_binary = (
+        _build_runtime["ato_binary_override"]
+        or os.environ.get("ATO_BINARY")
+        or os.environ.get("ATO_BINARY_PATH")
+    )
     resolved_ato = ato_binary or shutil.which("ato")
     if resolved_ato:
         cmd = [resolved_ato, "build"]
@@ -1060,6 +1072,7 @@ _build_settings = {
 __all__ = [
     "_build_queue",
     "_build_settings",
+    "set_build_subprocess_ato_binary",
     "_DEFAULT_MAX_CONCURRENT",
     "BuildQueue",
 ]

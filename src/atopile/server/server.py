@@ -40,7 +40,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from atopile.dataclasses import AppContext, EventType
-from atopile.model.build_queue import _build_queue
+from atopile.model.build_queue import _build_queue, set_build_subprocess_ato_binary
 from atopile.model.model_state import model_state
 from atopile.model.sqlite import AgentLogs, BuildHistory
 from atopile.server.connections import server_state
@@ -523,6 +523,11 @@ def create_app(
 
         # Configure model_state with workspace paths
         model_state.set_workspace_paths(ctx.workspace_paths)
+        set_build_subprocess_ato_binary(
+            (ctx.ato_local_path or ctx.ato_binary_path)
+            if ctx.ato_source == "explicit-path"
+            else None
+        )
 
         # Configure event_bus with event loop and emitter
         event_bus.set_event_loop(loop)
