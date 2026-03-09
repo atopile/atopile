@@ -154,6 +154,8 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 - **Generated package wrappers are refined in place** — if `parts_install(create_package=true)` created `packages/<name>/<name>.ato`, that file is the wrapper to edit and import directly from `main.ato`.
 - **Package wrappers stay generic** — expose the chip's reusable capabilities, not one project's exact subsystem grouping or role names. System-specific structure belongs in `main.ato` or higher-level project modules.
 - **Start wrappers basic, then extend** — expose the minimum standard interfaces needed to validate and integrate the package first; add more pin mappings or optional capabilities later if integration proves they are needed.
+- **Work package-by-package, step by step** — finish one reusable wrapper or submodule at a time, build its own package target, fix its concrete failures, then move to the next package. Do not jump straight to repeated full-project builds while wrappers are still unsettled.
+- **Treat each package as its own buildable product** — validating package targets independently improves layout reuse when those packages are assembled into larger projects and keeps the package ready for later publication to the package store.
 - **Do not invent project-local interfaces when stdlib already covers the boundary** — check `stdlib_list` / `stdlib_get_item` first, and prefer existing stdlib interfaces or simple arrays/composition of stdlib interfaces over custom aggregate interfaces.
 - **No `ato.yaml` inside package directories** — package targets are exposed automatically.
 - **Do not add manual top-level `ato.yaml` build targets for generated local packages unless truly needed** — use `workspace_list_targets` to discover and build those package targets first.
@@ -166,6 +168,7 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 - If a wrapper needs "three PWMs", "three phase outputs", or "several sense lines", prefer arrays or a few named stdlib fields on the module before creating a new custom `interface`.
 - In wrapper packages, prefer capability names like `uart`, `spi`, `adc`, `gpio`, `usb`, `swd` over design-role names like `sbus`, `drive_motor`, `weapon_motor`, `phase_current`, or other project-specific semantics.
 - Validate incrementally: split the design into smaller submodules, build wrapper/package targets first, and build independent sections in parallel where practical.
+- When assembling a larger design, keep package validation local to each package first so the top-level build is mainly testing integration rather than basic wrapper correctness.
 - Wrapper complexity is not a blocker by itself. If the package is broadly understood, create the basic reusable wrapper now and return to add more interfaces or alternate pin mappings during integration.
 - Use the full top-level build after those smaller targets are green so it is mainly catching integration issues.
 - Use generic passives by default (`Resistor`, `Capacitor`, `Inductor`) with parameter constraints (value/tolerance/voltage/package/tempco). Do not select fixed vendor passives unless explicitly requested.

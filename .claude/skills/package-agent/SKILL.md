@@ -34,9 +34,12 @@ Build a package that is:
 
 ## Build Workflow
 
+- Work step by step: make one coherent package change, run that package build target, fix the result, then continue.
 - Build package targets early and often.
 - Prefer fixing one concrete package build error at a time.
 - Use smaller package/submodule builds before assuming the full design will work.
+- Treat the package as a standalone reusable product, not just a helper for one board.
+- Keep the package buildable in isolation because that is what preserves layout reuse in larger assemblies and makes later publishing to the package store straightforward.
 - Stop when the package is coherent, builds, and is minimally complete.
 
 ## Imports
