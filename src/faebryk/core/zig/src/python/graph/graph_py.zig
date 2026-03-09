@@ -876,9 +876,9 @@ fn wrap_bound_node_visit_edges_of_type() type {
 fn bound_node_hash(self: *py.PyObject) callconv(.c) isize {
     const wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(self)));
     const bound_node = wrapper.data;
-    // Use the node's UUID as the hash
-    const uuid: usize = bound_node.node.get_uuid();
-    return @intCast(uuid);
+    // Node UUIDs are globally unique (counter-assigned), so graph identity is not needed.
+    // Including graph identity would break after insert_subgraph merges graphs.
+    return @intCast(bound_node.node.get_uuid());
 }
 
 fn bound_node_repr(self: *py.PyObject) callconv(.c) ?*py.PyObject {
@@ -914,11 +914,105 @@ fn bound_node_richcompare(self: *py.PyObject, other: *py.PyObject, op: c_int) ca
 
     const other_wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(other)));
 
-    // Use the same comparison logic as NodeReference.is_same()
+    // Compare node identity only — UUIDs are globally unique
     const same = self_wrapper.data.node.is_same(other_wrapper.data.node);
     const result = if ((op == 2 and same) or (op == 3 and !same)) py.Py_True() else py.Py_False();
     py.Py_INCREF(result);
     return result;
+}
+
+// Global Python dict for BoundNode.store/load
+var bound_node_store_dict: ?*py.PyObject = null;
+
+fn wrap_bound_node_store() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "store",
+            .doc = "Store a Python object on this BoundNode",
+            .args_def = struct { data: *py.PyObject },
+            .static = false,
+        };
+
+        pub fn impl(self_obj: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const parsed = bind.parse_kwargs(self_obj, args, kwargs, descr.args_def) orelse return null;
+            const dict = bound_node_store_dict orelse {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "BoundNode store not initialized");
+                return null;
+            };
+            const self_key = self_obj orelse {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "self is null");
+                return null;
+            };
+            if (py.PyDict_SetItem(dict, self_key, parsed.data) < 0) {
+                return null;
+            }
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_bound_node_load() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "load",
+            .doc = "Load a previously stored Python object from this BoundNode, with type check",
+            .args_def = struct { t: *py.PyObject },
+            .static = false,
+        };
+
+        pub fn impl(self_obj: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const parsed = bind.parse_kwargs(self_obj, args, kwargs, descr.args_def) orelse return null;
+            const dict = bound_node_store_dict orelse {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "BoundNode store not initialized");
+                return null;
+            };
+            const self_key = self_obj orelse {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "self is null");
+                return null;
+            };
+            const result = py.PyDict_GetItem(dict, self_key);
+            if (result) |obj| {
+                if (py.PyObject_IsInstance(obj, parsed.t) != 1) {
+                    py.PyErr_SetString(py.PyExc_TypeError, "BoundNode.load: stored data is not an instance of the expected type");
+                    return null;
+                }
+                py.Py_INCREF(obj);
+                return obj;
+            }
+            py.PyErr_SetString(py.PyExc_KeyError, "No data stored on this BoundNode");
+            return null;
+        }
+    };
+}
+
+fn wrap_bound_node_try_load() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "try_load",
+            .doc = "Load a previously stored Python object, or None if not found or wrong type",
+            .args_def = struct { t: *py.PyObject },
+            .static = false,
+        };
+
+        pub fn impl(self_obj: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const parsed = bind.parse_kwargs(self_obj, args, kwargs, descr.args_def) orelse return null;
+            const dict = bound_node_store_dict orelse {
+                return bind.wrap_none();
+            };
+            const self_key = self_obj orelse {
+                return bind.wrap_none();
+            };
+            const result = py.PyDict_GetItem(dict, self_key);
+            if (result) |obj| {
+                if (py.PyObject_IsInstance(obj, parsed.t) != 1) {
+                    return bind.wrap_none();
+                }
+                py.Py_INCREF(obj);
+                return obj;
+            }
+            return bind.wrap_none();
+        }
+    };
 }
 
 fn wrap_bound_node(root: *py.PyObject) void {
@@ -926,6 +1020,9 @@ fn wrap_bound_node(root: *py.PyObject) void {
         wrap_bound_node_get_node(),
         wrap_bound_node_get_graph(),
         wrap_bound_node_visit_edges_of_type(),
+        wrap_bound_node_store(),
+        wrap_bound_node_load(),
+        wrap_bound_node_try_load(),
     };
     bind.wrap_namespace_struct(root, graph.graph.BoundNodeReference, extra_methods);
     bound_node_type = type_registry.getRegisteredTypeObject("BoundNodeReference");
@@ -942,6 +1039,9 @@ fn wrap_bound_node(root: *py.PyObject) void {
             typ.ob_base.ob_base.ob_refcnt -= 1;
         }
     }
+
+    // Initialize the global store dict for BoundNode.store/load
+    bound_node_store_dict = py.PyDict_New();
 }
 
 fn wrap_bound_edge_get_edge() type {

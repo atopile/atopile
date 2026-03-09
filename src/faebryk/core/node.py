@@ -2357,15 +2357,16 @@ class is_interface(Node):
 
         while remaining:
             interface = remaining.pop()
-            logger.info(f"Grouping bus: {interface.get_full_name()}")
+            name = interface.get_full_name()
+            logger.debug(f"Grouping bus: {name}")
             connected = cast(
                 set[N],
                 interface.get_trait(is_interface)
                 .get_connected(include_self=True)
                 .keys(),
             )
-            logger.info(f"Grouping complete. Elements: {len(connected)}")
-            logger.info({i.get_full_name() for i in connected})
+            logger.info(f"Grouping bus {name} complete. Elements: {len(connected)}")
+            logger.debug({i.get_full_name() for i in connected})
             buses[interface] = connected
             remaining.difference_update(connected)
 
