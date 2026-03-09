@@ -594,6 +594,22 @@ export async function mountModel3D(surface: HTMLElement, modelUrl: string): Prom
     scene.add(mergedRoot);
     scene.add(buildBackgroundGrid(centeredBounds));
 
+    const boardMaxSpan = Math.max(
+        centeredBounds.max.x - centeredBounds.min.x,
+        centeredBounds.max.z - centeredBounds.min.z,
+        0.001
+    );
+    
+    // Bottom orange underglow
+    const underglow = new THREE.PointLight(0xff5500, 0.5, boardMaxSpan * 4, 2);
+    underglow.position.set(0, centeredBounds.min.y - boardMaxSpan * 0.1, 0);
+    scene.add(underglow);
+
+    // Top orange glow (less aggressive)
+    const topglow = new THREE.PointLight(0xff5500, 0.1, boardMaxSpan * 4, 2);
+    topglow.position.set(0, centeredBounds.max.y + boardMaxSpan * 0.1, 0);
+    scene.add(topglow);
+
     let currentRadius = 0.01;
     let requestRender: (() => void) | null = null;
 
