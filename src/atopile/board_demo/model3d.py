@@ -4,7 +4,6 @@ import json
 import logging
 import struct
 import subprocess
-import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,32 +42,23 @@ class Board3DModel:
             )
 
     def optimize_demo_glb(self, frontend_dir: Path) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            stages = [
-                ("dedup", self.source_glb_path, tmpdir_path / "1.glb"),
-                ("instance", tmpdir_path / "1.glb", tmpdir_path / "2.glb"),
-                ("weld", tmpdir_path / "2.glb", tmpdir_path / "3.glb"),
-                ("prune", tmpdir_path / "3.glb", tmpdir_path / "4.glb"),
-                ("join", tmpdir_path / "4.glb", tmpdir_path / "5.glb"),
-                ("meshopt", tmpdir_path / "5.glb", self.glb_path),
-            ]
-            for command, src, dst in stages:
-                now = time.monotonic()
-                subprocess.run(
-                    [
-                        "bun",
-                        "x",
-                        "@gltf-transform/cli",
-                        command,
-                        str(src),
-                        str(dst),
-                    ],
-                    cwd=str(frontend_dir),
-                    check=True,
-                )
-                duration = time.monotonic() - now
-                logger.info(f"Optimized ({command}) in {duration * 1000:.0f}ms")
+        now = time.monotonic()
+        subprocess.run(
+            [
+                "bun",
+                "x",
+                "@gltf-transform/cli",
+                "optimize",
+                str(self.source_glb_path),
+                str(self.glb_path),
+                "--compress",
+                "meshopt",
+            ],
+            cwd=str(frontend_dir),
+            check=True,
+        )
+        duration = time.monotonic() - now
+        logger.info("Optimized GLB in %.0fms", duration * 1000)
         self.verify_meshopt_compression()
 
     def verify_meshopt_compression(self) -> None:
