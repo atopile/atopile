@@ -161,6 +161,8 @@ class Report(DataClassJsonMixin):
         duration_human: Optional[str] = None
         start_time: Optional[str] = None
         finish_time: Optional[str] = None
+        start_epoch: Optional[float] = None
+        finish_epoch: Optional[float] = None
         error_message: Optional[str] = None
         error_type: Optional[str] = None
         error_summary: Optional[str] = None

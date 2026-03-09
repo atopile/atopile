@@ -263,6 +263,22 @@ class Solver:
                 return value.domain_set(g=g, tg=tg)
             return ss_lit
 
+    def try_extract_superset(
+        self, value: F.Parameters.is_parameter
+    ) -> F.Literals.is_literal | None:
+        """
+        Like extract_superset but returns None for unconstrained parameters
+        instead of creating an expensive domain_set graph node.
+        """
+        value_po = value.as_parameter_operatable.get()
+
+        if self.state is not None:
+            return self.state.data.mutation_map.try_extract_superset(
+                value_po, domain_default=False
+            )
+        else:
+            return value_po.try_extract_superset()
+
     def commit(self) -> None:
         """Write computed bounds and aliases back to the original input graph."""
         import faebryk.library._F as F
@@ -431,9 +447,6 @@ def test_solver_basic():
 if __name__ == "__main__":
     import typer
 
-    from atopile.logging import BuildLogger
-
-    BuildLogger.setup_logging(enable_database=False)
     logger.setLevel(logging.DEBUG)
     from faebryk.core.solver.mutator import logger as mutator_logger
 

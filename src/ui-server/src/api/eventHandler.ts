@@ -110,7 +110,7 @@ async function fetchProjectDependencies(projectRoot: string): Promise<void> {
 
 async function fetchBom(): Promise<void> {
   const store = useStore.getState();
-  const projectRoot = store.selectedProjectRoot;
+  const projectRoot = store.selectedTargetRoot || store.selectedProjectRoot;
   const targetName = store.selectedTargetNames[0];
   if (!projectRoot || !targetName) return;
   store.setLoadingBom(true);
@@ -124,7 +124,7 @@ async function fetchBom(): Promise<void> {
 
 async function fetchVariables(): Promise<void> {
   const store = useStore.getState();
-  const projectRoot = store.selectedProjectRoot;
+  const projectRoot = store.selectedTargetRoot || store.selectedProjectRoot;
   const targetName = store.selectedTargetNames[0];
   if (!projectRoot || !targetName) return;
   store.setLoadingVariables(true);
