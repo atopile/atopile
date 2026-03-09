@@ -709,3 +709,17 @@ class Property:
     @staticmethod
     def property_dict(obj: Iterable[_Property]) -> dict[str, str]:
         return {prop.name: prop.value for prop in obj}
+
+
+_DUPLICATE_REF_TEXTS = ("${REFERENCE}", "%R")
+
+
+def strip_duplicate_ref_texts(
+    fp_texts: list[kicad.pcb.FpText],
+) -> list[kicad.pcb.FpText]:
+    """Remove fp_text entries that duplicate the Reference property.
+
+    EasyEDA/JLCPCB footprints often include both a property "Reference"
+    and an fp_text user "${REFERENCE}" or "%R", causing double designators.
+    """
+    return [t for t in fp_texts if t.text not in _DUPLICATE_REF_TEXTS]

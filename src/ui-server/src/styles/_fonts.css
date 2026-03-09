@@ -1,0 +1,13 @@
+/* ============================================
+   _fonts.css
+   Bundled web fonts via @fontsource-variable
+   Ensures consistent rendering across all platforms,
+   including VS Code webviews in the web IDE where
+   system fonts may not be available.
+   ============================================ */
+
+/* Inter Variable - UI font (latin subset loaded by default via unicode-range) */
+@import '@fontsource-variable/inter';
+
+/* Fira Code Variable - Monospace/code font */
+@import '@fontsource-variable/fira-code';

@@ -6,6 +6,7 @@ declare global {
     __ATOPILE_API_URL__?: string;
     __ATOPILE_WS_URL__?: string;
     __ATOPILE_WORKSPACE_FOLDERS__?: string[];
+    __ATOPILE_IS_WEB_IDE__?: boolean;
   }
 }
 

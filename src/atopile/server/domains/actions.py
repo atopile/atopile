@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import sys
 import threading
 import time
@@ -16,7 +15,7 @@ from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
 from atopile.dataclasses import AppContext, Build, BuildStatus, Log
 from atopile.layout_server.models import WsMessage
-from atopile.logging import BuildLogger
+from atopile.logging import get_logger
 from atopile.model import builds as builds_domain
 from atopile.model.build_queue import (
     _build_queue,
@@ -32,7 +31,7 @@ from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
 from faebryk.libs.package.meta import PackageModifiedError
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 def _handle_build_sync(payload: dict) -> dict:
@@ -622,14 +621,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             clean_version = version if version and version != "unknown" else None
             pkg_spec = f"{package_id}@{clean_version}" if clean_version else package_id
 
-            # Create a logger for this action - logs to central SQLite DB
-            action_logger = BuildLogger.get(
-                project_path=project_root,
-                target="package-install",
-                stage="install",
-            )
-
-            action_logger.info(
+            log.info(
                 f"Installing {pkg_spec}...",
                 audience=Log.Audience.USER,
             )
@@ -640,7 +632,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         packages_domain.install_package_to_project(
                             project_path, package_id, version
                         )
-                        action_logger.info(
+                        log.info(
                             f"Successfully installed {pkg_spec}",
                             audience=Log.Audience.USER,
                         )
@@ -673,7 +665,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             )
                     except Exception as exc:
                         error_msg = str(exc)[:500] or "Unknown error"
-                        action_logger.error(
+                        log.error(
                             f"Failed to install {pkg_spec}: {error_msg}",
                             audience=Log.Audience.USER,
                         )
@@ -691,7 +683,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                                 loop,
                             )
                 except Exception as exc:
-                    action_logger.error(
+                    log.error(
                         f"Failed to install {pkg_spec}: {exc}",
                         audience=Log.Audience.USER,
                     )
@@ -708,15 +700,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             ),
                             loop,
                         )
-                finally:
-                    action_logger.flush()
 
             threading.Thread(target=run_install, daemon=True).start()
 
             return {
                 "success": True,
                 "message": f"Installing {package_id}...",
-                "build_id": action_logger.build_id,
+                "build_id": "",
             }
 
         if action == "changeDependencyVersion":
@@ -776,12 +766,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
             # Run remove + install sequentially in background
-            action_logger = BuildLogger.get(
-                project_path=project_root,
-                target="package-version",
-                stage="install",
-            )
-            action_logger.info(
+            log.info(
                 f"Changing {package_id} to {version}...",
                 audience=Log.Audience.USER,
             )
@@ -794,7 +779,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     packages_domain.install_package_to_project(
                         project_path, package_id, version
                     )
-                    action_logger.info(
+                    log.info(
                         f"Successfully installed {package_id}@{version}",
                         audience=Log.Audience.USER,
                     )
@@ -818,7 +803,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         asyncio.run_coroutine_threadsafe(finalize_change(), loop)
                 except Exception as exc:
                     error_msg = str(exc)[:500] or "Unknown error"
-                    action_logger.error(
+                    log.error(
                         f"Failed to change {package_id} to {version}: {error_msg}",
                         audience=Log.Audience.USER,
                     )
@@ -837,15 +822,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             ),
                             loop,
                         )
-                finally:
-                    action_logger.flush()
 
             threading.Thread(target=run_change, daemon=True).start()
 
             return {
                 "success": True,
                 "message": f"Changing {package_id} to {version}...",
-                "build_id": action_logger.build_id,
+                "build_id": "",
             }
 
         if action == "removePackage":

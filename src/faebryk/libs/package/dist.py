@@ -153,8 +153,11 @@ class Dist:
                 config_data = yaml.load(file) or {}
 
             config_data["package"]["identifier"] = str(cfg.package.identifier)
-            config_data["package"]["repository"] = str(cfg.package.repository)
             config_data["package"]["version"] = str(cfg.package.version)
+            if cfg.package.repository is None:
+                config_data["package"].pop("repository", None)
+            else:
+                config_data["package"]["repository"] = str(cfg.package.repository)
 
             with package_config_path.open("w", encoding="utf-8") as file:
                 yaml.dump(config_data, file)

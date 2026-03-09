@@ -10,6 +10,7 @@ import { useStore } from '../store';
 import { api } from '../api/client';
 import { sendActionWithResponse } from '../api/websocket';
 import type { TestItem } from '../types/build';
+import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '../utils/storage';
 import { EnvFlagsSelector } from './EnvFlagsSelector';
 import './TestExplorer.css';
 
@@ -366,7 +367,7 @@ export function TestExplorer({ onTestRunStart, onTestClick }: TestExplorerProps)
   // Environment variables for test runs (persisted to localStorage)
   const [envVars, setEnvVars] = useState<Record<string, string>>(() => {
     try {
-      const stored = localStorage.getItem('te-envVars');
+      const stored = safeLocalStorageGetItem('te-envVars');
       if (stored) {
         const parsed = JSON.parse(stored);
         if (typeof parsed === 'object' && parsed !== null) {
@@ -379,7 +380,7 @@ export function TestExplorer({ onTestRunStart, onTestClick }: TestExplorerProps)
 
   // Persist envVars to localStorage
   useEffect(() => {
-    localStorage.setItem('te-envVars', JSON.stringify(envVars));
+    safeLocalStorageSetItem('te-envVars', JSON.stringify(envVars));
   }, [envVars]);
 
   // Build and filter tree

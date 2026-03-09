@@ -426,8 +426,11 @@ def _extract_module_data(
 
             param_trait = param.get_trait(F.Parameters.is_parameter)
 
-            # Get the solved value
-            value_set = solver.extract_superset(param_trait)
+            # Use try_extract_superset (returns None for unconstrained)
+            # instead of extract_superset (creates expensive domain_set nodes)
+            value_set = solver.try_extract_superset(param_trait)
+            if value_set is None:
+                continue
             value_str = value_set.pretty_str()
 
             # Extract tolerance and unit from the value string
