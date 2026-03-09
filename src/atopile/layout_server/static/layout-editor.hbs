@@ -7,24 +7,27 @@
     <title>PCB Layout Editor</title>
     <style>
         :root {
-            --bg-deep: var(--vscode-editor-background, #1e1e1e);
-            --surface: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #252526));
-            --surface-solid: var(--vscode-sideBar-background, #252526);
-            --border: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
-            --border-accent: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
-            --text-primary: var(--vscode-foreground, #cccccc);
-            --text-secondary: var(--vscode-descriptionForeground, #9d9d9d);
-            --accent: var(--vscode-focusBorder, var(--vscode-textLink-foreground, #f95015));
-            --accent-glow: var(--vscode-list-activeSelectionBackground, rgba(9, 71, 113, 0.35));
-            --active-green: var(--vscode-testing-iconPassed, #73c991);
-            --hover-bg: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
-            --active-bg: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.1));
-            --input-bg: var(--vscode-input-background, rgba(255, 255, 255, 0.05));
-            --input-border: var(--vscode-input-border, var(--border));
-            --overlay-bg: var(--vscode-editorWidget-background, rgba(30, 30, 30, 0.92));
-            --shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
-            --scrollbar-thumb: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-            --scrollbar-thumb-hover: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+            --bg-deep: var(--vscode-editor-background, #080c14);
+            --surface: var(--vscode-editorWidget-background, rgba(12,18,32,0.82));
+            --surface-solid: var(--vscode-sideBar-background, #0f1524);
+            --border: var(--vscode-panel-border, rgba(255,255,255,0.07));
+            --border-accent: var(--vscode-widget-border, rgba(224,160,56,0.25));
+            --text-primary: var(--vscode-foreground, #e2e5ea);
+            --text-secondary: var(--vscode-descriptionForeground, #6b7280);
+            --accent: var(--vscode-focusBorder, #e0a038);
+            --accent-glow: var(--vscode-list-activeSelectionBackground, rgba(224,160,56,0.12));
+            --active-green: var(--vscode-testing-iconPassed, #4ade80);
+            --panel-hover-bg: var(--vscode-list-hoverBackground, rgba(224,160,56,0.06));
+            --source-hover-bg: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
+            --input-bg: var(--vscode-input-background, rgba(255,255,255,0.04));
+            --input-border: var(--vscode-input-border, rgba(224,160,56,0.3));
+            --overlay-bg: var(--vscode-editorWidget-background, rgba(8, 12, 20, 0.88));
+            --shadow: var(--vscode-widget-shadow, rgba(0,0,0,0.4));
+            --scrollbar-thumb: var(--vscode-scrollbarSlider-background, rgba(255,255,255,0.08));
+            --scrollbar-thumb-hover: var(--vscode-scrollbarSlider-hoverBackground, rgba(255,255,255,0.14));
+            --spinner-border: rgba(255, 255, 255, 0.18);
+            --busy-spinner-border: rgba(255, 255, 255, 0.2);
+            --warning-color: #ffad66;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -106,7 +109,7 @@
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            border: 1.5px solid var(--border);
+            border: 1.5px solid var(--busy-spinner-border);
             border-top-color: var(--accent);
             animation: status-busy-spin 0.7s linear infinite;
             flex-shrink: 0;
@@ -208,7 +211,7 @@
         }
 
         .layer-expand-tab:hover {
-            background: var(--hover-bg);
+            background: var(--accent-glow);
         }
 
         .layer-expand-tab.visible {
@@ -253,7 +256,7 @@
         }
 
         .layer-group-header:hover {
-            background: var(--hover-bg);
+            background: var(--panel-hover-bg);
             color: var(--text-primary);
         }
 
@@ -286,12 +289,11 @@
         }
 
         .layer-row:hover {
-            background: var(--hover-bg);
+            background: var(--panel-hover-bg);
         }
 
         .layer-row.active {
             border-left-color: var(--accent);
-            background: var(--active-bg);
         }
 
         .layer-top-level {
@@ -338,7 +340,7 @@
             width: 28px;
             height: 28px;
             border-radius: 50%;
-            border: 2px solid var(--border);
+            border: 2px solid var(--spinner-border);
             border-top-color: var(--accent);
             animation: initial-loading-spin 0.8s linear infinite;
         }
@@ -359,7 +361,7 @@
         }
 
         #initial-loading.error .initial-loading-message {
-            color: var(--vscode-notificationsWarningIcon-foreground, #cca700);
+            color: var(--vscode-notificationsWarningIcon-foreground, var(--warning-color));
         }
 
         @keyframes initial-loading-spin {
@@ -435,7 +437,7 @@
 
         .source-btn:hover {
             color: var(--text-primary);
-            background: var(--hover-bg);
+            background: var(--source-hover-bg);
         }
 
         .source-btn.active {
