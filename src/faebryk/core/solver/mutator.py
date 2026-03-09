@@ -98,18 +98,6 @@ class is_irrelevant(fabll.Node):
     is_monotone = fabll.Traits.MakeEdge(is_monotone.MakeChild().put_on_type())
 
 
-class is_simplification_target(fabll.Node):
-    """
-    Marks a parameter operable as an explicit target of the current solve.
-
-    This is transient solver state, used by algorithms that should only act on the
-    params the caller is actively simplifying for.
-    """
-
-    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    is_monotone = fabll.Traits.MakeEdge(is_monotone.MakeChild().put_on_type())
-
-
 @dataclass
 class Transformations:
     mutated: dict[
@@ -1674,6 +1662,22 @@ class Mutator:
         if self.is_removed(po):
             raise ValueError("Object marked removed")
 
+        if po.try_get_sibling_trait(is_relevant) is not None:
+            assert new_po.try_get_sibling_trait(is_irrelevant) is None, (
+                f"Cannot mutate relevant operatable to irrelevant target: "
+                f"{po.compact_repr()} -> {new_po.compact_repr()}"
+            )
+        if po.try_get_sibling_trait(is_irrelevant) is not None:
+            assert new_po.try_get_sibling_trait(is_relevant) is None, (
+                f"Cannot mutate irrelevant operatable to relevant target: "
+                f"{po.compact_repr()} -> {new_po.compact_repr()}"
+            )
+
+        for trait_t in (is_relevant, is_irrelevant):
+            MutatorUtils.try_copy_trait(
+                po.as_operand.get(), new_po.as_operand.get(), trait_t
+            )
+
         self.transformations.mutated[po] = new_po
         return new_po
 
@@ -1709,7 +1713,7 @@ class Mutator:
             # Preserve the location-based name before it's lost
             new_param_p.set_name(param_obj.get_full_name())
 
-        for trait_t in (is_relevant, is_irrelevant, is_simplification_target):
+        for trait_t in (is_relevant, is_irrelevant):
             MutatorUtils.try_copy_trait(p_op, new_param_op, trait_t)
 
         return self._mutate(
@@ -2498,6 +2502,21 @@ class Mutator:
         for p in [fabll.Traits(p).get_obj_raw() for p in to_copy]:
             self.get_copy(p.get_trait(F.Parameters.can_be_operand))
 
+    def _prune_non_new_created(self):
+        if not self.transformations.created:
+            return
+
+        created = {
+            po: sources
+            for po, sources in self.transformations.created.items()
+            if not any(
+                po.is_same(existing, allow_different_graph=True)
+                for existing in self._starting_operables
+            )
+        }
+        self.transformations.created.clear()
+        self.transformations.created.update(created)
+
     def check_no_illegal_mutations(self):
         # TODO should only run during dev
 
@@ -2570,6 +2589,7 @@ class Mutator:
 
         # important to check after copying unmutated
         # because invariant checking might revert 'new' state
+        self._prune_non_new_created()
         dirty = self.transformations.is_dirty()
         if not self.algo.force_copy and not dirty:
             self.G_out.destroy()

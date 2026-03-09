@@ -11,9 +11,7 @@ import faebryk.library._F as F
 from faebryk.core.solver.algorithm import SolverAlgorithm, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.symbolic.invariants import AliasClass
-from faebryk.core.solver.utils import (
-    MutatorUtils,
-)
+from faebryk.core.solver.utils import MutatorUtils
 from faebryk.library.Expressions import is_expression
 from faebryk.libs.util import not_none, partition_as_list
 
@@ -32,8 +30,6 @@ expr_wise_algos: dict[
     type[fabll.NodeT],
     Callable[[fabll.NodeT, Mutator], None],
 ] = {}
-
-
 def fold_expression_type[T: fabll.NodeT](
     mutator: Mutator, expr_type: type[T], f: Callable[[T, Mutator], None]
 ):

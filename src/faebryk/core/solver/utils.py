@@ -254,7 +254,10 @@ class MutatorUtils:
             return None
         if not (param := po.as_parameter.try_get()):
             return None
-        return param.domain_set(g=self.mutator.G_transient, tg=self.mutator.tg_in)
+        try:
+            return param.domain_set(g=self.mutator.G_transient, tg=self.mutator.tg_in)
+        except NotImplementedError:
+            return None
 
     def try_extract_subset(
         self,
@@ -456,18 +459,12 @@ class MutatorUtils:
         if not op:
             return OrderedSet()
 
-        first_op = next(iter(op))
-        tg = first_op.tg
-        g = first_op.g
-
-        anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(tg, g)
-        original_params = {
+        visited_params = OrderedSet(
             p
             for o in op
             if (po := o.as_parameter_operatable.try_get())
             and (p := po.as_parameter.try_get())
-        }
-        visited_params = OrderedSet(original_params)
+        )
         leaves = OrderedSet(op)
         roots: OrderedSet[F.Expressions.is_predicate] = OrderedSet()
 
@@ -488,9 +485,6 @@ class MutatorUtils:
                 - roots
             )
 
-            # Follow constraining predicates transitively.
-            # Anticorrelated leaves are not followed transitively, but their
-            # literal-bound predicates are included (e.g. pick constraints).
             new_leaves: OrderedSet[F.Parameters.can_be_operand] = OrderedSet()
             for root in new_constraining_roots:
                 for leaf_po in root.as_expression.get().get_operand_leaves_operatable():
@@ -500,31 +494,6 @@ class MutatorUtils:
                         continue
 
                     visited_params.add(leaf_param)
-
-                    if any(
-                        frozenset({orig, leaf_param}) in anticorrelated_pairs
-                        for orig in original_params
-                    ):
-                        # Don't follow transitively, but include all predicates
-                        # that constrain this parameter
-                        leaf_op = leaf_po.as_operand.get()
-                        roots.update(
-                            {
-                                e.get_sibling_trait(F.Expressions.is_predicate)
-                                for e in F.Parameters.can_be_operand.get_root_operands(
-                                    leaf_op, predicates_only=True
-                                )
-                                if not e.try_get_sibling_trait(is_irrelevant)
-                                and any(
-                                    o.as_literal.try_get()
-                                    for o in e.get_sibling_trait(
-                                        F.Expressions.is_expression
-                                    ).get_operands()
-                                )
-                            }
-                        )
-                        continue
-
                     new_leaves.add(leaf_po.as_operand.get())
 
             leaves = new_leaves
@@ -788,7 +757,6 @@ class MutatorUtils:
         from faebryk.core.solver.mutator import (
             is_irrelevant,
             is_relevant,
-            is_simplification_target,
         )
 
         trait_t = type(trait)
@@ -803,7 +771,7 @@ class MutatorUtils:
                     name=trait.name.get().get_single(),
                     detail=trait.detail.get().get_single() or None,
                 )
-            case is_relevant() | is_irrelevant() | is_simplification_target():
+            case is_relevant() | is_irrelevant():
                 pass
             case _:
                 raise ValueError(f"Unknown trait type: {trait_t}")

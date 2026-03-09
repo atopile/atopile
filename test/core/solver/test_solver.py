@@ -2641,6 +2641,78 @@ def test_get_relevant_predicates_skips_non_constraining():
     assert has_is_subset, "IsSubset should be in relevant predicates"
 
 
+def test_get_relevant_predicates_do_not_block_anticorrelated_params():
+    from faebryk.core.solver.utils import MutatorUtils
+
+    E = BoundExpressions()
+    A, B, C, D = _create_letters(E, 4, units=E.U.Ohm)
+    A_op, B_op, C_op, D_op = (
+        A.as_operand.get(),
+        B.as_operand.get(),
+        C.as_operand.get(),
+        D.as_operand.get(),
+    )
+
+    E.anticorrelated(A_op, B_op, assert_=True)
+    E.is_subset(A_op, E.lit_op_range(((1, E.U.Ohm), (2, E.U.Ohm))), assert_=True)
+    E.is_(C_op, E.add(A_op, B_op), assert_=True)
+    E.is_(
+        D_op,
+        E.add(B_op, E.lit_op_range(((3, E.U.Ohm), (4, E.U.Ohm)))),
+        assert_=True,
+    )
+
+    relevant_preds = MutatorUtils.get_relevant_predicates(A_op)
+
+    assert not any(
+        pred.as_expression.get().expr_isinstance(F.Expressions.Anticorrelated)
+        for pred in relevant_preds
+    )
+    assert any(
+        expr.expr_isinstance(F.Expressions.Is)
+        and any(operand.is_same(D_op) for operand in expr.get_operands())
+        for pred in relevant_preds
+        for expr in [pred.as_expression.get()]
+    ), "Transitive closure should continue through anticorrelated parameters"
+
+
+def test_relevance_bootstrap_copies_only_connected_parameter_group():
+    E = BoundExpressions()
+    A, B, C, D, E_, F_, G, H = _create_letters(E, 8, units=E.U.Ohm)
+    A_op, B_op, C_op, D_op, E_op, F_op, G_op, H_op = (
+        A.as_operand.get(),
+        B.as_operand.get(),
+        C.as_operand.get(),
+        D.as_operand.get(),
+        E_.as_operand.get(),
+        F_.as_operand.get(),
+        G.as_operand.get(),
+        H.as_operand.get(),
+    )
+
+    # Connected group of size 3.
+    E.is_(B_op, E.add(A_op, E.lit_op_range(((1, E.U.Ohm), (2, E.U.Ohm)))), assert_=True)
+    E.is_(C_op, E.add(B_op, E.lit_op_range(((3, E.U.Ohm), (4, E.U.Ohm)))), assert_=True)
+
+    # Independent groups that should not be copied.
+    E.is_(E_op, E.add(D_op, E.lit_op_range(((5, E.U.Ohm), (6, E.U.Ohm)))), assert_=True)
+    E.is_(G_op, E.add(F_op, E.lit_op_range(((7, E.U.Ohm), (8, E.U.Ohm)))), assert_=True)
+    E.is_subset(H_op, E.lit_op_range(((9, E.U.Ohm), (10, E.U.Ohm))), assert_=True)
+
+    relevant = MutationMap._with_relevance_set(E.g, E.tg, [A_op])
+    copied_params = F.Parameters.is_parameter.bind_typegraph(
+        relevant.last_stage.tg_out
+    ).get_instances(relevant.last_stage.G_out)
+    copied_sources = {
+        source
+        for copied in copied_params
+        for source in relevant.map_backward(copied.as_parameter_operatable.get())
+    }
+
+    assert len(copied_params) == 3
+    assert copied_sources == {A, B, C}
+
+
 @pytest.mark.skip(reason="since 0.14.0, fix in 0.14.1")
 def test_relevance_filtering_isolates_independent_subgraphs():
     """
@@ -2968,6 +3040,72 @@ def test_uncertainty_estimation_single_source_add_and_inverse():
     solver = Solver()
     assert _extract_and_check(B, solver, E.lit_op_range((7, 7)))
     assert _extract_and_check(C, solver, E.lit_op_range((1 / 4, 1 / 3)))
+
+
+def test_uncertainty_estimation_does_not_contradict_valid_picked_divider():
+    from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
+
+    E = BoundExpressions()
+    g, tg = E.g, E.tg
+    rdiv = ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
+
+    E.is_subset(
+        rdiv.current.get().can_be_operand.get(),
+        E.lit_op_range(((1e-6, E.U.A), (1e-3, E.U.A))),
+        assert_=True,
+    )
+    E.is_subset(
+        rdiv.v_in.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((10, E.U.V), 0.05),
+        assert_=True,
+    )
+    E.is_subset(
+        rdiv.v_out.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((2, E.U.V), 0.01),
+        assert_=True,
+    )
+
+    r_top = rdiv.chain.get().resistors[0].get().resistance.get().can_be_operand.get()
+    r_bottom = rdiv.chain.get().resistors[1].get().resistance.get().can_be_operand.get()
+    E.is_superset(
+        r_top,
+        E.lit_op_range_from_center_rel((40.2, E.U.kOhm), 0.01),
+        assert_=True,
+    )
+    E.is_superset(
+        r_bottom,
+        E.lit_op_range_from_center_rel((10, E.U.kOhm), 0.01),
+        assert_=True,
+    )
+
+    solver = Solver()
+    solver.simplify(
+        g=g,
+        tg=tg,
+        terminal=True,
+        relevant=[
+            r_top,
+            r_bottom,
+            rdiv.ratio.get().can_be_operand.get(),
+            rdiv.total_resistance.get().can_be_operand.get(),
+            rdiv.v_in.get().can_be_operand.get(),
+            rdiv.v_out.get().can_be_operand.get(),
+            rdiv.current.get().can_be_operand.get(),
+        ],
+    )
+
+    solved_ratio = solver.extract_superset(
+        rdiv.ratio.get().is_parameter_operatable.get().as_parameter.force_get()
+    )
+    expected_ratio = not_none(
+        fabll.Traits(E.lit_op_range(((0.188, E.U.dl), (0.213, E.U.dl))))
+        .get_obj_raw()
+        .try_cast(F.Literals.Numbers)
+    )
+    assert solved_ratio.op_setic_is_subset_of(expected_ratio, g=g, tg=tg), (
+        f"ratio {solved_ratio.pretty_str()} not in expected "
+        f"{expected_ratio.pretty_str()}"
+    )
 
 
 def test_lower_bounds_do_not_shrink_superset_from_same_operand():

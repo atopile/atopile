@@ -24,7 +24,6 @@ from faebryk.core.solver.mutator import (
     MutationMap,
     Mutator,
     is_irrelevant,
-    is_simplification_target,
 )
 from faebryk.core.solver.symbolic import (
     expression_groups,
@@ -93,43 +92,6 @@ class Solver:
         self.state: Solver.SolverState | None = None
         self._terminal = False
 
-    @staticmethod
-    def _mark_simplification_targets(
-        mutation_map: MutationMap,
-        targets: list["F.Parameters.can_be_operand"] | None,
-    ) -> None:
-        if not targets:
-            return
-
-        target_pos = [
-            target_po
-            for target in targets
-            if (target_po := target.as_parameter_operatable.try_get())
-        ]
-        if not target_pos:
-            return
-
-        for current_po in mutation_map.output_operables:
-            if (
-                current_po.as_parameter.try_get() is None
-                or current_po.try_get_sibling_trait(is_irrelevant) is not None
-                or current_po.try_get_sibling_trait(is_simplification_target)
-                is not None
-            ):
-                continue
-            origins = mutation_map.map_backward(current_po)
-            if len(origins) != 1:
-                continue
-            if not any(
-                origins[0].is_same(target_po, allow_different_graph=True)
-                for target_po in target_pos
-            ):
-                continue
-            fabll.Traits.create_and_add_instance_to(
-                fabll.Traits(current_po).get_obj_raw(),
-                is_simplification_target,
-            )
-
     @classmethod
     def _run_iteration(
         cls,
@@ -195,7 +157,6 @@ class Solver:
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
         relevant: list[F.Parameters.can_be_operand] | None = None,
-        targets: list["F.Parameters.can_be_operand"] | None = None,
     ):
         initial_state = (
             self.state.data.mutation_map.compressed() if self.state else None
@@ -207,7 +168,6 @@ class Solver:
                 ),
             )
         )
-        self._mark_simplification_targets(state.data.mutation_map, targets)
         return state
 
     # @times_out(TIMEOUT)
@@ -217,7 +177,6 @@ class Solver:
         tg: fbrk.TypeGraph | graph.GraphView,
         terminal: bool = True,
         relevant: list[F.Parameters.can_be_operand] | None = None,
-        targets: list["F.Parameters.can_be_operand"] | None = None,
     ) -> SolverState:
         """
         Args:
@@ -235,7 +194,7 @@ class Solver:
         logger.info("Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
         timings = Times(name="Symbolic Solving")
 
-        self.state = self._create_or_resume_state(g, tg, relevant, targets)
+        self.state = self._create_or_resume_state(g, tg, relevant)
         assert not self._terminal, "Terminal algorithms already run"
         self._terminal = terminal
 
@@ -378,7 +337,6 @@ class Solver:
             tg=tg,
             terminal=terminal,
             relevant=relevant,
-            targets=relevant,
         )
 
     def simplify_and_extract_superset(
@@ -396,7 +354,6 @@ class Solver:
             tg=tg,
             terminal=terminal,
             relevant=[target],
-            targets=[target],
         )
         return self.extract_superset(value, g=g, tg=tg)
 

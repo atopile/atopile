@@ -136,7 +136,6 @@ class AliasClassStub(AliasClass):
             return lit
         return self.member.as_parameter_operatable.get().try_extract_superset()
 
-
 class AliasClassIs(AliasClass):
     def __init__(self, is_: F.Expressions.Is):
         self.is_ = is_
@@ -169,7 +168,6 @@ class AliasClassIs(AliasClass):
             .as_parameter_operatable.force_get()
             .try_extract_superset()
         )
-
 
 class SubsumptionCheck:
     """
@@ -435,26 +433,22 @@ class SubsumptionCheck:
             if (p := op.try_get_sibling_trait(F.Parameters.is_parameter))
         }
 
-        if len(param_ops) > 1 and len(param_ops) != len(ops):
+        if len(param_ops) > 1:
             builder_params = {
                 p
                 for op in builder.operands
                 if (p := op.try_get_sibling_trait(F.Parameters.is_parameter))
             }
             non_builder_params = param_ops - builder_params
-            # case 4: Is!(P1, P2), Is!(P2, E1, E2) -> remutate P1 to P2
-            if len(builder_params) == len(builder.operands) and not non_builder_params:
-                # TODO better candidate finding
-                ps = list(builder_params)
-                target_p, to_merge = ps[0], ps[1:]
-                for to_merge_p in to_merge:
-                    _merge_alias(mutator, to_merge_p, target_p)
-                # return alias
-                return SubsumptionCheck.Result(
-                    most_constrained_expr=SubsumptionCheck.Result._DISCARD()
-                )
+            target_p = next(iter(non_builder_params or builder_params or param_ops))
+            for to_merge_p in param_ops:
+                if to_merge_p.is_same(target_p):
+                    continue
+                _merge_alias(mutator, to_merge_p, target_p)
 
-            raise NotImplementedError("I dont want to deal with this")
+            return SubsumptionCheck.Result(
+                most_constrained_expr=SubsumptionCheck.Result._DISCARD()
+            )
 
         # case 1: Is!(A,B,C), Is!(A, B) => Is!(A,B,C)
         if len(existing_aliases) == 1:
@@ -515,25 +509,8 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
     )
     non_lits = list(builder.indexed_pos().values())
     if not non_lits:
-        # When all operands are literals, we can't use the "common parents" discovery
-        # below. We must scan:
-        def _matches(op: T) -> bool:
-            if not mutator.utils.is_literal_expression(op.can_be_operand.get()):
-                return False
-            if op.has_trait(is_irrelevant):
-                return False
-            return F.Expressions.is_expression.are_pos_congruent(
-                op.is_expression.get().get_operands(),
-                builder.operands,
-                g=mutator.G_transient,
-                tg=mutator.tg_in,
-                allow_uncorrelated=allow_uncorrelated,
-            )
-
-        for op in factory_bound.get_instances(mutator.G_out):
-            if _matches(op):
-                return op
-
+        # Pure-literal expressions are folded later. Congruence-merging them first
+        # creates false correlation, eg [5..6] - [5..6] -> 0 instead of [-1..1].
         return None
 
     parents = [_Query._get_operations(non_lit) for non_lit in non_lits]
@@ -678,8 +655,6 @@ def _no_inconsistent_bounds(
                 mutator=mutator,
                 constraint_sources=[param_op],
             )
-
-
 def _no_predicate_literals(
     mutator: Mutator,
     builder: ExpressionBuilder[Any],
@@ -1228,10 +1203,14 @@ def _merge_monotone_traits(
     builder: ExpressionBuilder,
     po: F.Parameters.is_parameter_operatable,
 ):
+    from faebryk.core.solver.mutator import is_irrelevant, is_relevant
+
     monotone_traits = [
         type_node
         for t in builder.traits
         if t is not None
+        and t.try_cast(is_relevant) is None
+        and t.try_cast(is_irrelevant) is None
         and fabll.Node.bind_instance(
             type_node := not_none(t.get_type_node())
         ).has_trait(is_monotone)
@@ -1487,7 +1466,6 @@ def insert_expression(
     ):
         super_lit, pure = lit_fold_res
         if pure:
-            sub_lit = super_lit
             builder = builder.with_(terminate=True, irrelevant=True)
             # TODO consider shortcut for singletons (other than predicates)
 

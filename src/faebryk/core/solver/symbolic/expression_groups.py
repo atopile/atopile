@@ -95,6 +95,9 @@ def associative_fold(mutator: Mutator):
             expansions = {
                 non_lit: list(nested_expr.get_operands())
                 for non_lit in is_expr.get_operand_operatables()
+                if mutator.utils.try_extract_superset(non_lit, domain_default=False)
+                is None
+                and mutator.utils.try_extract_subset(non_lit) is None
                 if len(
                     class_exprs := AliasClass.of(
                         non_lit.as_operand.get()

@@ -132,44 +132,7 @@ class ResistorVoltageDivider(fabll.Node):
         ),
         F.Expressions.Is.MakeChild(
             [ratio],
-            [
-                _r_div := F.Expressions.Divide.MakeChild(
-                    [
-                        _lit_one := F.Literals.Numbers.MakeChild_SingleValue(
-                            value=1.0, unit=F.Units.Dimensionless
-                        )
-                    ],
-                    [
-                        _denom := F.Expressions.Add.MakeChild(
-                            [
-                                _rtop_over_rbot := F.Expressions.Divide.MakeChild(
-                                    [
-                                        chain,
-                                        _ResistorChain.resistors[0],
-                                        F.Resistor.resistance,
-                                    ],
-                                    [
-                                        chain,
-                                        _ResistorChain.resistors[1],
-                                        F.Resistor.resistance,
-                                    ],
-                                )
-                            ],
-                            [
-                                _lit_one2 := F.Literals.Numbers.MakeChild_SingleValue(
-                                    value=1.0, unit=F.Units.Dimensionless
-                                )
-                            ],
-                        )
-                    ],
-                )
-            ],
-            [
-                _v_div := F.Expressions.Divide.MakeChild(
-                    [v_out],
-                    [v_in],
-                )
-            ],
+            [_v_div := F.Expressions.Divide.MakeChild([v_out], [v_in])],
             assert_=True,
         ),
         F.Expressions.Is.MakeChild(
@@ -206,18 +169,7 @@ class ResistorVoltageDivider(fabll.Node):
             ],
             assert_=True,
         ),
-        # total_R = r_bottom / ratio (inverse for backward propagation)
-        F.Expressions.Is.MakeChild(
-            [total_resistance],
-            [
-                _total_r_from_r1_ratio := F.Expressions.Divide.MakeChild(
-                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-                    [ratio],
-                )
-            ],
-            assert_=True,
-        ),
-        # r_top = total_R - r_bottom
+        # r_top = total_R * (1 - ratio)
         F.Expressions.Is.MakeChild(
             [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
             [
@@ -275,96 +227,6 @@ class ResistorVoltageDivider(fabll.Node):
                         )
                     ],
                     [ratio],
-                )
-            ],
-            assert_=True,
-        ),
-        F.Expressions.Is.MakeChild(
-            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-            [
-                _r_bot_sub := F.Expressions.Subtract.MakeChild(
-                    [total_resistance],
-                    [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
-                )
-            ],
-            assert_=True,
-        ),
-        # SOP forms bypassing total_R — each variable appears once
-        # r_top = r_bottom * (v_in/v_out - 1)
-        F.Expressions.Is.MakeChild(
-            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
-            [
-                _r_top_sop := F.Expressions.Multiply.MakeChild(
-                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-                    [
-                        _vin_vout_minus1 := F.Expressions.Subtract.MakeChild(
-                            [
-                                _vin_over_vout := F.Expressions.Divide.MakeChild(
-                                    [v_in],
-                                    [v_out],
-                                )
-                            ],
-                            [
-                                _sop_lit_one
-                                := F.Literals.Numbers.MakeChild_SingleValue(
-                                    value=1.0, unit=F.Units.Dimensionless
-                                )
-                            ],
-                        )
-                    ],
-                )
-            ],
-            assert_=True,
-        ),
-        # r_bottom = r_top / (v_in/v_out - 1)
-        F.Expressions.Is.MakeChild(
-            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-            [
-                _r_bot_sop := F.Expressions.Divide.MakeChild(
-                    [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
-                    [
-                        _vin_vout_minus1_2 := F.Expressions.Subtract.MakeChild(
-                            [
-                                _vin_over_vout_2 := F.Expressions.Divide.MakeChild(
-                                    [v_in],
-                                    [v_out],
-                                )
-                            ],
-                            [
-                                _sop_lit_one2
-                                := F.Literals.Numbers.MakeChild_SingleValue(
-                                    value=1.0, unit=F.Units.Dimensionless
-                                )
-                            ],
-                        )
-                    ],
-                )
-            ],
-            assert_=True,
-        ),
-        # Ohm's law SOP forms — r_top = (v_in - v_out) / current
-        F.Expressions.Is.MakeChild(
-            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
-            [
-                _r_top_ohm := F.Expressions.Divide.MakeChild(
-                    [
-                        _v_top := F.Expressions.Subtract.MakeChild(
-                            [v_in],
-                            [v_out],
-                        )
-                    ],
-                    [current],
-                )
-            ],
-            assert_=True,
-        ),
-        # r_bottom = v_out / current
-        F.Expressions.Is.MakeChild(
-            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-            [
-                _r_bot_ohm := F.Expressions.Divide.MakeChild(
-                    [v_out],
-                    [current],
                 )
             ],
             assert_=True,
@@ -445,7 +307,26 @@ class TestVdivSolver:
 
         F.is_alias_bus_parameter.resolve_bus_parameters(g=g, tg=tg)
         solver = Solver()
-        solver.simplify(g=g, tg=tg)
+        solver.simplify_for(
+            app.rdiv.get()
+            .chain.get()
+            .resistors[0]
+            .get()
+            .resistance.get()
+            .can_be_operand.get(),
+            app.rdiv.get()
+            .chain.get()
+            .resistors[1]
+            .get()
+            .resistance.get()
+            .can_be_operand.get(),
+            app.rdiv.get().ratio.get().can_be_operand.get(),
+            app.rdiv.get().total_resistance.get().can_be_operand.get(),
+            app.supply.get().voltage.get().can_be_operand.get(),
+            app.adc_ref.get().voltage.get().can_be_operand.get(),
+            app.rdiv.get().current.get().can_be_operand.get(),
+            terminal=True,
+        )
 
         r_top = solver.extract_superset(
             app.rdiv.get()
@@ -547,7 +428,13 @@ class TestVdivSolver:
 
         # Solve and validate pre-pick ranges
         solver = Solver()
-        solver.simplify(g=g, tg=tg)
+        solver.simplify_for(
+            rdiv.chain.get().resistors[0].get().resistance.get().can_be_operand.get(),
+            rdiv.chain.get().resistors[1].get().resistance.get().can_be_operand.get(),
+            rdiv.ratio.get().can_be_operand.get(),
+            rdiv.total_resistance.get().can_be_operand.get(),
+            terminal=True,
+        )
 
         r_top = solver.extract_superset(
             rdiv.chain.get()
@@ -666,7 +553,16 @@ class TestVdivSolver:
 
         # Solve and validate pre-pick ranges
         solver = Solver()
-        solver.simplify(g=g, tg=tg)
+        solver.simplify_for(
+            rdiv.chain.get().resistors[0].get().resistance.get().can_be_operand.get(),
+            rdiv.chain.get().resistors[1].get().resistance.get().can_be_operand.get(),
+            rdiv.ratio.get().can_be_operand.get(),
+            rdiv.total_resistance.get().can_be_operand.get(),
+            rdiv.v_in.get().can_be_operand.get(),
+            rdiv.v_out.get().can_be_operand.get(),
+            rdiv.current.get().can_be_operand.get(),
+            terminal=True,
+        )
 
         r_top = solver.extract_superset(
             rdiv.chain.get()
@@ -794,7 +690,16 @@ class TestVdivSolver:
 
         # Solve and validate pre-pick ranges
         solver = Solver()
-        solver.simplify(g=g, tg=tg)
+        solver.simplify_for(
+            rdiv.chain.get().resistors[0].get().resistance.get().can_be_operand.get(),
+            rdiv.chain.get().resistors[1].get().resistance.get().can_be_operand.get(),
+            rdiv.ratio.get().can_be_operand.get(),
+            rdiv.total_resistance.get().can_be_operand.get(),
+            rdiv.v_in.get().can_be_operand.get(),
+            rdiv.v_out.get().can_be_operand.get(),
+            rdiv.current.get().can_be_operand.get(),
+            terminal=True,
+        )
 
         r_top = solver.extract_superset(
             rdiv.chain.get()
@@ -932,7 +837,15 @@ class TestVdivSolver:
 
         # Solve and validate pre-pick ranges
         solver = Solver()
-        solver.simplify(g=g, tg=tg)
+        solver.simplify_for(
+            rdiv.chain.get().resistors[0].get().resistance.get().can_be_operand.get(),
+            rdiv.chain.get().resistors[1].get().resistance.get().can_be_operand.get(),
+            rdiv.ratio.get().can_be_operand.get(),
+            rdiv.total_resistance.get().can_be_operand.get(),
+            rdiv.v_in.get().can_be_operand.get(),
+            rdiv.v_out.get().can_be_operand.get(),
+            terminal=True,
+        )
 
         r_top = solver.extract_superset(
             rdiv.chain.get()
