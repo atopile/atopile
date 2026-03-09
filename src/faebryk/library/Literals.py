@@ -3643,19 +3643,29 @@ class Numbers(fabll.Node):
 
         g = g or self.g
         tg = tg or self.tg
-        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
-            raise UnitsNotCommensurableError(
-                "Cannot intersect quantity sets: units are not commensurable",
-                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
-            )
-        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+
+        self_unit = self.get_is_unit()
+        other_unit = other.get_is_unit()
+
+        # Same unit — skip conversion entirely
+        if self_unit is not None and self_unit.is_same(other_unit):
+            other_numeric = other.get_numeric_set()
+        else:
+            if not is_unit.is_commensurable_with(self_unit, other_unit):
+                raise UnitsNotCommensurableError(
+                    "Cannot intersect quantity sets: units are not commensurable",
+                    incommensurable_items=[self_unit, other_unit],
+                )
+            other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+            other_numeric = other_converted.get_numeric_set()
+
         out_numeric_set = self.get_numeric_set().op_intersect_intervals(
-            g=g, tg=tg, other=other_converted.get_numeric_set()
+            g=g, tg=tg, other=other_numeric
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
-            unit=self.get_is_unit(),
+            unit=self_unit,
         )
 
     @staticmethod
@@ -3766,13 +3776,11 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import is_unit
 
-        if not is_unit.is_commensurable_with(self.get_is_unit(), unit):
-            raise UnitsNotCommensurableError(
-                f"Units {self.get_is_unit()} and {unit} are not commensurable",
-                incommensurable_items=[self.get_is_unit(), unit],
-            )
-
         scale, offset = is_unit.get_conversion_to(self.get_is_unit(), unit)
+
+        # Identity conversion — no graph work needed
+        if scale == 1.0 and offset == 0.0:
+            return self
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
