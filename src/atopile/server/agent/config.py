@@ -85,6 +85,13 @@ class AgentConfig:
 
     @classmethod
     def from_env(cls) -> AgentConfig:
+        """Build config from env for deployed agents and local tuning.
+
+        The agent runs in several contexts: local development, tests, hosted
+        backends, and constrained subagent executions. The broader env surface
+        is intentional so operators can tune model selection, token budgets,
+        retries, and timeouts without patching code or rebuilding the service.
+        """
         from atopile.server.agent.orchestrator_helpers import (
             _parse_fixed_skill_token_budgets,
         )

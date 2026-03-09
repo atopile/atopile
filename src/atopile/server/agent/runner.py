@@ -14,10 +14,11 @@ from typing import Any, Awaitable, Callable
 
 from atopile.dataclasses import AppContext
 from atopile.server.agent import tools as _legacy_tools
-from atopile.server.agent.checklist import VALID_TRANSITIONS, Checklist, ChecklistItem
+from atopile.server.agent.checklist import VALID_TRANSITIONS
 from atopile.server.agent.circuit_breaker import CircuitBreaker
 from atopile.server.agent.config import AgentConfig
 from atopile.server.agent.context import build_initial_user_message, build_system_prompt
+from atopile.server.agent.dataclasses import Checklist, ChecklistItem
 from atopile.server.agent.message_log import (
     MSG_ACKNOWLEDGED,
     MSG_ACTIVE,
@@ -34,7 +35,12 @@ from atopile.server.agent.orchestrator_helpers import (
     _sanitize_tool_output_for_model,
     _summarize_tool_result_for_trace,
 )
-from atopile.server.agent.provider import LLMProvider, LLMResponse, TokenUsage, ToolCall
+from atopile.server.agent.provider import (
+    LLMProvider,
+    LLMResponse,
+    TokenUsage,
+    ToolCall,
+)
 from atopile.server.agent.registry import ToolRegistry
 
 log = logging.getLogger(__name__)

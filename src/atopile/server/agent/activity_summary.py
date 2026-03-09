@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from openai import AsyncOpenAI
 
 from atopile.server.agent.config import AgentConfig
+from atopile.server.agent.dataclasses import SummaryEvent, SummaryState
 from atopile.server.agent.orchestrator_helpers import (
     _extract_text,
     _response_model_to_dict,
@@ -63,24 +63,6 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item.strip() for item in value if isinstance(item, str) and item.strip()]
-
-
-@dataclass
-class SummaryEvent:
-    ts: float
-    kind: str
-    label: str
-    detail: str | None = None
-
-
-@dataclass
-class SummaryState:
-    events: list[SummaryEvent] = field(default_factory=list)
-    latest_preamble: str | None = None
-    latest_summary: str | None = None
-    latest_fallback: str | None = None
-    last_model_at: float = 0.0
-    last_phase: str | None = None
 
 
 class ActivitySummarizer:
