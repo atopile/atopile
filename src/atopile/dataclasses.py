@@ -1234,30 +1234,34 @@ class UiBOMParameter(CamelModel):
 
     name: str = ""
     value: str = ""
+    unit: str | None = None
 
 
 class UiBOMUsage(CamelModel):
     """BOM usage location displayed in the VS Code UI."""
 
-    module: str = ""
-    instance: str = ""
-    file: str | None = None
+    address: str = ""
+    designator: str = ""
     line: int | None = None
 
 
 class UiBOMComponent(CamelModel):
     """BOM component displayed in the VS Code UI."""
 
+    id: str = ""
+    lcsc: str | None = None
     mpn: str = ""
     manufacturer: str = ""
+    type: str | None = None
+    value: str = ""
+    package: str = ""
     description: str = ""
-    value: str | None = None
-    package_name: str | None = None
-    lcsc: str | None = None
+    source: str | None = None
     stock: int | None = None
     unit_cost: float | None = None
+    is_basic: bool | None = None
+    is_preferred: bool | None = None
     quantity: int = 0
-    type: str | None = None
     parameters: list[UiBOMParameter] = Field(default_factory=list)
     usages: list[UiBOMUsage] = Field(default_factory=list)
 
@@ -1265,6 +1269,8 @@ class UiBOMComponent(CamelModel):
 class UiBOMData(CamelModel):
     """BOM panel data for the VS Code UI store."""
 
+    version: str | None = None
+    build_id: str | None = None
     components: list[UiBOMComponent] = Field(default_factory=list)
     total_quantity: int = 0
     unique_parts: int = 0

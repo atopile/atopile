@@ -62,6 +62,18 @@ export interface BuildsResponse {
   total: number | null;
 }
 
+export interface CreateProjectResponse {
+  success: boolean;
+  message: string;
+  projectRoot: string | null;
+  projectName: string | null;
+}
+
+export interface DependenciesResponse {
+  dependencies: DependencyInfo[];
+  total: number;
+}
+
 export interface DependencyInfo {
   identifier: string;
   version: string;
@@ -96,6 +108,11 @@ export interface ModuleDefinition {
   line: number | null;
   superType: string | null;
   children: ModuleChild[];
+}
+
+export interface ModulesResponse {
+  modules: ModuleDefinition[];
+  total: number;
 }
 
 export interface OpenLayoutRequest {
@@ -232,6 +249,35 @@ export interface PackagesSummaryData {
   installedCount: number;
 }
 
+export interface Problem {
+  id: string;
+  level: "error" | "warning";
+  message: string;
+  file: string | null;
+  line: number | null;
+  column: number | null;
+  stage: string | null;
+  logger: string | null;
+  buildName: string | null;
+  projectName: string | null;
+  timestamp: string | null;
+  atoTraceback: string | null;
+  excInfo: string | null;
+}
+
+export interface ProblemFilter {
+  levels: ("error" | "warning")[];
+  buildNames: string[];
+  stageIds: string[];
+}
+
+export interface ProblemsResponse {
+  problems: Problem[];
+  total: number;
+  errorCount: number;
+  warningCount: number;
+}
+
 export interface Project {
   root: string;
   name: string;
@@ -248,6 +294,13 @@ export interface RegistrySearchResponse {
   packages: PackageInfo[];
   total: number;
   query: string;
+}
+
+export interface RenameProjectResponse {
+  success: boolean;
+  message: string;
+  oldRoot: string;
+  newRoot: string | null;
 }
 
 export interface ResolvedBuildTarget {
@@ -310,21 +363,27 @@ export interface UiActionResultMessage {
 }
 
 export interface UiBOMComponent {
+  id: string;
+  lcsc: string | null;
   mpn: string;
   manufacturer: string;
+  type: string | null;
+  value: string;
+  package: string;
   description: string;
-  value: string | null;
-  packageName: string | null;
-  lcsc: string | null;
+  source: string | null;
   stock: number | null;
   unitCost: number | null;
+  isBasic: boolean | null;
+  isPreferred: boolean | null;
   quantity: number;
-  type: string | null;
   parameters: UiBOMParameter[];
   usages: UiBOMUsage[];
 }
 
 export interface UiBOMData {
+  version: string | null;
+  buildId: string | null;
   components: UiBOMComponent[];
   totalQuantity: number;
   uniqueParts: number;
@@ -335,12 +394,12 @@ export interface UiBOMData {
 export interface UiBOMParameter {
   name: string;
   value: string;
+  unit: string | null;
 }
 
 export interface UiBOMUsage {
-  module: string;
-  instance: string;
-  file: string | null;
+  address: string;
+  designator: string;
   line: number | null;
 }
 
@@ -588,19 +647,36 @@ export function createBuild(): Build {
   return cloneGenerated(DEFAULT_Build);
 }
 
+export const DEFAULT_ProblemFilter: ProblemFilter = {
+  "buildNames": [],
+  "levels": [
+    "error",
+    "warning"
+  ],
+  "stageIds": []
+};
+
+export function createProblemFilter(): ProblemFilter {
+  return cloneGenerated(DEFAULT_ProblemFilter);
+}
+
 export const DEFAULT_UiBOMComponent: UiBOMComponent = {
   "description": "",
+  "id": "",
+  "isBasic": null,
+  "isPreferred": null,
   "lcsc": null,
   "manufacturer": "",
   "mpn": "",
-  "packageName": null,
+  "package": "",
   "parameters": [],
   "quantity": 0,
+  "source": null,
   "stock": null,
   "type": null,
   "unitCost": null,
   "usages": [],
-  "value": null
+  "value": ""
 };
 
 export function createUiBOMComponent(): UiBOMComponent {
@@ -608,11 +684,13 @@ export function createUiBOMComponent(): UiBOMComponent {
 }
 
 export const DEFAULT_UiBOMData: UiBOMData = {
+  "buildId": null,
   "components": [],
   "estimatedCost": null,
   "outOfStock": 0,
   "totalQuantity": 0,
-  "uniqueParts": 0
+  "uniqueParts": 0,
+  "version": null
 };
 
 export function createUiBOMData(): UiBOMData {
@@ -621,6 +699,7 @@ export function createUiBOMData(): UiBOMData {
 
 export const DEFAULT_UiBOMParameter: UiBOMParameter = {
   "name": "",
+  "unit": null,
   "value": ""
 };
 
@@ -629,10 +708,9 @@ export function createUiBOMParameter(): UiBOMParameter {
 }
 
 export const DEFAULT_UiBOMUsage: UiBOMUsage = {
-  "file": null,
-  "instance": "",
-  "line": null,
-  "module": ""
+  "address": "",
+  "designator": "",
+  "line": null
 };
 
 export function createUiBOMUsage(): UiBOMUsage {
@@ -867,11 +945,13 @@ export function createUiSidebarDetails(): UiSidebarDetails {
 
 export const DEFAULT_UiStore: UiStore = {
   "bomData": {
+    "buildId": null,
     "components": [],
     "estimatedCost": null,
     "outOfStock": 0,
     "totalQuantity": 0,
-    "uniqueParts": 0
+    "uniqueParts": 0,
+    "version": null
   },
   "coreStatus": {
     "atoBinary": "",

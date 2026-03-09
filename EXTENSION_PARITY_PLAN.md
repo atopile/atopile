@@ -40,6 +40,8 @@ The current staged changes materially reduce the output-panel parity gap:
 - The primary action row now exposes Manufacture instead of Developer, with migration shown contextually.
 - `panel-layout` now opens the shared layout server for the selected project/target via
   `openLayout`; it is no longer a placeholder panel.
+- The BOM panel is now copied from mainline and adapted to the rewrite RPC/store model,
+  including richer totals, LCSC stock/cost enrichment, grouped usage navigation, and build/source affordances.
 - The extension/webview panel host and RPC bridge are more robust and now emit structured logs.
 - The 3D panel got small reliability fixes (logging + resize/init cleanup).
 
@@ -61,7 +63,7 @@ The plan below reflects that new baseline and focuses on the remaining user-visi
 | 🟢 | Standard library | Browse/search stdlib | Browse/search stdlib | Good enough; keep current rewrite implementation |
 | 🟢 | Structure | Module tree from active file | Module tree from active file | Good enough; polish only if bugs appear |
 | 🟢 | Parameters | Variable/constraint browsing | Variable/constraint browsing | Good enough; polish only if bugs appear |
-| 🟢 | BOM | BOM browsing with summary and source links | BOM browsing with summary and source links | Good enough; polish only if bugs appear |
+| 🟢 | BOM | BOM browsing with enriched cost/stock data, build badge, grouped usages, and source links | Mainline BOM is ported onto the rewrite RPC/store architecture, including LCSC enrichment and source navigation | Validate behavior against real projects and keep follow-up polish small |
 | 🟡 | Logs | Dedicated logs panel with build-log workflows | Dedicated logs panel exists; structured extension/webview logging is wired | Add user-facing build/log jumps and any missing workflows |
 | 🟡 | 3D | Dedicated preview surface tied to builds | Dedicated preview surface exists | Mostly done; verify asset resolution, resize, and failure UX |
 | 🟡 | Layout | Real layout editor/preview | Shared layout server is embedded in `panel-layout` and opens the selected target PCB | Validate behavior end to end and restore related preview workflows on top of the shared viewer |

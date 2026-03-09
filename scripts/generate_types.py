@@ -13,9 +13,9 @@ from typing import Annotated, Any, ForwardRef, Literal, Union, get_args, get_ori
 from pydantic import BaseModel
 
 import atopile.dataclasses as dataclasses_module
-import atopile.server.store as store_module
+import atopile.server.ui.store as store_module
 from atopile.dataclasses import CamelModel
-from atopile.server.store import STORE_SCHEMA
+from atopile.server.ui.store import STORE_SCHEMA
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src/ui/shared/generated-types.ts"

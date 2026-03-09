@@ -39,6 +39,7 @@ from atopile.dataclasses import (
 )
 from atopile.model import (
     artifacts,
+    builds,
     migrations,
     packages,
     parts_search,
@@ -956,24 +957,86 @@ class CoreSocket:
                 self._store.set("variables_data", data or {"nodes": []})
 
             case "getBom":
-                project_root = msg.get("projectRoot", "")
-                target = msg.get("target", "default")
-                data = await asyncio.to_thread(
-                    artifacts.handle_get_bom,
-                    project_root,
-                    target,
-                )
-                self._store.set(
-                    "bom_data",
-                    data
-                    or {
+                try:
+                    project_root = msg.get("projectRoot", "")
+                    target = msg.get("target", "default")
+                    data = await asyncio.to_thread(
+                        artifacts.handle_get_bom,
+                        project_root,
+                        target,
+                    )
+                    result = data or {
                         "components": [],
                         "totalQuantity": 0,
                         "uniqueParts": 0,
                         "estimatedCost": None,
                         "outOfStock": 0,
-                    },
-                )
+                    }
+                    self._store.set("bom_data", result)
+                    await self._send_action_result(
+                        ws,
+                        session_id,
+                        action,
+                        request_id,
+                        result=result,
+                    )
+                except Exception as exc:
+                    await self._send_action_result(
+                        ws,
+                        session_id,
+                        action,
+                        request_id,
+                        error=str(exc),
+                    )
+
+            case "getBuildsByProject":
+                try:
+                    result = await asyncio.to_thread(
+                        builds.handle_get_builds_by_project,
+                        msg.get("projectRoot") or None,
+                        msg.get("target") or None,
+                        int(msg.get("limit", 50)),
+                    )
+                    await self._send_action_result(
+                        ws,
+                        session_id,
+                        action,
+                        request_id,
+                        result=result,
+                    )
+                except Exception as exc:
+                    await self._send_action_result(
+                        ws,
+                        session_id,
+                        action,
+                        request_id,
+                        error=str(exc),
+                    )
+
+            case "fetchLcscParts":
+                try:
+                    lcsc_ids = [str(value) for value in msg.get("lcscIds", []) if value]
+                    result = await asyncio.to_thread(
+                        parts.handle_get_lcsc_parts,
+                        lcsc_ids,
+                        project_root=msg.get("projectRoot") or None,
+                        target=msg.get("target") or None,
+                    )
+                    await self._send_action_result(
+                        ws,
+                        session_id,
+                        action,
+                        request_id,
+                        result=result,
+                    )
+                except Exception as exc:
+                    await self._send_action_result(
+                        ws,
+                        session_id,
+                        action,
+                        request_id,
+                        error=str(exc),
+                    )
 
             case "subscribeLogs":
                 request = UiBuildLogRequest.model_validate(msg)

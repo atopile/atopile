@@ -49,7 +49,16 @@ export class ExtensionRequestHandler {
 
       case "vscode.openFile": {
         const filePath = this._requireString(message.path, "path");
-        await vscode.window.showTextDocument(vscode.Uri.file(filePath));
+        const line = this._optionalNumber(message.line);
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+        if (line == null) {
+          await vscode.window.showTextDocument(document);
+          return { ok: true };
+        }
+        const position = new vscode.Position(Math.max(0, line - 1), 0);
+        await vscode.window.showTextDocument(document, {
+          selection: new vscode.Range(position, position),
+        });
         return { ok: true };
       }
 
@@ -118,6 +127,10 @@ export class ExtensionRequestHandler {
       throw new Error(`Missing required field: ${name}`);
     }
     return value;
+  }
+
+  private _optionalNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
   }
 
   private async _pathExists(uri: vscode.Uri): Promise<boolean> {
