@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { render, logoUrl } from "../shared/render";
+import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import { createWebviewLogger } from "../shared/logger";
-import type { Build } from "../../shared/types";
-import { Spinner, Button, Alert, AlertTitle, AlertDescription } from "../shared/components";
+import type { Build } from "../../shared/generated-types";
+import { Spinner, Alert, AlertTitle, AlertDescription } from "../shared/components";
 import { getCurrentStage } from "../shared/utils";
 import { BuildQueuePane } from "./BuildQueuePane";
 import { ProjectTargetSelector } from "./ProjectTargetSelector";
 import { ActionBar } from "./ActionBar";
+import { SidebarHeader } from "./SidebarHeader";
 import { TabBar, type TabId } from "./TabBar";
 import {
   FilesPanel,
@@ -18,7 +19,6 @@ import {
   ParametersPanel,
   BOMPanel,
 } from "../sidebar-panels";
-import { Settings } from "lucide-react";
 import { PackageDetailPanel } from "../sidebar-details/PackageDetailPanel";
 import { PartsDetailPanel } from "../sidebar-details/PartsDetailPanel";
 import { MigrateDialog } from "../sidebar-details/MigrateDialog";
@@ -98,6 +98,7 @@ function App() {
   const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
   const previousBuilds = WebviewRpcClient.useSubscribe("previousBuilds");
   const sidebarDetails = WebviewRpcClient.useSubscribe("sidebarDetails");
+  const structureData = WebviewRpcClient.useSubscribe("structureData");
 
   const [activeTab, setActiveTab] = useState<TabId>("files");
   const [isPackageInstalling, setIsPackageInstalling] = useState(false);
@@ -112,20 +113,17 @@ function App() {
     }
   }, [isConnected]);
 
-  const targets = useMemo(() => {
-    const match = projects.find(
-      (p) => p.root === projectState.selectedProject,
-    );
-    return match?.targets ?? [];
-  }, [
-    projects,
-    projectState.selectedProject,
-  ]);
-
   const selectedProject = useMemo(
     () => projects.find((project) => project.root === projectState.selectedProject) ?? null,
     [projects, projectState.selectedProject],
   );
+
+  useEffect(() => {
+    if (!projectState.selectedProject) {
+      return;
+    }
+    rpcClient?.sendAction("getStructure", { projectRoot: projectState.selectedProject });
+  }, [projectState.selectedProject]);
 
   const projectBuilds = useMemo(() => {
     const project = projectState.selectedProject;
@@ -246,35 +244,10 @@ function App() {
 
   return (
     <div className="sidebar">
-      {/* Header: logo + title + version badge + settings */}
-      <div className="sidebar-header">
-        {logoUrl && (
-          <img src={logoUrl} alt="atopile" className="sidebar-logo" />
-        )}
-        <span className="sidebar-title">atopile</span>
-        {coreStatus.version && <span className="version-badge">v{coreStatus.version}</span>}
-        <Button
-          variant="ghost"
-          size="icon"
-          title="Settings"
-          style={{ marginLeft: "auto" }}
-          onClick={() => {
-            logger.info("openPanel click panelId=panel-settings");
-            void rpcClient?.requestAction("vscode.openPanel", { panelId: "panel-settings" }).then(
-              () => {
-                logger.info("openPanel resolved panelId=panel-settings");
-              },
-              (error) => {
-                logger.error(
-                  `openPanel failed panelId=panel-settings error=${error instanceof Error ? error.message : String(error)}`,
-                );
-              },
-            );
-          }}
-        >
-          <Settings size={14} />
-        </Button>
-      </div>
+      <SidebarHeader
+        coreStatus={coreStatus}
+        connected={connected}
+      />
 
       {!isConnected && !hasEverConnected ? (
         <div className="sidebar-status">
@@ -287,11 +260,11 @@ function App() {
           <div className="sidebar-top">
             <ProjectTargetSelector
               projects={projects}
+              modules={structureData.modules}
               selectedProject={projectState.selectedProject}
               onSelectProject={(root) =>
                 rpcClient?.sendAction("selectProject", { projectRoot: root })
               }
-              targets={targets}
               selectedTarget={projectState.selectedTarget}
               onSelectTarget={(target) =>
                 rpcClient?.sendAction("selectTarget", { target })
@@ -310,6 +283,12 @@ function App() {
                   target: projectState.selectedTarget,
                 })
               }
+              onOpenManufacture={() => {
+                logger.info("openPanel click panelId=panel-manufacture");
+                void rpcClient?.requestAction("vscode.openPanel", {
+                  panelId: "panel-manufacture",
+                });
+              }}
               buildDisabled={
                 !projectState.selectedProject ||
                 !projectState.selectedTarget ||

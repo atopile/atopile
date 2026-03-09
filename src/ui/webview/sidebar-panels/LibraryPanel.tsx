@@ -9,7 +9,7 @@ import {
   typeIcon,
 } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
-import type { StdLibItem, StdLibChild } from "../../shared/types";
+import type { StdLibChild, StdLibItem } from "../../shared/generated-types";
 import "./LibraryPanel.css";
 
 const TYPE_ORDER = ["interface", "module", "component", "trait", "parameter"] as const;

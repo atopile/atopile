@@ -1,4 +1,4 @@
-"""Reactive typed state store for websocket subscribers."""
+"""Reactive UI store schema for websocket-backed server state."""
 
 from __future__ import annotations
 

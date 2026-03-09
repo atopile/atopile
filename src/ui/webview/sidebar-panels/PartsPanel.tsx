@@ -9,7 +9,10 @@ import {
   Spinner,
 } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
-import type { PartSearchItem, InstalledPartItem } from "../../shared/types";
+import type {
+  UiInstalledPartItem,
+  UiPartSearchItem,
+} from "../../shared/generated-types";
 import "./PartsPanel.css";
 
 type Tab = "find" | "project";
@@ -24,7 +27,7 @@ function SearchResultRow({
   part,
   projectRoot,
 }: {
-  part: PartSearchItem;
+  part: UiPartSearchItem;
   projectRoot: string;
 }) {
   const [busy, setBusy] = useState(false);
@@ -92,7 +95,7 @@ function InstalledPartRow({
   part,
   projectRoot,
 }: {
-  part: InstalledPartItem;
+  part: UiInstalledPartItem;
   projectRoot: string;
 }) {
   const [busy, setBusy] = useState(false);

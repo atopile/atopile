@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Loader2, CheckCircle, AlertCircle, Download, Cuboid, Image } from 'lucide-react'
-import type { SidebarPartDetail } from '../../shared/types'
+import type { UiPartDetail } from '../../shared/generated-types'
 import { StepViewer } from '../shared/components'
 import { rpcClient } from '../shared/rpcClient'
 import { useBlobAssetUrl } from '../shared/utils'
@@ -15,7 +15,7 @@ async function requestAction<T>(action: string, payload: Record<string, unknown>
 }
 
 interface PartsDetailPanelProps {
-  part: SidebarPartDetail
+  part: UiPartDetail
   projectRoot: string | null
   onClose: () => void
 }
@@ -39,7 +39,7 @@ export function PartsDetailPanel({
   projectRoot,
   onClose,
 }: PartsDetailPanelProps) {
-  const [details, setDetails] = useState<SidebarPartDetail | null>(null)
+  const [details, setDetails] = useState<UiPartDetail | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isInstalling, setIsInstalling] = useState(false)
@@ -54,7 +54,7 @@ export function PartsDetailPanel({
     setIsLoading(true)
     setError(null)
     setDetails(null)
-    requestAction<{ part?: SidebarPartDetail | null }>('getPartDetails', { lcsc: part.lcsc })
+    requestAction<{ part?: UiPartDetail | null }>('getPartDetails', { lcsc: part.lcsc })
       .then((response) => {
         if (!active) return
         setDetails(response.part ?? null)

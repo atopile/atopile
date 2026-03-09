@@ -4,13 +4,13 @@
  */
 
 import type { CSSProperties } from 'react';
-import {
-  LogEntry,
+import type {
   TreeNode,
   LogTreeGroup,
   TimeMode,
   SourceMode,
 } from '../../shared/types';
+import type { UiLogEntry } from '../../shared/generated-types';
 import type { SearchOptions } from '../shared/utils/searchUtils';
 import { createSearchMatcher, highlightMatches } from '../shared/utils/searchUtils';
 import { formatSource } from '../shared/utils';
@@ -45,7 +45,7 @@ export function parseTreeDepth(message: string): { depth: number; content: strin
 
 // --- Tree building ---
 
-export function buildTreeHierarchy(entries: Array<{ entry: LogEntry; depth: number; content: string }>): TreeNode {
+export function buildTreeHierarchy(entries: Array<{ entry: UiLogEntry; depth: number; content: string }>): TreeNode {
   if (entries.length === 0) throw new Error('Cannot build tree from empty entries');
 
   const root: TreeNode = {
@@ -70,9 +70,9 @@ export function buildTreeHierarchy(entries: Array<{ entry: LogEntry; depth: numb
   return root;
 }
 
-export function groupLogsIntoTrees(logs: LogEntry[]): LogTreeGroup[] {
+export function groupLogsIntoTrees(logs: UiLogEntry[]): LogTreeGroup[] {
   const groups: LogTreeGroup[] = [];
-  let currentEntries: Array<{ entry: LogEntry; depth: number; content: string }> = [];
+  let currentEntries: Array<{ entry: UiLogEntry; depth: number; content: string }> = [];
 
   for (const entry of logs) {
     const { depth, content } = parseTreeDepth(entry.message);
@@ -105,12 +105,12 @@ export function groupLogsIntoTrees(logs: LogEntry[]): LogTreeGroup[] {
 // --- Filtering ---
 
 export function filterLogs(
-  logs: LogEntry[],
+  logs: UiLogEntry[],
   search: string,
   sourceFilter: string,
   searchOptions: SearchOptions = { isRegex: false },
   sourceOptions: SearchOptions = { isRegex: false },
-): LogEntry[] {
+): UiLogEntry[] {
   const messageMatcher = createSearchMatcher(search, searchOptions);
   const sourceMatcher = createSearchMatcher(sourceFilter, sourceOptions);
 
@@ -132,7 +132,7 @@ export function getTopLevelLogger(loggerName: string | undefined | null): string
   return loggerName.split('.')[0] || null;
 }
 
-export function getUniqueTopLevelLoggers(logs: LogEntry[]): string[] {
+export function getUniqueTopLevelLoggers(logs: UiLogEntry[]): string[] {
   const set = new Set<string>();
   for (const log of logs) {
     const top = getTopLevelLogger(log.loggerName);
@@ -160,7 +160,7 @@ export function saveEnabledLoggers(enabled: Set<string> | null): void {
   }
 }
 
-export function filterByLoggers(logs: LogEntry[], enabledLoggers: Set<string> | null): LogEntry[] {
+export function filterByLoggers(logs: UiLogEntry[], enabledLoggers: Set<string> | null): UiLogEntry[] {
   if (enabledLoggers === null) return logs;
   return logs.filter(log => {
     const topLevel = getTopLevelLogger(log.loggerName);
@@ -172,7 +172,7 @@ export function filterByLoggers(logs: LogEntry[], enabledLoggers: Set<string> | 
 // --- Display transform ---
 
 export function computeRowDisplay(
-  entry: LogEntry, content: string, search: string, searchOptions: SearchOptions,
+  entry: UiLogEntry, content: string, search: string, searchOptions: SearchOptions,
   timeMode: TimeMode, sourceMode: SourceMode, firstTimestamp: number,
 ) {
   const ts = formatTimestamp(entry.timestamp, timeMode, firstTimestamp);

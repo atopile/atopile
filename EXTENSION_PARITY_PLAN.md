@@ -31,6 +31,13 @@ model with the fewest necessary compatibility changes. The simplest path is:
 
 The current staged changes materially reduce the output-panel parity gap:
 
+- The backend UI transport/state boundary is now explicit: websocket/store/sidebar-style
+  UI helpers live under `src/atopile/server/ui`, while domain logic stays in
+  `src/atopile/model`.
+- The sidebar header now surfaces live connection/health state alongside version and settings access.
+- The sidebar project picker now includes an end-to-end create-project flow with folder browse support.
+- The sidebar build picker now supports new build-target creation with entry validation and module suggestions.
+- The primary action row now exposes Manufacture instead of Developer, with migration shown contextually.
 - `panel-layout` now opens the shared layout server for the selected project/target via
   `openLayout`; it is no longer a placeholder panel.
 - The extension/webview panel host and RPC bridge are more robust and now emit structured logs.
@@ -42,12 +49,12 @@ The plan below reflects that new baseline and focuses on the remaining user-visi
 
 | Status | Area | Mainline (`~/git/atopile`) | Rewrite (`~/git/atopile_extension`) | Gap to Close |
 |---|---|---|---|---|
-| 🟡 | Header + settings | Version, settings, health/status affordances | Version + settings button exist; settings are much narrower | Add connection/health affordances and finish settings coverage |
-| 🟡 | Project selection | Searchable combobox + new-project flow | Searchable project picker + placeholder new-project button | Implement create-project flow end to end |
-| 🟡 | Target selection | Select target, add/edit/delete target, choose build command | Select target only | Implement build-target lifecycle |
-| 🟡 | Action row | Build, KiCad, 3D, Layout, Manufacture | Build, Layout, 3D, KiCad, Developer | Validate the new panel flows and decide whether Developer remains a rewrite-only affordance |
+| 🟢 | Header + settings | Version, settings, health/status affordances | Version badge, settings button, and live health state exist | Good enough; keep broader recovery/help work tracked under Connection UX |
+| 🟢 | Project selection | Searchable combobox + new-project flow | Searchable project picker + end-to-end create-project flow with folder browse | Good enough; polish only if bugs appear |
+| 🟢 | Target selection | Select target, add/edit/delete target, choose build command | Select target + create/edit/delete target with entry validation/suggestions | Good enough; keep the simpler rewrite target model unless product needs change |
+| 🟢 | Action row | Build, KiCad, 3D, Layout, Manufacture | Build, KiCad, 3D, Layout, Manufacture, with migrate shown when needed | Good enough; keep Developer out of the primary parity chrome unless product needs change |
 | 🟡 | Build queue | Resizable, collapsible, cancel actions, logs/problem affordances | Resizable only | Add collapse, cancel, and jump-to-diagnostics/logs |
-| 🟡 | Connection UX | Disconnected/restart/help affordances integrated with status | Overlay exists; no visible live status indicator | Add explicit connection/health state in the chrome |
+| 🟡 | Connection UX | Disconnected/restart/help affordances integrated with status | Overlay exists and the chrome now shows live health; restart/help affordances are still thin | Add explicit recovery/help actions, not just status |
 | 🟡 | Files | Mature explorer with lazy loading, context menu, create/rename/delete/duplicate, reveal/open terminal | Read-only tree open-file view | Add file-management operations and explorer affordances |
 | 🟡 | Packages | Browse/install/remove plus detail panel and richer metadata flow | Detail panel is ported and integrated; package workflow exists | Polish behavior, validate copied flows, and close any metadata/action gaps |
 | 🟡 | Parts | Search/install plus detail panel, datasheet and footprint/3D views | Detail panel is ported and integrated; datasheet/image/3D exist | Polish sourcing workflow; footprint preview is deferred until the shared layout viewer lands |
@@ -62,14 +69,14 @@ The plan below reflects that new baseline and focuses on the remaining user-visi
 
 ## Work Plan
 
-### 1. Finish project and target lifecycle flows
+### 1. Finish target lifecycle and polish project creation
 
-The rewrite can select projects and targets, but it cannot manage them yet.
+The rewrite can now create projects and add build targets, but lifecycle coverage is still incomplete.
 
-- Implement "New Project" from the sidebar.
-- Support folder browse/pick flows needed by project creation.
-- Implement new target creation.
+- Validate the sidebar "New Project" flow against real workspaces and error cases.
+- Keep the folder browse/pick flow reliable across the VS Code/webview bridge.
 - Implement target rename/update/delete.
+- Decide whether build-command parity belongs in the rewrite UI or can stay implicit.
 - Decide whether target management lives only in the sidebar or also elsewhere in the rewrite UI.
 - Keep this rewrite-native; do not bring back mainline's older card tree unless needed.
 
@@ -125,7 +132,7 @@ behave like product features instead of demos.
 
 - Finish migrate workflow parity on top of the copied detail UI.
 - Expand settings beyond `devPath` and `autoInstall` if the rewrite is replacing the shipped extension.
-- Expose source/mode/version/health clearly in the UI.
+- Keep source/mode/version/health visible in the UI and add obvious recovery/help actions.
 - Make restart/failure recovery obvious from the sidebar and panel surfaces.
 
 ### 6. Remove parity-risk dead ends

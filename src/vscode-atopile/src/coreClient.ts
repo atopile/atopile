@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { RpcClient } from "../../ui/shared/rpcClient";
-import type { ExtensionSettings } from "../../ui/shared/types";
+import type { UiExtensionSettings } from "../../ui/shared/generated-types";
 import { EXTENSION_SESSION_ID, RpcProxy } from "./rpcProxy";
 
 export class CoreClient implements vscode.Disposable {
@@ -38,7 +38,7 @@ export class CoreClient implements vscode.Disposable {
         return;
       }
 
-      const settings = data as Partial<ExtensionSettings>;
+      const settings = data as Partial<UiExtensionSettings>;
       const localSettings = this._getExtensionSettings();
       const matchesLocalSettings =
         settings.devPath === localSettings.devPath &&
@@ -104,7 +104,7 @@ export class CoreClient implements vscode.Disposable {
     this._client.close();
   }
 
-  private _getExtensionSettings(): ExtensionSettings {
+  private _getExtensionSettings(): UiExtensionSettings {
     const config = vscode.workspace.getConfiguration("atopile");
     return {
       devPath: config.get<string>("devPath", ""),

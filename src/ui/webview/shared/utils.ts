@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import AnsiToHtml from 'ansi-to-html';
-import type { Build, BuildStage, TimeMode } from "../../shared/types";
-import { SOURCE_COLORS } from "../../shared/types";
+import type { Build, BuildStage } from "../../shared/generated-types";
+import { SOURCE_COLORS, type TimeMode } from "../../shared/types";
 import { rpcClient } from './rpcClient';
 
 // ANSI to HTML converter

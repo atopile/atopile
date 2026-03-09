@@ -14,7 +14,10 @@ import {
   typeIcon,
 } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
-import type { StructureModule, ModuleChild } from "../../shared/types";
+import type {
+  ModuleChild,
+  ModuleDefinition,
+} from "../../shared/generated-types";
 import "./StructurePanel.css";
 
 function ChildNode({
@@ -75,7 +78,7 @@ function ModuleNode({
   expandedKeys,
   onToggle,
 }: {
-  module: StructureModule;
+  module: ModuleDefinition;
   expandedKeys: Set<string>;
   onToggle: (key: string) => void;
 }) {

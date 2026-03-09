@@ -13,14 +13,16 @@ import {
   PanelHost,
   SIDEBAR_VIEW_ID,
 } from "./webviewHost";
-import { createCoreStatus } from "../../ui/shared/types";
+import { createUiCoreStatus } from "../../ui/shared/generated-types";
 
 const CORE_SERVER_READY_MARKER = "ATOPILE_SERVER_READY";
 
 const panels = [
+  { id: "panel-settings", label: "Settings" },
   { id: "panel-developer", label: "Developer" },
   { id: "panel-layout", label: "Layout" },
   { id: "panel-3d", label: "3D Model" },
+  { id: "panel-manufacture", label: "Manufacture" },
 ];
 
 let coreClient: CoreClient | undefined;
@@ -209,7 +211,7 @@ async function startCoreServer(
   } catch (err: any) {
     output.appendLine(`[Extension] Core server failed to start: ${err.message}`);
     vscode.window.showWarningMessage(`atopile core server failed to start: ${err.message}`);
-    const coreStatus = createCoreStatus();
+    const coreStatus = createUiCoreStatus();
     coreStatus.error = err.message;
     proxy.setBootstrapState("coreStatus", coreStatus);
   }

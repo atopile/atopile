@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { EmptyState, CenteredSpinner } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
-import type { FileNode } from "../../shared/types";
+import type { FileNode } from "../../shared/generated-types";
 import "./FilesPanel.css";
 
 function fileStyle(name: string): { icon: typeof File; className: string } {

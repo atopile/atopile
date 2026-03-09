@@ -98,6 +98,26 @@ function App() {
           </TableRow>
         </TableBody>
       </Table>
+
+      <Separator />
+
+      <h3>Developer</h3>
+
+      <Field>
+        <FieldDescription>
+          Open the developer panel for rewrite-specific diagnostics and tooling.
+        </FieldDescription>
+        <Button
+          variant="outline"
+          onClick={() => {
+            void rpcClient?.requestAction("vscode.openPanel", {
+              panelId: "panel-developer",
+            });
+          }}
+        >
+          Open Developer Panel
+        </Button>
+      </Field>
     </div>
   );
 }

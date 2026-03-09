@@ -1,20 +1,23 @@
 import { useEffect, useState } from "react";
 import type { WebviewRpcClient } from "../shared/rpcClient";
 import { rpcClient } from "../shared/rpcClient";
-import {
-  BuildLogRequest,
-  LogConnectionState,
-  LogEntry,
-  LogMessage,
-} from "../../shared/types";
+import type { LogConnectionState } from "../../shared/types";
+import type {
+  UiBuildLogRequest,
+  UiLogEntry,
+  UiLogsErrorMessage,
+  UiLogsStreamMessage,
+} from "../../shared/generated-types";
+
+type LogMessage = UiLogsStreamMessage | UiLogsErrorMessage;
 
 export class LogRpcClient {
   private readonly _rpcClient: WebviewRpcClient;
-  private _logs: LogEntry[] = [];
+  private _logs: UiLogEntry[] = [];
   private _streaming = false;
   private _error: string | null = null;
   private _connectionState: LogConnectionState = "disconnected";
-  private _activeRequest: BuildLogRequest | null = null;
+  private _activeRequest: UiBuildLogRequest | null = null;
   private _listeners = new Set<() => void>();
 
   constructor(client: WebviewRpcClient) {
@@ -32,7 +35,7 @@ export class LogRpcClient {
     return this._error;
   }
 
-  get logs(): LogEntry[] {
+  get logs(): UiLogEntry[] {
     return this._logs;
   }
 
@@ -58,7 +61,7 @@ export class LogRpcClient {
     this._notify();
   }
 
-  startBuildStream(request: BuildLogRequest): void {
+  startBuildStream(request: UiBuildLogRequest): void {
     if (!request.buildId.trim()) {
       this._error = "Build ID is required";
       this._notify();
@@ -93,7 +96,7 @@ export class LogRpcClient {
   static useLogState(): {
     connectionState: LogConnectionState;
     error: string | null;
-    logs: LogEntry[];
+    logs: UiLogEntry[];
     streaming: boolean;
   } {
     const [, bump] = useState(0);

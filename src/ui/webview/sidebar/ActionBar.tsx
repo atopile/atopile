@@ -1,4 +1,4 @@
-import { Hammer, Compass, Box, Layout, Code, RefreshCcw } from "lucide-react";
+import { Hammer, Compass, Box, Layout, Factory, RefreshCcw } from "lucide-react";
 import { Button, Spinner } from "../shared/components";
 import { rpcClient } from "../shared/rpcClient";
 import { createWebviewLogger } from "../shared/logger";
@@ -21,6 +21,7 @@ async function requestPanel(panelId: string): Promise<void> {
 interface ActionBarProps {
   onBuild: () => void;
   onOpenKicad: () => void;
+  onOpenManufacture: () => void;
   buildDisabled: boolean;
   isBuilding: boolean;
   showMigration: boolean;
@@ -30,6 +31,7 @@ interface ActionBarProps {
 export function ActionBar({
   onBuild,
   onOpenKicad,
+  onOpenManufacture,
   buildDisabled,
   isBuilding,
   showMigration,
@@ -73,12 +75,10 @@ export function ActionBar({
           size="sm"
           className="action-btn"
           disabled={buildDisabled}
-          onClick={() => {
-            void requestPanel("panel-layout");
-          }}
+          onClick={onOpenKicad}
         >
-          <Layout size={12} />
-          <span className="action-label">Layout</span>
+          <Compass size={12} />
+          <span className="action-label">KiCad</span>
         </Button>
 
         <div className="action-divider" />
@@ -103,25 +103,25 @@ export function ActionBar({
           size="sm"
           className="action-btn"
           disabled={buildDisabled}
-          onClick={onOpenKicad}
+          onClick={() => {
+            void requestPanel("panel-layout");
+          }}
         >
-          <Compass size={12} />
-          <span className="action-label">KiCad</span>
+          <Layout size={12} />
+          <span className="action-label">Layout</span>
         </Button>
 
         <div className="action-divider" />
 
-        {/* Developer — wired */}
         <Button
           variant="ghost"
           size="sm"
           className="action-btn"
-          onClick={() => {
-            void requestPanel("panel-developer");
-          }}
+          disabled={buildDisabled}
+          onClick={onOpenManufacture}
         >
-          <Code size={12} />
-          <span className="action-label">Developer</span>
+          <Factory size={12} />
+          <span className="action-label">Manufacture</span>
         </Button>
       </div>
     </div>

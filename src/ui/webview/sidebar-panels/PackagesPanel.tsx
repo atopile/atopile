@@ -11,7 +11,7 @@ import {
 } from "../shared/components";
 import { formatDownloads } from "../shared/utils/packageUtils";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
-import type { PackageSummaryItem } from "../../shared/types";
+import type { PackageSummaryItem } from "../../shared/generated-types";
 import "./PackagesPanel.css";
 
 type Tab = "browse" | "project";

@@ -235,7 +235,7 @@ export interface PackagesSummaryData {
 export interface Project {
   root: string;
   name: string;
-  targets: string[];
+  targets: ResolvedBuildTarget[];
   needsMigration: boolean;
 }
 
@@ -248,6 +248,14 @@ export interface RegistrySearchResponse {
   packages: PackageInfo[];
   total: number;
   query: string;
+}
+
+export interface ResolvedBuildTarget {
+  name: string;
+  entry: string;
+  pcbPath: string;
+  modelPath: string;
+  root: string;
 }
 
 export interface StdLibChild {

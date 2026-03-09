@@ -3,10 +3,11 @@ import { glob } from 'glob';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
-import type { AtoYaml, BuildTarget } from '../../ui/shared/types';
+import type { ResolvedBuildTarget } from '../../ui/shared/generated-types';
+import type { AtoYaml } from '../../ui/shared/types';
 
-async function loadBuilds(): Promise<BuildTarget[]> {
-    const builds: BuildTarget[] = [];
+async function loadBuilds(): Promise<ResolvedBuildTarget[]> {
+    const builds: ResolvedBuildTarget[] = [];
     const manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.*/**');
 
     for (const manifest of manifests) {
@@ -28,8 +29,8 @@ async function loadBuilds(): Promise<BuildTarget[]> {
                     builds.push({
                         name,
                         entry: buildCfg.entry,
-                        pcb_path: layoutPath,
-                        model_path: modelPath,
+                        pcbPath: layoutPath,
+                        modelPath: modelPath,
                         root: rootDir,
                     });
                 } catch (err) {
@@ -44,7 +45,7 @@ async function loadBuilds(): Promise<BuildTarget[]> {
     return builds;
 }
 
-export async function getBuildTarget(projectRoot: string, target: string): Promise<BuildTarget> {
+export async function getBuildTarget(projectRoot: string, target: string): Promise<ResolvedBuildTarget> {
     const builds = await loadBuilds();
     const build = builds.find((candidate) => candidate.root === projectRoot && candidate.name === target);
     if (!build) {
@@ -162,5 +163,5 @@ export async function openPcb(pcbPath: string): Promise<void> {
  */
 export async function openKicadForBuild(projectRoot: string, target: string): Promise<void> {
     const build = await getBuildTarget(projectRoot, target);
-    await openPcb(build.pcb_path);
+    await openPcb(build.pcbPath);
 }

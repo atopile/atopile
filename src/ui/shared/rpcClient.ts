@@ -1,4 +1,5 @@
-import { MSG_TYPE, type RpcMessage, type StoreKey } from "./types";
+import type { StoreKey } from "./generated-types";
+import { MSG_TYPE, type RpcMessage } from "./types";
 import type { RpcTransport } from "./rpcTransport";
 
 class ReconnectScheduler {

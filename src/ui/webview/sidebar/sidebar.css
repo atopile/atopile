@@ -12,54 +12,6 @@
   background: var(--bg-primary);
 }
 
-/* Header — matches mainline .panel-header */
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  flex-shrink: 0;
-  height: 35px;
-  min-height: 35px;
-  padding: 0 var(--spacing-xs);
-  border-bottom: 1px solid var(--accent);
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
-  position: relative;
-}
-
-.sidebar-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--accent);
-}
-
-.sidebar-logo {
-  width: 18px;
-  height: 18px;
-  display: block;
-}
-
-.sidebar-title {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--text-primary);
-  letter-spacing: 0;
-}
-
-.version-badge {
-  margin-left: 0;
-  font-size: var(--font-size-xxs);
-  padding: 1px 5px;
-  background: var(--accent-subtle);
-  color: var(--accent);
-  border-radius: var(--radius-sm);
-}
-
-
 /* Top section: project/target selectors + action bar — fixed at top
    Matches mainline .projects-section-fixed */
 .sidebar-top {

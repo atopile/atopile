@@ -503,12 +503,22 @@ class MaxConcurrentRequest(BaseModel):
 # =============================================================================
 
 
+class ResolvedBuildTarget(CamelModel):
+    """A build target with resolved artifact paths."""
+
+    name: str
+    entry: str = ""
+    pcb_path: str
+    model_path: str
+    root: str
+
+
 class Project(CamelModel):
     """A project discovered from ato.yaml."""
 
     root: str
     name: str
-    targets: list[str]
+    targets: list[ResolvedBuildTarget]
     needs_migration: bool = False
 
 

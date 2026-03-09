@@ -12,7 +12,7 @@ import {
   Badge,
 } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
-import type { BOMComponent, BOMUsage } from "../../shared/types";
+import type { UiBOMComponent, UiBOMUsage } from "../../shared/generated-types";
 import "./BOMPanel.css";
 
 function typeBadgeVariant(type: string | null): string {
@@ -25,7 +25,7 @@ function typeBadgeVariant(type: string | null): string {
   }
 }
 
-function UsageRow({ usage }: { usage: BOMUsage }) {
+function UsageRow({ usage }: { usage: UiBOMUsage }) {
   const handleGoTo = useCallback(() => {
     if (usage.file) {
       void rpcClient?.requestAction("vscode.openFile", { path: usage.file });
@@ -45,7 +45,7 @@ function UsageRow({ usage }: { usage: BOMUsage }) {
   );
 }
 
-function BOMComponentRow({ component }: { component: BOMComponent }) {
+function BOMComponentRow({ component }: { component: UiBOMComponent }) {
   const [expanded, setExpanded] = useState(false);
 
   return (

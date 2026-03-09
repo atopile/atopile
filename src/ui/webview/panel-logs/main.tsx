@@ -9,11 +9,14 @@ import { WebviewRpcClient } from '../shared/rpcClient';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '../shared/components/Select';
 import { SearchBar, RegexSearchBar } from '../shared/components/SearchBar';
 import { Button } from '../shared/components/Button';
-import {
-  Build, ProjectState,
-  LogLevel, Audience, TimeMode, SourceMode,
-  LogEntry, TreeNode, LEVEL_SHORT,
-} from '../../shared/types';
+import type { SourceMode, TimeMode, TreeNode } from '../../shared/types';
+import { LEVEL_SHORT } from '../../shared/types';
+import type {
+  Build,
+  UiAudience,
+  UiLogEntry,
+  UiLogLevel,
+} from '../../shared/generated-types';
 import type { SearchOptions } from '../shared/utils/searchUtils';
 import {
   loadEnabledLoggers, getUniqueTopLevelLoggers, saveEnabledLoggers,
@@ -39,7 +42,7 @@ initLogSettings();
 // -- Row sub-components -------------------------------------------------------
 
 function LogRowCells({ entry, display, levelFull, toggleHandlers }: {
-  entry: LogEntry; display: ReturnType<typeof computeRowDisplay>;
+  entry: UiLogEntry; display: ReturnType<typeof computeRowDisplay>;
   levelFull: boolean;
   toggleHandlers: { toggleTimeMode: () => void; toggleLevelWidth: () => void; toggleSourceMode: () => void };
 }) {
@@ -74,7 +77,7 @@ function TraceDetails({ label, content, className, defaultOpen = false }: {
   );
 }
 
-function TracebacksInline({ entry }: { entry: LogEntry }) {
+function TracebacksInline({ entry }: { entry: UiLogEntry }) {
   if (!entry.atoTraceback && !entry.pythonTraceback) return null;
   return (
     <div className="lv-tracebacks lv-tracebacks-inline">
@@ -141,7 +144,7 @@ function StandaloneLogRow({
   entry, content, search, searchOptions, levelFull, timeMode,
   sourceMode, firstTimestamp, toggleHandlers,
 }: {
-  entry: LogEntry; content: string; search: string; searchOptions: SearchOptions;
+  entry: UiLogEntry; content: string; search: string; searchOptions: SearchOptions;
   levelFull: boolean; timeMode: TimeMode; sourceMode: SourceMode;
   firstTimestamp: number;
   toggleHandlers: { toggleTimeMode: () => void; toggleLevelWidth: () => void; toggleSourceMode: () => void };
@@ -171,7 +174,7 @@ function StandaloneLogRow({
 // -- LoggerFilter -------------------------------------------------------------
 
 function LoggerFilter({ logs, enabledLoggers, onEnabledLoggersChange }: {
-  logs: LogEntry[];
+  logs: UiLogEntry[];
   enabledLoggers: Set<string> | null;
   onEnabledLoggersChange: (enabled: Set<string> | null) => void;
 }) {
@@ -215,17 +218,17 @@ function LoggerFilter({ logs, enabledLoggers, onEnabledLoggersChange }: {
 // -- LogViewer (main) ---------------------------------------------------------
 
 function LogViewer() {
-  const projectState = WebviewRpcClient.useSubscribe('projectState') as ProjectState;
-  const currentBuilds = WebviewRpcClient.useSubscribe('currentBuilds') as Build[];
-  const previousBuilds = WebviewRpcClient.useSubscribe('previousBuilds') as Build[];
+  const projectState = WebviewRpcClient.useSubscribe('projectState');
+  const currentBuilds = WebviewRpcClient.useSubscribe('currentBuilds');
+  const previousBuilds = WebviewRpcClient.useSubscribe('previousBuilds');
 
   // Query parameters
   const [buildId, setBuildId] = useState('');
   const [stage, setStage] = useState('');
-  const [logLevels, setLogLevels] = useState<LogLevel[]>(
+  const [logLevels, setLogLevels] = useState<UiLogLevel[]>(
     () => JSON.parse(localStorage.getItem('lv-logLevels')!),
   );
-  const [audience, setAudience] = useState<Audience>('developer');
+  const [audience, setAudience] = useState<UiAudience>('developer');
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [searchRegex, setSearchRegex] = useState(false);
@@ -356,7 +359,7 @@ function LogViewer() {
     toggleSourceMode: () => setSourceMode(m => m === 'source' ? 'logger' : 'source'),
   }), []);
 
-  const toggleLevel = (level: LogLevel) => {
+  const toggleLevel = (level: UiLogLevel) => {
     setLogLevels(prev => prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]);
   };
 
@@ -459,7 +462,7 @@ function LogViewer() {
             <Select
               items={audienceItems}
               value={audience}
-              onValueChange={(v) => { if (v) setAudience(v as Audience); }}
+              onValueChange={(v) => { if (v) setAudience(v as UiAudience); }}
             >
               <SelectTrigger className="lv-select-trigger">
                 <SelectValue />

@@ -77,7 +77,7 @@ export class ExtensionRequestHandler {
         const projectRoot = this._requireString(message.projectRoot, "projectRoot");
         const target = this._requireString(message.target, "target");
         const build = await getBuildTarget(projectRoot, target);
-        const modelFile = vscode.Uri.file(build.model_path);
+        const modelFile = vscode.Uri.file(build.modelPath);
         const exists = await this._pathExists(modelFile);
         const stat = exists ? await vscode.workspace.fs.stat(modelFile) : undefined;
 
@@ -85,7 +85,7 @@ export class ExtensionRequestHandler {
           ok: true,
           result: {
             exists,
-            modelPath: build.model_path,
+            modelPath: build.modelPath,
             modelUri: webview.asWebviewUri(modelFile).toString(),
             version: stat?.mtime ?? null,
           },

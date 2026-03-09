@@ -1,9 +1,9 @@
 import { useResizeHandle } from "../shared/components";
 import { BuildQueueItem } from "./BuildQueueItem";
-import type { Build } from "../../shared/types";
+import type { Build, BuildStage } from "../../shared/generated-types";
 
 interface BuildQueuePaneProps {
-  builds: Build[];
+  builds: Array<Build & { currentStage: BuildStage | null }>;
 }
 
 export function BuildQueuePane({ builds }: BuildQueuePaneProps) {

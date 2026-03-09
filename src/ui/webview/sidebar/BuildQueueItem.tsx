@@ -8,7 +8,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Spinner } from "../shared/components";
-import type { Build } from "../../shared/types";
+import type { Build, BuildStage } from "../../shared/generated-types";
 import { formatDuration, formatTimeAgo } from "../shared/utils";
 
 function stageStatusIcon(status: string) {
@@ -27,7 +27,11 @@ function stageStatusIcon(status: string) {
   }
 }
 
-export function BuildQueueItem({ build }: { build: Build }) {
+export function BuildQueueItem({
+  build,
+}: {
+  build: Build & { currentStage: BuildStage | null };
+}) {
   const [expanded, setExpanded] = useState(false);
   const currentStage = build.currentStage;
   const isActive = build.status === "building" || build.status === "queued";

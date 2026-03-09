@@ -26,6 +26,7 @@ from atopile.dataclasses import (
     ProjectsResponse,
     RenameProjectRequest,
     RenameProjectResponse,
+    ResolvedBuildTarget,
     UpdateBuildTargetRequest,
     UpdateBuildTargetResponse,
     UpdateDependencyVersionRequest,
@@ -203,10 +204,21 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 if not data or "builds" not in data:
                     continue
 
-                targets: list[str] = [
-                    name
-                    for name, cfg in data.get("builds", {}).items()
-                    if isinstance(cfg, dict)
+                project_config = config.ProjectConfig.from_path(project_root)
+                if project_config is None or not project_config.builds:
+                    continue
+
+                targets = [
+                    ResolvedBuildTarget(
+                        name=name,
+                        entry=build.address or "",
+                        pcb_path=str(build.paths.layout),
+                        model_path=str(
+                            build.paths.output_base.with_suffix(".pcba.glb")
+                        ),
+                        root=root_str,
+                    )
+                    for name, build in project_config.builds.items()
                 ]
 
                 if targets:
@@ -485,6 +497,26 @@ def handle_get_projects(paths: list[Path]) -> ProjectsResponse:
     return ProjectsResponse(projects=projects, total=len(projects))
 
 
+def handle_get_project(project_root: str) -> Project | None:
+    """Get a single discovered project by root path."""
+    return next(iter(handle_get_projects([Path(project_root)]).projects), None)
+
+
+def find_project(projects: list[Project], project_root: str | None) -> Project | None:
+    """Find a project in an existing project list by root path."""
+    if not project_root:
+        return None
+    return next((project for project in projects if project.root == project_root), None)
+
+
+def replace_project(projects: list[Project], replacement: Project) -> list[Project]:
+    """Replace a discovered project entry in-place by root path."""
+    return [
+        replacement if project.root == replacement.root else project
+        for project in projects
+    ]
+
+
 def handle_get_modules(
     project_root: str,
     type_filter: Optional[str] = None,
@@ -504,6 +536,33 @@ def handle_get_modules(
 
     modules.sort(key=lambda m: (m.file, m.name))
     return ModulesResponse(modules=modules, total=len(modules))
+
+
+def handle_check_entry(
+    project_root: str,
+    entry: str,
+    targets: list[ResolvedBuildTarget] | None = None,
+) -> dict[str, bool]:
+    """Validate a build entry against the project files, modules, and targets."""
+    entry = entry.strip()
+    file_part, _, module_part = entry.partition(":")
+    modules_result = handle_get_modules(project_root) if project_root else None
+    module_exists = bool(
+        modules_result
+        and any(
+            mod.entry == entry
+            or (
+                Path(mod.file).as_posix() == Path(file_part).as_posix()
+                and mod.name == module_part
+            )
+            for mod in modules_result.modules
+        )
+    )
+    return {
+        "fileExists": bool(file_part and (Path(project_root) / file_part).exists()),
+        "moduleExists": module_exists,
+        "targetExists": any(target.entry == entry for target in targets or []),
+    }
 
 
 def _dependency_display_parts(identifier: str) -> tuple[str, str]:

@@ -1,4 +1,4 @@
-import type { Build } from "../../shared/types";
+import type { Build } from "../../shared/generated-types";
 import { rpcClient } from "../shared/rpcClient";
 
 export interface ResolvedThreeDModel {

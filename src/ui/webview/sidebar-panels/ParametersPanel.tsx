@@ -18,7 +18,7 @@ import {
   TableCell,
 } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
-import type { VariableNode, Variable } from "../../shared/types";
+import type { UiVariable, UiVariableNode } from "../../shared/generated-types";
 import "./ParametersPanel.css";
 
 function StatusIcon({ status }: { status: string | null }) {
@@ -34,7 +34,7 @@ function StatusIcon({ status }: { status: string | null }) {
   }
 }
 
-function VariableTable({ variables }: { variables: Variable[] }) {
+function VariableTable({ variables }: { variables: UiVariable[] }) {
   if (variables.length === 0) return null;
   return (
     <Table className="parameters-table">
@@ -70,7 +70,7 @@ function VariableNodeTree({
   depth,
   search,
 }: {
-  node: VariableNode;
+  node: UiVariableNode;
   expandedKeys: Set<string>;
   onToggle: (key: string) => void;
   depth: number;
@@ -110,7 +110,7 @@ function VariableNodeTree({
   );
 }
 
-function filterNodes(nodes: VariableNode[], search: string): VariableNode[] {
+function filterNodes(nodes: UiVariableNode[], search: string): UiVariableNode[] {
   if (!search) return nodes;
   const q = search.toLowerCase();
   return nodes
@@ -125,7 +125,7 @@ function filterNodes(nodes: VariableNode[], search: string): VariableNode[] {
       if (matchingVars.length === 0 && matchingChildren.length === 0) return null;
       return { ...node, variables: matchingVars, children: matchingChildren };
     })
-    .filter(Boolean) as VariableNode[];
+    .filter(Boolean) as UiVariableNode[];
 }
 
 export function ParametersPanel() {

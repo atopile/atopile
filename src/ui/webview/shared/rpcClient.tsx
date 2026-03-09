@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { RpcClient } from "../../shared/rpcClient";
-import { createStoreState, type StoreKey, type StoreState } from "../../shared/types";
+import type { StoreKey } from "../../shared/generated-types";
+import { createStoreState, type StoreState } from "../../shared/types";
 import { PostMessageTransport } from "./postMessageTransport";
 
 type RawMessageListener = (data: string) => void;
