@@ -7,16 +7,24 @@
     <title>PCB Layout Editor</title>
     <style>
         :root {
-            --bg-deep:       #080c14;
-            --surface:       rgba(12,18,32,0.82);
-            --surface-solid:  #0f1524;
-            --border:        rgba(255,255,255,0.07);
-            --border-accent: rgba(224,160,56,0.25);
-            --text-primary:  #e2e5ea;
-            --text-secondary:#6b7280;
-            --accent:        #e0a038;
-            --accent-glow:   rgba(224,160,56,0.12);
-            --active-green:  #4ade80;
+            --bg-deep: var(--vscode-editor-background, #1e1e1e);
+            --surface: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #252526));
+            --surface-solid: var(--vscode-sideBar-background, #252526);
+            --border: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+            --border-accent: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+            --text-primary: var(--vscode-foreground, #cccccc);
+            --text-secondary: var(--vscode-descriptionForeground, #9d9d9d);
+            --accent: var(--vscode-focusBorder, var(--vscode-textLink-foreground, #f95015));
+            --accent-glow: var(--vscode-list-activeSelectionBackground, rgba(9, 71, 113, 0.35));
+            --active-green: var(--vscode-testing-iconPassed, #73c991);
+            --hover-bg: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+            --active-bg: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.1));
+            --input-bg: var(--vscode-input-background, rgba(255, 255, 255, 0.05));
+            --input-border: var(--vscode-input-border, var(--border));
+            --overlay-bg: var(--vscode-editorWidget-background, rgba(30, 30, 30, 0.92));
+            --shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+            --scrollbar-thumb: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+            --scrollbar-thumb-hover: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -29,7 +37,10 @@
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             text-rendering: optimizeLegibility;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            color: var(--text-primary);
+            font-family: var(--vscode-font-family, ui-sans-serif, system-ui, sans-serif);
+            font-size: var(--vscode-font-size, 13px);
+            font-weight: var(--vscode-font-weight, 400);
         }
 
         canvas {
@@ -37,14 +48,6 @@
             width: 100vw;
             height: 100vh;
             cursor: crosshair;
-        }
-
-        #vignette {
-            position: fixed;
-            inset: 0;
-            box-shadow: inset 0 0 120px rgba(0,0,0,0.3);
-            pointer-events: none;
-            z-index: 5;
         }
 
         #status {
@@ -58,11 +61,9 @@
             gap: 12px;
             padding: 0 12px;
             background: var(--surface);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
             border-top: 1px solid var(--border);
             z-index: 30;
-            font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font: 11px/1 var(--vscode-editor-font-family, var(--vscode-font-family, monospace));
             color: var(--text-secondary);
         }
 
@@ -73,7 +74,7 @@
             left: 0;
             right: 0;
             height: 1px;
-            background: linear-gradient(90deg, transparent, var(--border-accent), transparent);
+            background: var(--border-accent);
         }
 
         #status-coords {
@@ -105,7 +106,7 @@
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            border: 1.5px solid rgba(255, 255, 255, 0.2);
+            border: 1.5px solid var(--border);
             border-top-color: var(--accent);
             animation: status-busy-spin 0.7s linear infinite;
             flex-shrink: 0;
@@ -135,8 +136,6 @@
             bottom: 32px;
             width: 180px;
             background: var(--surface);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
             border-left: 1px solid var(--border);
             border-radius: 4px 0 0 0;
             z-index: 20;
@@ -196,8 +195,6 @@
             transform: translateY(-50%);
             writing-mode: vertical-rl;
             background: var(--surface);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
             border: 1px solid var(--border);
             border-right: none;
             border-radius: 4px 0 0 4px;
@@ -211,7 +208,7 @@
         }
 
         .layer-expand-tab:hover {
-            background: var(--accent-glow);
+            background: var(--hover-bg);
         }
 
         .layer-expand-tab.visible {
@@ -233,12 +230,12 @@
         }
 
         .layer-panel-content::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.08);
+            background: var(--scrollbar-thumb);
             border-radius: 2px;
         }
 
         .layer-panel-content::-webkit-scrollbar-thumb:hover {
-            background: rgba(255,255,255,0.14);
+            background: var(--scrollbar-thumb-hover);
         }
 
         .layer-group-header {
@@ -256,7 +253,7 @@
         }
 
         .layer-group-header:hover {
-            background: rgba(224,160,56,0.06);
+            background: var(--hover-bg);
             color: var(--text-primary);
         }
 
@@ -289,11 +286,12 @@
         }
 
         .layer-row:hover {
-            background: rgba(224,160,56,0.06);
+            background: var(--hover-bg);
         }
 
         .layer-row.active {
             border-left-color: var(--accent);
+            background: var(--active-bg);
         }
 
         .layer-top-level {
@@ -314,9 +312,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(8, 12, 20, 0.88);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
+            background: var(--overlay-bg);
             z-index: 60;
             opacity: 1;
             pointer-events: auto;
@@ -335,14 +331,14 @@
             align-items: center;
             gap: 10px;
             color: var(--text-primary);
-            font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font: 12px/1.4 var(--vscode-editor-font-family, var(--vscode-font-family, monospace));
         }
 
         .initial-loading-spinner {
             width: 28px;
             height: 28px;
             border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.18);
+            border: 2px solid var(--border);
             border-top-color: var(--accent);
             animation: initial-loading-spin 0.8s linear infinite;
         }
@@ -363,7 +359,7 @@
         }
 
         #initial-loading.error .initial-loading-message {
-            color: #ffad66;
+            color: var(--vscode-notificationsWarningIcon-foreground, #cca700);
         }
 
         @keyframes initial-loading-spin {
@@ -400,10 +396,10 @@
             background: var(--surface-solid);
             border: 1px solid var(--border);
             border-radius: 6px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            box-shadow: 0 4px 16px var(--shadow);
             z-index: 40;
             padding: 10px 12px;
-            font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font: 11px/1.4 var(--vscode-editor-font-family, var(--vscode-font-family, monospace));
             color: var(--text-primary);
         }
 
@@ -419,7 +415,7 @@
         .settings-source-buttons {
             display: flex;
             gap: 2px;
-            background: rgba(255,255,255,0.04);
+            background: var(--input-bg);
             border-radius: 3px;
             padding: 2px;
         }
@@ -439,12 +435,12 @@
 
         .source-btn:hover {
             color: var(--text-primary);
-            background: rgba(255,255,255,0.06);
+            background: var(--hover-bg);
         }
 
         .source-btn.active {
             color: var(--accent);
-            border-color: rgba(224,160,56,0.3);
+            border-color: var(--input-border);
             background: var(--accent-glow);
         }
     </style>
@@ -463,7 +459,6 @@
             <div class="initial-loading-subtext">Building scene geometry...</div>
         </div>
     </div>
-    <div id="vignette"></div>
     <div id="layer-panel"></div>
     <div id="status">
         <span id="status-coords"></span>
