@@ -79,9 +79,8 @@ class AgentConfig:
         """Build config from env for deployed agents and local tuning.
 
         The agent runs in several contexts: local development, tests, and hosted
-        backends. The env surface is intentional so operators can tune model
-        selection, token budgets, retries, and timeouts without patching code
-        or rebuilding the service.
+        backends. The env surface is intentionally limited to deployment-facing
+        concerns such as credentials, model selection, and coarse timeouts.
         """
         from atopile.server.agent.orchestrator_helpers import (
             _parse_fixed_skill_token_budgets,
@@ -110,13 +109,6 @@ class AgentConfig:
             max_turn_seconds=_env_float(
                 "ATOPILE_AGENT_MAX_TURN_SECONDS", "7200", lo=30.0, hi=7_200.0
             ),
-            api_retries=_env_int("ATOPILE_AGENT_API_RETRIES", "4"),
-            api_retry_base_delay_s=_env_float(
-                "ATOPILE_AGENT_API_RETRY_BASE_DELAY_S", "0.5"
-            ),
-            api_retry_max_delay_s=_env_float(
-                "ATOPILE_AGENT_API_RETRY_MAX_DELAY_S", "8.0"
-            ),
             fixed_skill_ids=fixed_skill_ids,
             fixed_skill_token_budgets=_parse_fixed_skill_token_budgets(
                 _env(
@@ -125,48 +117,10 @@ class AgentConfig:
                 ),
                 default_skill_ids=fixed_skill_ids,
             ),
-            fixed_skill_chars_per_token=_env_float(
-                "ATOPILE_AGENT_FIXED_SKILL_CHARS_PER_TOKEN", "4.0", lo=1.0, hi=8.0
-            ),
-            fixed_skill_total_max_chars=_env_int(
-                "ATOPILE_AGENT_FIXED_SKILL_TOTAL_MAX_CHARS", "220000"
-            ),
-            prefix_max_chars=_env_int("ATOPILE_AGENT_PREFIX_MAX_CHARS", "220000"),
-            context_summary_max_chars=_env_int(
-                "ATOPILE_AGENT_CONTEXT_SUMMARY_MAX_CHARS", "8000"
-            ),
-            user_message_max_chars=_env_int(
-                "ATOPILE_AGENT_USER_MESSAGE_MAX_CHARS", "12000"
-            ),
-            tool_output_max_chars=_env_int(
-                "ATOPILE_AGENT_TOOL_OUTPUT_MAX_CHARS", "10000"
-            ),
-            context_hard_max_tokens=_env_int(
-                "ATOPILE_AGENT_CONTEXT_HARD_MAX_TOKENS", "1000000"
-            ),
-            max_checklist_continuations=_env_int(
-                "ATOPILE_AGENT_MAX_CHECKLIST_CONTINUATIONS", "50", lo=0, hi=200
-            ),
-            silent_retry_max=_env_int(
-                "ATOPILE_AGENT_SILENT_RETRY_MAX", "2", lo=0, hi=5
-            ),
-            prompt_cache_retention=_env("ATOPILE_AGENT_PROMPT_CACHE_RETENTION", "24h"),
             trace_enabled=_env("ATOPILE_AGENT_TRACE_ENABLED", "1").strip().lower()
             not in _TRACE_DISABLE_VALUES,
-            trace_preview_max_chars=_env_int(
-                "ATOPILE_AGENT_TRACE_PREVIEW_MAX_CHARS", "4000", lo=300, hi=20000
-            ),
             activity_summary_enabled=_env("ATOPILE_AGENT_ACTIVITY_SUMMARY_ENABLED", "1")
             .strip()
             .lower()
             not in _TRACE_DISABLE_VALUES,
-            activity_summary_max_events=_env_int(
-                "ATOPILE_AGENT_ACTIVITY_SUMMARY_MAX_EVENTS", "6", lo=2, hi=12
-            ),
-            activity_summary_min_interval_s=_env_float(
-                "ATOPILE_AGENT_ACTIVITY_SUMMARY_MIN_INTERVAL_S",
-                "1.5",
-                lo=0.0,
-                hi=10.0,
-            ),
         )
