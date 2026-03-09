@@ -104,16 +104,15 @@ def _check_kicad_cli() -> bool:
 
 def run_build_targets(ctx: BuildStepContext) -> None:
     """Run build targets in dependency order."""
-    import os
-
     from atopile import build_steps
+    from atopile.ato_flags import ATO_EXCLUDE_TARGET, ATO_TARGET
 
     logger.info(
         "Build targets config: include=%s exclude=%s env_exclude=%s env_include=%s",
         list(config.build.targets),
         list(config.build.exclude_targets),
-        os.environ.get("ATO_EXCLUDE_TARGET"),
-        os.environ.get("ATO_TARGET"),
+        ATO_EXCLUDE_TARGET.get() or None,
+        ATO_TARGET.get() or None,
     )
     targets = ({build_steps.generate_default.name} | set(config.build.targets)) - set(
         config.build.exclude_targets
@@ -123,12 +122,15 @@ def run_build_targets(ctx: BuildStepContext) -> None:
     # Count targets from DAG without materializing the generator
     # (the generator yields based on succeeded status which we can't check upfront)
     subgraph = build_steps.muster.dependency_dag.get_subgraph(
-        selector_func=lambda name: name in targets
-        or any(
-            alias in targets
-            for alias in build_steps.muster.targets.get(
-                name, build_steps.MusterTarget(name="", aliases=[], func=lambda _: None)
-            ).aliases
+        selector_func=lambda name: (
+            name in targets
+            or any(
+                alias in targets
+                for alias in build_steps.muster.targets.get(
+                    name,
+                    build_steps.MusterTarget(name="", aliases=[], func=lambda _: None),
+                ).aliases
+            )
         )
     )
     all_target_names = set(subgraph.topologically_sorted())
@@ -147,7 +149,9 @@ def run_build_targets(ctx: BuildStepContext) -> None:
         total_stages += 1
 
     # Write total stage count to database so parent can show accurate progress
-    build_id = os.environ.get("ATO_BUILD_ID") or ctx.build_id
+    from atopile.ato_flags import ATO_BUILD_ID
+
+    build_id = ATO_BUILD_ID.get() or ctx.build_id
     if build_id:
         from atopile.dataclasses import Build, BuildStatus
         from atopile.model.sqlite import BuildHistory

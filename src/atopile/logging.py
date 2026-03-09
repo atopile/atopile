@@ -10,7 +10,6 @@ from __future__ import annotations
 import atexit
 import json
 import logging
-import os
 import sys
 import threading
 import time
@@ -395,7 +394,11 @@ class AtoLogger(logging.Logger):
 
     @classmethod
     def activate_build(cls, *, stage: str = "") -> "AtoLogger":
-        env_build_id = os.environ["ATO_BUILD_ID"]
+        from atopile.ato_flags import ATO_BUILD_ID
+
+        env_build_id = ATO_BUILD_ID.get()
+        if not env_build_id:
+            raise KeyError("ATO_BUILD_ID is not set")
 
         from atopile.model.sqlite import Logs
 
@@ -781,8 +784,10 @@ class ConsoleLogHandler(RichHandler):
         from rich.table import Table
 
         # Subprocess source identifier (short form)
-        log_source = os.environ.get("ATO_LOG_SOURCE")
-        source_id = os.environ.get("ATO_BUILD_ID", "")[:4] if log_source else ""
+        from atopile.ato_flags import ATO_BUILD_ID, ATO_LOG_SOURCE
+
+        log_source = ATO_LOG_SOURCE.get() or None
+        source_id = ATO_BUILD_ID.get()[:4] if log_source else ""
 
         # Prefix components: [id] time L logger_name
         timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")

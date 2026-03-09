@@ -1,7 +1,6 @@
 import contextlib
 import itertools
 import json
-import os
 import tempfile
 import time
 from collections.abc import Callable, Generator
@@ -15,6 +14,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import buildutil, layout
+from atopile.ato_flags import ATO_VERBOSE
 from atopile.buildutil import BuildContext, BuildStepContext
 from atopile.compiler import format_message
 from atopile.compiler.build import build_stage_2
@@ -265,7 +265,7 @@ class MusterTarget:
             )
             # In verbose mode, print stage completion bar immediately
             # (so it appears in correct order relative to logs)
-            if os.environ.get("ATO_VERBOSE") == "1":
+            if ATO_VERBOSE.get():
                 icon, color = get_status_style(stage_status)
                 print_bar(f"{icon} {stage_name} [{elapsed:.1f}s]", style=color)
 
@@ -362,8 +362,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()

@@ -9,6 +9,8 @@ from typing import Annotated
 
 import typer
 
+from atopile.ato_flags import ATO_TARGET
+
 log = logging.getLogger(__name__)
 
 
@@ -16,7 +18,7 @@ def inspect(
     entry: Annotated[str | None, typer.Argument()] = None,
     build: Annotated[list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")] = [],
     target: Annotated[
-        list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+        list[str], typer.Option("--target", "-t", envvar=ATO_TARGET.name)
     ] = [],
     option: Annotated[
         list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")

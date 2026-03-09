@@ -1,4 +1,3 @@
-import os
 import traceback
 from pathlib import Path
 
@@ -34,9 +33,11 @@ def build_project(
     config.project.open_layout_on_build = False
     config.interactive = False
 
+    from atopile.ato_flags import ATO_BUILD_ID
+
     success = True
     logs = ""
-    prev_build_id = os.environ.get("ATO_BUILD_ID")
+    prev_build_id = ATO_BUILD_ID.get()
 
     with config.select_build(target_name_from_yaml):
         from atopile.buildutil import generate_build_id, generate_build_timestamp
@@ -46,7 +47,7 @@ def build_project(
             target_name_from_yaml,
             generate_build_timestamp(),
         )
-        os.environ["ATO_BUILD_ID"] = build_id
+        ATO_BUILD_ID.set(build_id, force=True)
         try:
             from atopile.buildutil import BuildStepContext
 
@@ -59,10 +60,7 @@ def build_project(
                 success = False
                 logs = traceback.format_exc()
         finally:
-            if prev_build_id is None:
-                os.environ.pop("ATO_BUILD_ID", None)
-            else:
-                os.environ["ATO_BUILD_ID"] = prev_build_id
+            ATO_BUILD_ID.set(prev_build_id, force=True)
 
     return BuildResult(
         success=success,

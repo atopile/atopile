@@ -879,8 +879,9 @@ def assert_once_global[T, **P](f: Callable[P, T]) -> Callable[P, T]:
 
 
 class _ConfigFlagBase[T]:
-    def __init__(self, name: str, default: T, descr: str = ""):
+    def __init__(self, name: str, default: T, descr: str = "", prefix: str = "FBRK_"):
         self._name = name
+        self._prefix = prefix
         self.default = default
         self.descr = descr
         self._type: type[T] = type(default)
@@ -889,7 +890,14 @@ class _ConfigFlagBase[T]:
 
     @property
     def name(self) -> str:
-        return f"FBRK_{self._name}"
+        return f"{self._prefix}{self._name}"
+
+    def _serialize(self, value: T) -> str:
+        return str(value)
+
+    def export(self, env: dict[str, str], value: T | None = None) -> None:
+        v = value if value is not None else self.value
+        env[self.name] = self._serialize(v)
 
     def set(self, value: T, force: bool = False):
         if self._has_been_read and value != self.value and not force:
@@ -943,8 +951,13 @@ class _ConfigFlagBase[T]:
 
 
 class ConfigFlag(_ConfigFlagBase[bool]):
-    def __init__(self, name: str, default: bool = False, descr: str = "") -> None:
-        super().__init__(name, default, descr)
+    def __init__(
+        self, name: str, default: bool = False, descr: str = "", prefix: str = "FBRK_"
+    ) -> None:
+        super().__init__(name, default, descr, prefix)
+
+    def _serialize(self, value: bool) -> str:
+        return "1" if value else "0"
 
     def _convert(self, raw_val: str) -> bool:
         matches = [
@@ -960,25 +973,39 @@ class ConfigFlag(_ConfigFlagBase[bool]):
 
 
 class ConfigFlagEnum[E: StrEnum](_ConfigFlagBase[E]):
-    def __init__(self, name: str, default: E, enum: type[E], descr: str = "") -> None:
+    def __init__(
+        self,
+        name: str,
+        default: E,
+        enum: type[E],
+        descr: str = "",
+        prefix: str = "FBRK_",
+    ) -> None:
         self.enum = enum
-        super().__init__(name, default, descr)
+        super().__init__(name, default, descr, prefix)
+
+    def _serialize(self, value: E) -> str:
+        return value.name
 
     def _convert(self, raw_val: str) -> E:
         return self.enum[raw_val.upper()]
 
 
 class ConfigFlagString(_ConfigFlagBase[str]):
-    def __init__(self, name: str, default: str = "", descr: str = "") -> None:
-        super().__init__(name, default, descr)
+    def __init__(
+        self, name: str, default: str = "", descr: str = "", prefix: str = "FBRK_"
+    ) -> None:
+        super().__init__(name, default, descr, prefix)
 
     def _convert(self, raw_val: str) -> str:
         return raw_val
 
 
 class ConfigFlagInt(_ConfigFlagBase[int]):
-    def __init__(self, name: str, default: int = 0, descr: str = "") -> None:
-        super().__init__(name, default, descr)
+    def __init__(
+        self, name: str, default: int = 0, descr: str = "", prefix: str = "FBRK_"
+    ) -> None:
+        super().__init__(name, default, descr, prefix)
 
     def _convert(self, raw_val: str) -> int:
         if raw_val.startswith("0x"):
@@ -990,8 +1017,10 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
 
 
 class ConfigFlagFloat(_ConfigFlagBase[float]):
-    def __init__(self, name: str, default: float = 0.0, descr: str = "") -> None:
-        super().__init__(name, default, descr)
+    def __init__(
+        self, name: str, default: float = 0.0, descr: str = "", prefix: str = "FBRK_"
+    ) -> None:
+        super().__init__(name, default, descr, prefix)
 
     def _convert(self, raw_val: str) -> float:
         return float(raw_val)

@@ -133,6 +133,8 @@ def cli(
         import subprocess
         import time
 
+        from atopile.ato_flags import ATO_SAFE
+
         def enable_core_dumps():
             """Enable core dumps in the child process."""
             try:
@@ -140,13 +142,14 @@ def cli(
                     resource.RLIMIT_CORE,
                     (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
                 )
-            except (ValueError, OSError):
+            except ValueError, OSError:
                 pass  # Best effort - may fail if system limit is lower
 
         args = [arg for arg in sys.argv if arg != "--safe"]
         env = os.environ.copy()
         env[SAFE_MODE_OPTION.name] = "N"  # Prevent safe wrapper recursion
-        env["ATO_SAFE"] = "1"  # Signal to workers to enable faulthandler
+
+        ATO_SAFE.export(env, True)  # Signal to workers to enable faulthandler
 
         start_time = time.time()
         result = subprocess.Popen(args, env=env, preexec_fn=enable_core_dumps)
