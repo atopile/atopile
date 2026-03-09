@@ -45,8 +45,26 @@ function PackageRow({
     setTimeout(() => setBusy(false), 5000);
   }, [projectRoot, pkg.identifier]);
 
+  const openDetails = useCallback(() => {
+    rpcClient?.sendAction("showPackageDetails", {
+      projectRoot,
+      packageId: pkg.identifier,
+    });
+  }, [projectRoot, pkg.identifier]);
+
   return (
-    <div className="card-row">
+    <div
+      className="card-row"
+      role="button"
+      tabIndex={0}
+      onClick={openDetails}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openDetails();
+        }
+      }}
+    >
       <div className="card-row-top">
         <span className="card-row-name">{pkg.name}</span>
         <span className="card-row-secondary">{pkg.publisher}</span>
@@ -57,12 +75,18 @@ function PackageRow({
             pkg.installed ? (
               <Badge variant="success">Installed</Badge>
             ) : (
-              <Button size="sm" variant="outline" onClick={handleInstall}>
+              <Button size="sm" variant="outline" onClick={(event) => {
+                event.stopPropagation();
+                handleInstall();
+              }}>
                 <Download size={12} /> Install
               </Button>
             )
           ) : (
-            <Button size="sm" variant="ghost" onClick={handleRemove}>
+            <Button size="sm" variant="ghost" onClick={(event) => {
+              event.stopPropagation();
+              handleRemove();
+            }}>
               <Trash2 size={12} />
             </Button>
           )}

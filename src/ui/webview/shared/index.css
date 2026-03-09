@@ -119,11 +119,14 @@
 
   --border-color: var(--vscode-panel-border, var(--ctp-surface1));
   --border-subtle: var(--vscode-widget-border, var(--ctp-surface0));
+  --border-primary: var(--border-color);
+  --border-secondary: var(--border-subtle);
 
   --accent: var(--ato-orange);
   --accent-hover: var(--ato-orange-light);
   --accent-glow: var(--ato-orange-glow);
   --accent-subtle: var(--ato-orange-subtle);
+  --accent-primary: var(--accent);
 
   --accent-secondary: var(--ctp-mauve);
   --accent-secondary-hover: var(--ctp-lavender);
@@ -145,12 +148,14 @@
 
   --bg-card: var(--bg-tertiary);
   --bg-card-hover: var(--bg-hover);
+  --bg-quaternary: var(--bg-hover);
 
   --hover: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
   --active: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.08));
   --selected: var(--ato-orange-subtle);
 
   --shadow-color: rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px var(--shadow-color);
   --scrollbar-thumb: var(--vscode-scrollbarSlider-background, var(--ctp-surface2));
   --scrollbar-track: var(--vscode-scrollbarSlider-background, var(--ctp-mantle));
 }

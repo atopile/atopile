@@ -22,6 +22,7 @@ from atopile.dataclasses import (
     UiInstalledPartsData,
     UiPartsSearchData,
     UiProjectState,
+    UiSidebarDetails,
     UiStructureData,
     UiVariablesData,
     _to_camel,
@@ -62,6 +63,9 @@ class UiStore(CamelModel):
     )
     installed_parts: UiInstalledPartsData = Field(
         default_factory=UiInstalledPartsData, json_schema_extra={"mergeable": True}
+    )
+    sidebar_details: UiSidebarDetails = Field(
+        default_factory=UiSidebarDetails, json_schema_extra={"mergeable": True}
     )
     stdlib_data: StdLibData = Field(
         default_factory=lambda: StdLibData(items=[], total=0),

@@ -10,13 +10,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
-    from faebryk.libs.kicad.fileformats import kicad
+    pass
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.library._F as F
 from atopile import errors
 from atopile.config import config
+from atopile.dataclasses import UiPartDetail
 from atopile.model.parts import serialize_component
 from atopile.model.parts_search_jlc import search_jlc_parts
 from faebryk.libs.ato_part import AtoPart
@@ -144,7 +145,7 @@ def handle_search_parts(
     return _search_atopile_backend(query, limit=limit)
 
 
-def handle_get_part_details(lcsc_id: str) -> dict | None:
+def handle_get_part_details(lcsc_id: str) -> UiPartDetail | None:
     lcsc_numeric = _normalize_lcsc_id(lcsc_id)
     if lcsc_numeric is None:
         raise ValueError(f"Invalid LCSC part number: {lcsc_id}")
@@ -162,9 +163,14 @@ def handle_get_part_details(lcsc_id: str) -> dict | None:
 
     component = components[0]
     detail = _serialize_part(component)
-    detail["footprint"] = component.package
-    detail["image_url"] = _fetch_jlc_image(lcsc_id)
-    return detail
+    return UiPartDetail.model_validate(
+        {
+            **detail,
+            "identifier": component.part_number or component.lcsc_display,
+            "footprint": component.package,
+            "image_url": _fetch_jlc_image(lcsc_id),
+        }
+    )
 
 
 def _fetch_jlc_image(lcsc_id: str) -> str | None:
@@ -239,109 +245,6 @@ def handle_list_installed_parts(project_root: str) -> list[dict]:
         )
 
     return parts
-
-
-def _lib_fp_to_pcb_fp(
-    lib_fp: "kicad.footprint.Footprint",
-) -> "kicad.pcb.Footprint":
-    """Convert a library footprint to a PCB footprint for embedding in a kicad_pcb."""
-    from faebryk.libs.kicad.fileformats import kicad
-
-    # Get common fields between footprint and pcb.Footprint
-    common_fields = {
-        field: getattr(lib_fp, field)
-        for field in set(kicad.footprint.Footprint.__field_names__())
-        & set(kicad.pcb.Footprint.__field_names__())
-    }
-
-    # Convert pads (they share the same structure)
-    common_fields["pads"] = [
-        kicad.pcb.Pad(
-            **{f: getattr(p, f) for f in kicad.pcb.Pad.__field_names__()},
-        )
-        for p in lib_fp.pads
-    ]
-
-    # Generate a UUID for the footprint
-    common_fields["uuid"] = kicad.gen_uuid()
-
-    # Create PCB footprint with position at origin
-    pcb_fp = kicad.pcb.Footprint(
-        at=kicad.pcb.Xyr(x=0, y=0, r=0),
-        **common_fields,
-    )
-
-    # Remove all text elements entirely (REF**, VALUE, etc.)
-    # Hiding them isn't enough - KiCanvas still calculates bounding box including them
-    pcb_fp.propertys.clear()
-    pcb_fp.fp_texts.clear()
-
-    return pcb_fp
-
-
-def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
-    """Fetch footprint data wrapped in a kicad_pcb file for viewing in kicanvas."""
-    from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
-    from easyeda2kicad.easyeda.easyeda_importer import EasyedaFootprintImporter
-    from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
-
-    from faebryk.libs.kicad.fileformats import kicad
-    from faebryk.libs.test.fileformats import PCBFILE
-    from faebryk.libs.util import call_with_file_capture
-
-    lcsc_numeric = _normalize_lcsc_id(lcsc_id)
-    if lcsc_numeric is None:
-        raise ValueError(f"Invalid LCSC part number: {lcsc_id}")
-
-    lcsc_str = f"C{lcsc_numeric}"
-
-    try:
-        # Fetch from EasyEDA API directly
-        api = EasyedaApi()
-        cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_str)
-        if not cad_data:
-            return None
-
-        # Import footprint
-        easyeda_footprint = EasyedaFootprintImporter(
-            easyeda_cp_cad_data=cad_data
-        ).get_footprint()
-
-        # Export to KiCad format
-        exporter = ExporterFootprintKicad(easyeda_footprint)
-        fp_raw = call_with_file_capture(lambda path: exporter.export(str(path), None))[
-            1
-        ]
-
-        # Convert to latest KiCad format
-        fp_file = kicad.loads(kicad.footprint_v5.FootprintFile, fp_raw.decode("utf-8"))
-        fp_file = kicad.convert(fp_file)
-
-        # Load template PCB and wrap the footprint in it (kicanvas needs kicad_pcb)
-        template_pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
-        pcb = template_pcb.kicad_pcb
-
-        # Convert library footprint to PCB footprint and replace template's footprints
-        pcb_fp = _lib_fp_to_pcb_fp(fp_file.footprint)
-        pcb.footprints.clear()
-        pcb.footprints.append(pcb_fp)
-
-        # Clear nets and other elements we don't need for viewing
-        pcb.nets.clear()
-        pcb.zones.clear()
-        pcb.segments.clear()
-        pcb.vias.clear()
-        pcb.gr_texts.clear()
-        pcb.gr_text_boxes.clear()
-
-        return kicad.dumps(template_pcb).encode("utf-8")
-    except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            f"Failed to get footprint for {lcsc_id}: {e}"
-        )
-        return None
 
 
 def handle_get_part_model(lcsc_id: str) -> tuple[bytes, str] | None:

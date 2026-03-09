@@ -1,4 +1,4 @@
-import { Hammer, Compass, Box, Layout, Code } from "lucide-react";
+import { Hammer, Compass, Box, Layout, Code, RefreshCcw } from "lucide-react";
 import { Button, Spinner } from "../shared/components";
 import { rpcClient } from "../shared/rpcClient";
 import "./ActionBar.css";
@@ -8,12 +8,37 @@ interface ActionBarProps {
   onOpenKicad: () => void;
   buildDisabled: boolean;
   isBuilding: boolean;
+  showMigration: boolean;
+  onOpenMigration: () => void;
 }
 
-export function ActionBar({ onBuild, onOpenKicad, buildDisabled, isBuilding }: ActionBarProps) {
+export function ActionBar({
+  onBuild,
+  onOpenKicad,
+  buildDisabled,
+  isBuilding,
+  showMigration,
+  onOpenMigration,
+}: ActionBarProps) {
   return (
     <div className="action-bar-wrapper">
       <div className="build-actions-row">
+        {showMigration ? (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="action-btn"
+              onClick={onOpenMigration}
+            >
+              <RefreshCcw size={12} />
+              <span className="action-label">Migrate</span>
+            </Button>
+
+            <div className="action-divider" />
+          </>
+        ) : null}
+
         {/* Build — wired */}
         <Button
           variant="ghost"

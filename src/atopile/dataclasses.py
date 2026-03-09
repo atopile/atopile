@@ -1088,6 +1088,101 @@ class UiInstalledPartsData(CamelModel):
     parts: list[UiInstalledPartItem] = Field(default_factory=list)
 
 
+class UiPackageDetailState(CamelModel):
+    """Selected package detail state for the shared detail view."""
+
+    project_root: str | None = None
+    package_id: str | None = None
+    summary: PackageSummaryItem | None = None
+    details: PackageDetails | None = None
+    loading: bool = False
+    error: str | None = None
+    action_error: str | None = None
+
+
+class UiPartDetail(CamelModel):
+    """Expanded part detail shown in the shared detail view."""
+
+    identifier: str = ""
+    lcsc: str | None = None
+    mpn: str = ""
+    manufacturer: str = ""
+    description: str = ""
+    package: str | None = None
+    datasheet_url: str | None = None
+    path: str | None = None
+    stock: int | None = None
+    unit_cost: float | None = None
+    is_basic: bool = False
+    is_preferred: bool = False
+    attributes: dict[str, str] = Field(default_factory=dict)
+    footprint: str | None = None
+    image_url: str | None = None
+    installed: bool = False
+
+
+class UiPartDetailState(CamelModel):
+    """Selected part detail state for the shared detail view."""
+
+    project_root: str | None = None
+    lcsc: str | None = None
+    part: UiPartDetail | None = None
+    loading: bool = False
+    error: str | None = None
+    action_error: str | None = None
+
+
+class UiMigrationStep(CamelModel):
+    """Migration step metadata for the shared detail view."""
+
+    id: str
+    label: str
+    description: str
+    topic: str
+    mandatory: bool = False
+    order: int = 100
+
+
+class UiMigrationTopic(CamelModel):
+    """Migration topic metadata for the shared detail view."""
+
+    id: str
+    label: str
+    icon: str
+
+
+class UiMigrationStepResult(CamelModel):
+    """Per-step execution state for a migration run."""
+
+    step_id: str
+    status: Literal["idle", "running", "success", "error"] = "idle"
+    error: str | None = None
+
+
+class UiMigrationState(CamelModel):
+    """Selected migration detail state for the shared detail view."""
+
+    project_root: str | None = None
+    project_name: str | None = None
+    needs_migration: bool = False
+    steps: list[UiMigrationStep] = Field(default_factory=list)
+    topics: list[UiMigrationTopic] = Field(default_factory=list)
+    step_results: list[UiMigrationStepResult] = Field(default_factory=list)
+    loading: bool = False
+    running: bool = False
+    completed: bool = False
+    error: str | None = None
+
+
+class UiSidebarDetails(CamelModel):
+    """Shared detail surface state for package, part, and migration flows."""
+
+    view: Literal["none", "package", "part", "migration"] = "none"
+    package: UiPackageDetailState = Field(default_factory=UiPackageDetailState)
+    part: UiPartDetailState = Field(default_factory=UiPartDetailState)
+    migration: UiMigrationState = Field(default_factory=UiMigrationState)
+
+
 class UiStructureData(CamelModel):
     """Structure panel data."""
 

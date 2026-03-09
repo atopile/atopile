@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "scripts": {
     "generate:types": "uv run python ../../../scripts/generate_types.py",
-    "build": "bun run generate:types && rm -rf ../../vscode-atopile/webview-dist && bun build */main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --chunk-naming chunks/[name]-[hash].[ext] --splitting --format esm --minify && cp shared/logo.png ../../vscode-atopile/webview-dist/logo.png",
+    "build": "bun run generate:types && rm -rf ../../vscode-atopile/webview-dist && bun build */main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --chunk-naming chunks/[name]-[hash].[ext] --splitting --format esm --minify && cp shared/logo.png ../../vscode-atopile/webview-dist/logo.png && cp sidebar-details/assets/occt-import-js.wasm ../../vscode-atopile/webview-dist/occt-import-js.wasm && cp sidebar-details/assets/model-viewer.min.js ../../vscode-atopile/webview-dist/model-viewer.min.js",
     "watch": "bun run generate:types && bun build */main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --chunk-naming chunks/[name]-[hash].[ext] --splitting --format esm --watch"
   },
   "dependencies": {
@@ -12,12 +12,16 @@
     "@xyflow/react": "^12.10.1",
     "ansi-to-html": "^0.7.2",
     "lucide-react": "^0.575.0",
+    "occt-import-js": "^0.0.23",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "three": "^0.181.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.181.0"
   }
 }

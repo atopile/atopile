@@ -80,6 +80,32 @@
   overflow-x: hidden;
 }
 
+.sidebar-detail-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-detail-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-sm) var(--spacing-xs);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.sidebar-tab-content-detail {
+  background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+}
+
 .sidebar-label {
   display: block;
   font-size: var(--font-size-xs);

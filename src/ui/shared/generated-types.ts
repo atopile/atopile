@@ -393,6 +393,78 @@ export interface UiLogsStreamMessage {
   lastId: number;
 }
 
+export interface UiMigrationState {
+  projectRoot: string | null;
+  projectName: string | null;
+  needsMigration: boolean;
+  steps: UiMigrationStep[];
+  topics: UiMigrationTopic[];
+  stepResults: UiMigrationStepResult[];
+  loading: boolean;
+  running: boolean;
+  completed: boolean;
+  error: string | null;
+}
+
+export interface UiMigrationStep {
+  id: string;
+  label: string;
+  description: string;
+  topic: string;
+  mandatory: boolean;
+  order: number;
+}
+
+export interface UiMigrationStepResult {
+  stepId: string;
+  status: "idle" | "running" | "success" | "error";
+  error: string | null;
+}
+
+export interface UiMigrationTopic {
+  id: string;
+  label: string;
+  icon: string;
+}
+
+export interface UiPackageDetailState {
+  projectRoot: string | null;
+  packageId: string | null;
+  summary: PackageSummaryItem | null;
+  details: PackageDetails | null;
+  loading: boolean;
+  error: string | null;
+  actionError: string | null;
+}
+
+export interface UiPartDetail {
+  identifier: string;
+  lcsc: string | null;
+  mpn: string;
+  manufacturer: string;
+  description: string;
+  package: string | null;
+  datasheetUrl: string | null;
+  path: string | null;
+  stock: number | null;
+  unitCost: number | null;
+  isBasic: boolean;
+  isPreferred: boolean;
+  attributes: Record<string, string>;
+  footprint: string | null;
+  imageUrl: string | null;
+  installed: boolean;
+}
+
+export interface UiPartDetailState {
+  projectRoot: string | null;
+  lcsc: string | null;
+  part: UiPartDetail | null;
+  loading: boolean;
+  error: string | null;
+  actionError: string | null;
+}
+
 export interface UiPartSearchItem {
   lcsc: string;
   mpn: string;
@@ -418,6 +490,13 @@ export interface UiProjectState {
   activeFilePath: string | null;
 }
 
+export interface UiSidebarDetails {
+  view: "none" | "package" | "part" | "migration";
+  package: UiPackageDetailState;
+  part: UiPartDetailState;
+  migration: UiMigrationState;
+}
+
 export interface UiStateMessage {
   type: "state";
   key: StoreKey;
@@ -435,6 +514,7 @@ export interface UiStore {
   packagesSummary: PackagesSummaryData;
   partsSearch: UiPartsSearchData;
   installedParts: UiInstalledPartsData;
+  sidebarDetails: UiSidebarDetails;
   stdlibData: StdLibData;
   structureData: UiStructureData;
   variablesData: UiVariablesData;
@@ -469,7 +549,7 @@ export interface UiVariablesData {
   nodes: UiVariableNode[];
 }
 
-export const STORE_KEYS = ["bomData", "coreStatus", "currentBuilds", "extensionSettings", "installedParts", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "stdlibData", "structureData", "variablesData"] as const;
+export const STORE_KEYS = ["bomData", "coreStatus", "currentBuilds", "extensionSettings", "installedParts", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "sidebarDetails", "stdlibData", "structureData", "variablesData"] as const;
 export type StoreKey = typeof STORE_KEYS[number];
 
 export const DEFAULT_Build: Build = {
@@ -631,6 +711,73 @@ export function createUiLogsStreamMessage(): UiLogsStreamMessage {
   return cloneGenerated(DEFAULT_UiLogsStreamMessage);
 }
 
+export const DEFAULT_UiMigrationState: UiMigrationState = {
+  "completed": false,
+  "error": null,
+  "loading": false,
+  "needsMigration": false,
+  "projectName": null,
+  "projectRoot": null,
+  "running": false,
+  "stepResults": [],
+  "steps": [],
+  "topics": []
+};
+
+export function createUiMigrationState(): UiMigrationState {
+  return cloneGenerated(DEFAULT_UiMigrationState);
+}
+
+export const DEFAULT_UiPackageDetailState: UiPackageDetailState = {
+  "actionError": null,
+  "details": null,
+  "error": null,
+  "loading": false,
+  "packageId": null,
+  "projectRoot": null,
+  "summary": null
+};
+
+export function createUiPackageDetailState(): UiPackageDetailState {
+  return cloneGenerated(DEFAULT_UiPackageDetailState);
+}
+
+export const DEFAULT_UiPartDetail: UiPartDetail = {
+  "attributes": {},
+  "datasheetUrl": null,
+  "description": "",
+  "footprint": null,
+  "identifier": "",
+  "imageUrl": null,
+  "installed": false,
+  "isBasic": false,
+  "isPreferred": false,
+  "lcsc": null,
+  "manufacturer": "",
+  "mpn": "",
+  "package": null,
+  "path": null,
+  "stock": null,
+  "unitCost": null
+};
+
+export function createUiPartDetail(): UiPartDetail {
+  return cloneGenerated(DEFAULT_UiPartDetail);
+}
+
+export const DEFAULT_UiPartDetailState: UiPartDetailState = {
+  "actionError": null,
+  "error": null,
+  "lcsc": null,
+  "loading": false,
+  "part": null,
+  "projectRoot": null
+};
+
+export function createUiPartDetailState(): UiPartDetailState {
+  return cloneGenerated(DEFAULT_UiPartDetailState);
+}
+
 export const DEFAULT_UiPartSearchItem: UiPartSearchItem = {
   "attributes": {},
   "datasheetUrl": null,
@@ -666,6 +813,43 @@ export const DEFAULT_UiProjectState: UiProjectState = {
 
 export function createUiProjectState(): UiProjectState {
   return cloneGenerated(DEFAULT_UiProjectState);
+}
+
+export const DEFAULT_UiSidebarDetails: UiSidebarDetails = {
+  "migration": {
+    "completed": false,
+    "error": null,
+    "loading": false,
+    "needsMigration": false,
+    "projectName": null,
+    "projectRoot": null,
+    "running": false,
+    "stepResults": [],
+    "steps": [],
+    "topics": []
+  },
+  "package": {
+    "actionError": null,
+    "details": null,
+    "error": null,
+    "loading": false,
+    "packageId": null,
+    "projectRoot": null,
+    "summary": null
+  },
+  "part": {
+    "actionError": null,
+    "error": null,
+    "lcsc": null,
+    "loading": false,
+    "part": null,
+    "projectRoot": null
+  },
+  "view": "none"
+};
+
+export function createUiSidebarDetails(): UiSidebarDetails {
+  return cloneGenerated(DEFAULT_UiSidebarDetails);
 }
 
 export const DEFAULT_UiStore: UiStore = {
@@ -709,6 +893,38 @@ export const DEFAULT_UiStore: UiStore = {
     "selectedTarget": null
   },
   "projects": [],
+  "sidebarDetails": {
+    "migration": {
+      "completed": false,
+      "error": null,
+      "loading": false,
+      "needsMigration": false,
+      "projectName": null,
+      "projectRoot": null,
+      "running": false,
+      "stepResults": [],
+      "steps": [],
+      "topics": []
+    },
+    "package": {
+      "actionError": null,
+      "details": null,
+      "error": null,
+      "loading": false,
+      "packageId": null,
+      "projectRoot": null,
+      "summary": null
+    },
+    "part": {
+      "actionError": null,
+      "error": null,
+      "lcsc": null,
+      "loading": false,
+      "part": null,
+      "projectRoot": null
+    },
+    "view": "none"
+  },
   "stdlibData": {
     "items": [],
     "total": 0

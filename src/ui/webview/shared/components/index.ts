@@ -16,6 +16,7 @@ export {
 } from './DataTable'
 export { EmptyState } from './EmptyState'
 export { Field, FieldLabel, FieldDescription, FieldError } from './Field'
+export { default as GlbViewer } from './GlbViewer'
 export { HoverCard, HoverCardTrigger, HoverCardContent } from './HoverCard'
 export { Input } from './Input'
 export { JsonView } from './JsonView'
@@ -42,6 +43,7 @@ export {
 export { Separator } from './Separator'
 export { Skeleton } from './Skeleton'
 export { Spinner } from './Spinner'
+export { default as StepViewer } from './StepViewer'
 export {
   Table,
   TableHeader,

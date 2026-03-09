@@ -36,6 +36,12 @@
    ============================================ */
 
 .card-row {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
   display: flex;
   flex-direction: column;
   padding: var(--spacing-xs) var(--spacing-sm);
@@ -43,10 +49,16 @@
   border-radius: var(--radius-md);
   margin-bottom: var(--spacing-xs);
   gap: 2px;
+  cursor: pointer;
 }
 
 .card-row:hover {
   background: var(--bg-hover);
+}
+
+.card-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .card-row-top {

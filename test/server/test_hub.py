@@ -7,10 +7,10 @@ import json
 import socket
 
 import websockets
-
-from ui.hub import store as store_module
 from ui.hub.hub import Hub
 from ui.hub.store import CoreStatus, Store
+
+from ui.hub import store as store_module
 
 
 def _free_port() -> int:

@@ -38,8 +38,28 @@ function SearchResultRow({
     setTimeout(() => setBusy(false), 5000);
   }, [projectRoot, part.lcsc]);
 
+  const openDetails = useCallback(() => {
+    rpcClient?.sendAction("showPartDetails", {
+      projectRoot,
+      identifier: part.lcsc,
+      lcsc: part.lcsc,
+      installed: false,
+    });
+  }, [part, projectRoot]);
+
   return (
-    <div className="card-row">
+    <div
+      className="card-row"
+      role="button"
+      tabIndex={0}
+      onClick={openDetails}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openDetails();
+        }
+      }}
+    >
       <div className="card-row-top">
         <span className="card-row-name">{part.mpn || part.lcsc}</span>
         <span className="card-row-secondary">{part.manufacturer}</span>
@@ -47,7 +67,10 @@ function SearchResultRow({
           {busy ? (
             <Spinner size={12} />
           ) : (
-            <Button size="sm" variant="outline" onClick={handleInstall}>
+            <Button size="sm" variant="outline" onClick={(event) => {
+              event.stopPropagation();
+              handleInstall();
+            }}>
               <Download size={12} />
             </Button>
           )}
@@ -83,8 +106,28 @@ function InstalledPartRow({
     setTimeout(() => setBusy(false), 5000);
   }, [projectRoot, part.lcsc]);
 
+  const openDetails = useCallback(() => {
+    rpcClient?.sendAction("showPartDetails", {
+      projectRoot,
+      identifier: part.identifier,
+      lcsc: part.lcsc,
+      installed: true,
+    });
+  }, [part, projectRoot]);
+
   return (
-    <div className="card-row">
+    <div
+      className="card-row"
+      role="button"
+      tabIndex={0}
+      onClick={openDetails}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openDetails();
+        }
+      }}
+    >
       <div className="card-row-top">
         <span className="card-row-name">{part.mpn || part.identifier}</span>
         <span className="card-row-secondary">{part.manufacturer}</span>
@@ -92,7 +135,10 @@ function InstalledPartRow({
           {busy ? (
             <Spinner size={12} />
           ) : (
-            <Button size="sm" variant="ghost" onClick={handleUninstall}>
+            <Button size="sm" variant="ghost" onClick={(event) => {
+              event.stopPropagation();
+              handleUninstall();
+            }}>
               <Trash2 size={12} />
             </Button>
           )}

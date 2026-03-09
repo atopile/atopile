@@ -18,6 +18,9 @@ import {
   BOMPanel,
 } from "../sidebar-panels";
 import { Settings } from "lucide-react";
+import { PackageDetailPanel } from "../sidebar-details/PackageDetailPanel";
+import { PartsDetailPanel } from "../sidebar-details/PartsDetailPanel";
+import { MigrateDialog } from "../sidebar-details/MigrateDialog";
 import "./sidebar.css";
 
 const POST_CONNECT_DISCONNECT_GRACE_MS = 5_000;
@@ -92,8 +95,10 @@ function App() {
   const coreStatus = WebviewRpcClient.useSubscribe("coreStatus");
   const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
   const previousBuilds = WebviewRpcClient.useSubscribe("previousBuilds");
+  const sidebarDetails = WebviewRpcClient.useSubscribe("sidebarDetails");
 
   const [activeTab, setActiveTab] = useState<TabId>("files");
+  const [isPackageInstalling, setIsPackageInstalling] = useState(false);
 
   const isConnected = connected;
   const startupError = coreStatus.error;
@@ -114,6 +119,11 @@ function App() {
     projects,
     projectState.selectedProject,
   ]);
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.root === projectState.selectedProject) ?? null,
+    [projects, projectState.selectedProject],
+  );
 
   const projectBuilds = useMemo(() => {
     const project = projectState.selectedProject;
@@ -154,6 +164,83 @@ function App() {
     parameters: <ParametersPanel />,
     bom: <BOMPanel />,
   };
+
+  const detailContent = useMemo(() => {
+    switch (sidebarDetails.view) {
+      case "package":
+        if (!sidebarDetails.package.summary) {
+          return null;
+        }
+        return (
+          <PackageDetailPanel
+            package={{
+              name: sidebarDetails.package.summary.name,
+              fullName: sidebarDetails.package.summary.identifier,
+              version: sidebarDetails.package.summary.version ?? undefined,
+              description: sidebarDetails.package.summary.description ?? undefined,
+              installed: sidebarDetails.package.summary.installed,
+              availableVersions: sidebarDetails.package.details?.versions.map((version) => ({
+                version: version.version,
+                released: version.releasedAt ?? "",
+              })),
+              homepage: sidebarDetails.package.summary.homepage ?? undefined,
+              repository: sidebarDetails.package.summary.repository ?? undefined,
+            }}
+            packageDetails={sidebarDetails.package.details}
+            isLoading={sidebarDetails.package.loading}
+            isInstalling={isPackageInstalling}
+            installError={sidebarDetails.package.actionError}
+            error={sidebarDetails.package.error}
+            onClose={() => rpcClient?.sendAction("closeSidebarDetails")}
+            onInstall={(version) => {
+              setIsPackageInstalling(true);
+              rpcClient?.sendAction("installPackage", {
+                projectRoot: sidebarDetails.package.projectRoot,
+                packageId: sidebarDetails.package.summary?.identifier,
+                version,
+              });
+            }}
+            onUninstall={() => {
+              setIsPackageInstalling(true);
+              rpcClient?.sendAction("removePackage", {
+                projectRoot: sidebarDetails.package.projectRoot,
+                packageId: sidebarDetails.package.summary?.identifier,
+              });
+            }}
+          />
+        );
+      case "part":
+        if (!sidebarDetails.part.part) {
+          return null;
+        }
+        return (
+          <PartsDetailPanel
+            part={sidebarDetails.part.part}
+            projectRoot={sidebarDetails.part.projectRoot}
+            onClose={() => rpcClient?.sendAction("closeSidebarDetails")}
+          />
+        );
+      case "migration":
+        if (!sidebarDetails.migration.projectRoot) {
+          return null;
+        }
+        return (
+          <MigrateDialog
+            projectRoot={sidebarDetails.migration.projectRoot}
+            actualVersion={coreStatus.version}
+            onClose={() => rpcClient?.sendAction("closeSidebarDetails")}
+          />
+        );
+      default:
+        return null;
+    }
+  }, [coreStatus.version, isPackageInstalling, sidebarDetails]);
+
+  useEffect(() => {
+    if (!sidebarDetails.package.loading) {
+      setIsPackageInstalling(false);
+    }
+  }, [sidebarDetails.package.loading, sidebarDetails.package.details?.installedVersion, sidebarDetails.package.actionError]);
 
   return (
     <div className="sidebar">
@@ -212,17 +299,33 @@ function App() {
                 })
               }
               buildDisabled={
-                !projectState.selectedProject || !projectState.selectedTarget
+                !projectState.selectedProject ||
+                !projectState.selectedTarget ||
+                Boolean(selectedProject?.needsMigration)
               }
               isBuilding={isBuilding}
+              showMigration={Boolean(selectedProject?.needsMigration && projectState.selectedProject)}
+              onOpenMigration={() => {
+                if (!projectState.selectedProject) return;
+                rpcClient?.sendAction("showMigrationDetails", {
+                  projectRoot: projectState.selectedProject,
+                });
+              }}
             />
           </div>
 
-          {/* Tab bar + panel content */}
-          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-          <div className="sidebar-tab-content">
-            {panelMap[activeTab]}
-          </div>
+          {detailContent ? (
+            <div className="sidebar-tab-content sidebar-tab-content-detail">
+              {detailContent}
+            </div>
+          ) : (
+            <>
+              <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+              <div className="sidebar-tab-content">
+                {panelMap[activeTab]}
+              </div>
+            </>
+          )}
 
           {/* Resizable builds pane at bottom */}
           <BuildQueuePane builds={projectBuilds} />

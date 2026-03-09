@@ -141,6 +141,8 @@ function getHtml(
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, panelId, "index.js"));
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, panelId, "index.css"));
   const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, "logo.png"));
+  const stepViewerWasmUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, "occt-import-js.wasm"));
+  const glbViewerScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, "model-viewer.min.js"));
   const csp = webview.cspSource;
 
   return `<!DOCTYPE html>
@@ -164,6 +166,8 @@ function getHtml(
   <script>
     window.__ATOPILE_PANEL_ID__ = "${panelId}";
     window.__ATOPILE_LOGO_URL__ = "${logoUri}";
+    window.__ATOPILE_STEP_VIEWER_WASM_URL__ = "${stepViewerWasmUri}";
+    window.__ATOPILE_GLB_VIEWER_SCRIPT_URL__ = "${glbViewerScriptUri}";
   </script>
   <script type="module" src="${scriptUri}"></script>
 </body>

@@ -22,6 +22,14 @@ export type PartSearchItem = Gen.UiPartSearchItem;
 export type PartsSearchData = Gen.UiPartsSearchData;
 export type InstalledPartItem = Gen.UiInstalledPartItem;
 export type InstalledPartsData = Gen.UiInstalledPartsData;
+export type SidebarPackageDetailState = Gen.UiPackageDetailState;
+export type SidebarPartDetail = Gen.UiPartDetail;
+export type SidebarPartDetailState = Gen.UiPartDetailState;
+export type MigrationStep = Gen.UiMigrationStep;
+export type MigrationTopic = Gen.UiMigrationTopic;
+export type MigrationStepResult = Gen.UiMigrationStepResult;
+export type MigrationState = Gen.UiMigrationState;
+export type SidebarDetails = Gen.UiSidebarDetails;
 export type StdLibChild = Gen.StdLibChild;
 export type StdLibItem = Gen.StdLibItem;
 export type StdLibData = Gen.StdLibData;
@@ -69,6 +77,10 @@ export function createPartsSearchData(): PartsSearchData {
 
 export function createInstalledPartsData(): InstalledPartsData {
   return Gen.createUiInstalledPartsData();
+}
+
+export function createSidebarDetails(): SidebarDetails {
+  return Gen.createUiSidebarDetails();
 }
 
 export function createStdLibData(): StdLibData {

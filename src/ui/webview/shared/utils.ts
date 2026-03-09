@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import AnsiToHtml from 'ansi-to-html';
 import type { Build, BuildStage, TimeMode } from "../../shared/types";
 import { SOURCE_COLORS } from "../../shared/types";
+import { rpcClient } from './rpcClient';
 
 // ANSI to HTML converter
 export const ansiConverter = new AnsiToHtml({
@@ -71,3 +73,68 @@ export function getCurrentStage(build: Build): BuildStage | null {
   return completed.length > 0 ? completed[completed.length - 1] : null;
 }
 
+interface AssetResponse {
+  contentType: string;
+  filename: string;
+  data: string;
+}
+
+function decodeBase64(base64: string): Uint8Array {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+export function useBlobAssetUrl(
+  action: string | null,
+  payload: Record<string, unknown> | null,
+): { url: string; error: string | null; loading: boolean } {
+  const [state, setState] = useState({ url: "", error: null as string | null, loading: false });
+
+  useEffect(() => {
+    if (!action || !payload) {
+      setState({ url: "", error: null, loading: false });
+      return;
+    }
+
+    let revokedUrl = "";
+    let cancelled = false;
+    setState({ url: "", error: null, loading: true });
+
+    void rpcClient?.requestAction<AssetResponse>(action, payload)
+      .then((result) => {
+        if (cancelled || !result?.data) {
+          return;
+        }
+        const bytes = decodeBase64(result.data);
+        const buffer = new ArrayBuffer(bytes.byteLength);
+        new Uint8Array(buffer).set(bytes);
+        const blob = new Blob([buffer], {
+          type: result.contentType || "application/octet-stream",
+        });
+        revokedUrl = URL.createObjectURL(blob);
+        setState({ url: revokedUrl, error: null, loading: false });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setState({
+            url: "",
+            error: error instanceof Error ? error.message : String(error),
+            loading: false,
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (revokedUrl) {
+        URL.revokeObjectURL(revokedUrl);
+      }
+    };
+  }, [action, payload ? JSON.stringify(payload) : ""]);
+
+  return state;
+}
