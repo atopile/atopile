@@ -47,6 +47,7 @@ dependencies = [
     "nanobind>=2.6.1",
     "natsort>=8.4.0",
     "numpy>=2.2.0",
+    "openai>=1.0.0",
     "ordered-set==4.1.0",
     "pathvalidate>=3.2.1",
     "platformdirs>=4.3.6",
@@ -296,7 +297,6 @@ exclude = [
     "node_modules",
     "venv",
 ]
-per-file-ignores = {}
 
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
