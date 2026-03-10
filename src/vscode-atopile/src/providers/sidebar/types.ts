@@ -12,6 +12,7 @@ export interface OpenSignalsMessage {
   openLayout?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
+  openStackup?: { projectRoot: string; target: string } | null;
 }
 
 export interface ConnectionStatusMessage {

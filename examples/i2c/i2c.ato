@@ -1,18 +1,27 @@
+#pragma experiment("TRAITS")
 import Addressor
 import I2C
 import ElectricPower
+import is_pcb
+
+from "JLCPCB.ato" import JLC041612_3313
 
 from "atopile/microchip-mcp9808/microchip-mcp9808.ato" import Microchip_MCP9808
 
 module App:
+    design = new Design
+
+module Design:
     """
     Automatic I2C address configuration example.
 
     Package automatically configures I2C address pins for specified address.
     """
+    jlc_stackup = new JLC041612_3313
+    trait is_pcb
 
     # I2C package
-    temp_sensor = new Microchip_MCP9808 # base address 0x18 (A2=LOW, A1=LOW, A0=LOW)
+    temp_sensor = new Microchip_MCP9808  # base address 0x18 (A2=LOW, A1=LOW, A0=LOW)
 
     # Reference interfaces
     power = new ElectricPower
@@ -25,4 +34,4 @@ module App:
     temp_sensor.i2c.address = 0x1A
 
     # Option 2: set I2C address offset relative to base address (0x18)
-    temp_sensor.addressor.offset = 0x2 # (0x18 + 0x2) = 0x1A
+    temp_sensor.addressor.offset = 0x2  # (0x18 + 0x2) = 0x1A

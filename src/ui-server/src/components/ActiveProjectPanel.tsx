@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
+import { FolderOpen, Play, Layers, Layers2, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
 import { IS_WEB_IDE } from '../api/config'
@@ -36,6 +36,7 @@ interface ActiveProjectPanelProps {
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
   onOpenLayout: (projectRoot: string, targetName: string) => void
+  onOpenStackup: (projectRoot: string, targetName: string) => void
   onCreateProject?: (data?: NewProjectData) => Promise<void>
   onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
@@ -890,6 +891,7 @@ export function ActiveProjectPanel({
   onOpenKiCad,
   onOpen3D,
   onOpenLayout,
+  onOpenStackup,
   onCreateProject,
   onCreateTarget,
   onGenerateManufacturingData,
@@ -1076,7 +1078,7 @@ export function ActiveProjectPanel({
           )}
         </div>
 
-        {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
+        {/* Action buttons - single row: Build | KiCad | 3D | Layout | Stackup | Manufacture */}
         <div className="build-actions-row">
           {activeProject?.needsMigration ? (
             <button
@@ -1152,6 +1154,21 @@ export function ActiveProjectPanel({
           >
             <Layout size={12} />
             <span className="action-label">Layout</span>
+          </button>
+
+          <div className="action-divider" />
+
+          <button
+            className="action-btn"
+            onClick={() => {
+              if (!activeTarget) return
+              onOpenStackup(activeTarget.root, activeTarget.name)
+            }}
+            disabled={!activeTarget}
+            title={getOutputTooltip('PCB stackup viewer')}
+          >
+            <Layers2 size={12} />
+            <span className="action-label">Stackup</span>
           </button>
 
           <div className="action-divider" />

@@ -627,6 +627,9 @@ def create_app(
         projects as projects_routes,
     )
     from atopile.server.routes import (
+        stackup as stackup_routes,
+    )
+    from atopile.server.routes import (
         tests as tests_routes,
     )
     from atopile.server.routes import (
@@ -646,6 +649,7 @@ def create_app(
     app.include_router(problems_routes.router)
     app.include_router(packages_routes.router)
     app.include_router(tests_routes.router)
+    app.include_router(stackup_routes.router)
     app.include_router(manufacturing_routes.router)
 
     return app
