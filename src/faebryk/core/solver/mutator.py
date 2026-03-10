@@ -2283,6 +2283,22 @@ class Mutator:
     def get_parameters_of_type[T: fabll.NodeT](self, t: type[T]) -> OrderedSet[T]:
         return OrderedSet(t.bind_typegraph(self.tg_in).get_instances(self.G_in))
 
+    def get_parameter_operatables_of_type(
+        self,
+        t: type[fabll.Node],
+        include_terminated: bool = False,
+        include_irrelevant: bool = False,
+    ) -> OrderedSet[F.Parameters.is_parameter_operatable]:
+        return OrderedSet(
+            po
+            for po in self.get_parameter_operatables(
+                include_terminated=include_terminated,
+                include_irrelevant=include_irrelevant,
+            )
+            if (parameter := po.as_parameter.try_get()) is not None
+            if fabll.Traits(parameter).get_obj_raw().try_cast(t) is not None
+        )
+
     def get_typed_expressions[T: "fabll.NodeT"](
         self,
         t: type[T] = fabll.Node[Any],

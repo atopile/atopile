@@ -95,6 +95,14 @@ class AliasClass:
     @abstractmethod
     def get_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> set[TR]: ...
 
+    def expressions(
+        self,
+        *,
+        excluded_traits: tuple[type[fabll.Node], ...] = (),
+        exclude_operand: F.Parameters.is_parameter_operatable | None = None,
+    ) -> set[F.Expressions.is_expression]:
+        return set()
+
     def representative(self) -> F.Parameters.can_be_operand: ...
 
     def operands(self) -> list[F.Parameters.can_be_operand]: ...
@@ -153,10 +161,22 @@ class AliasClassIs(AliasClass):
         assert len(params) == 1, f"Expected 1 parameter, got {len(params)}"
         return next(iter(params)).as_operand.get()
 
-    def expressions(self) -> set[F.Expressions.is_expression]:
-        return self.is_.is_expression.get().get_operands_with_trait(
-            F.Expressions.is_expression
-        )
+    @override
+    def expressions(
+        self,
+        *,
+        excluded_traits: tuple[type[fabll.Node], ...] = (),
+        exclude_operand: F.Parameters.is_parameter_operatable | None = None,
+    ) -> set[F.Expressions.is_expression]:
+        return {
+            expr
+            for expr in self.get_with_trait(F.Expressions.is_expression)
+            if all(
+                expr.try_get_sibling_trait(trait) is None for trait in excluded_traits
+            )
+            if exclude_operand is None
+            or exclude_operand not in expr.get_operand_leaves_operatable()
+        }
 
     @override
     def get_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> set[TR]:

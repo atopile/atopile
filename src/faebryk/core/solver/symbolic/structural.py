@@ -1,15 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import math
-from collections.abc import Iterable
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.symbolic.invariants import AliasClass, AliasClassIs
+from faebryk.core.solver.symbolic.invariants import AliasClass
 from faebryk.core.solver.symbolic.pure_literal import (
     exec_pure_literal_operands,
 )
@@ -17,6 +15,7 @@ from faebryk.core.solver.utils import (
     Contradiction,
     MutatorUtils,
 )
+from faebryk.libs.util import OrderedSet
 
 Add = F.Expressions.Add
 Multiply = F.Expressions.Multiply
