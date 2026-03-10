@@ -136,7 +136,7 @@ export function ParametersPanel() {
   const [loading, setLoading] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
-  const target = selectedTarget ?? "default";
+  const target = selectedTarget;
 
   useEffect(() => {
     if (projectRoot) {

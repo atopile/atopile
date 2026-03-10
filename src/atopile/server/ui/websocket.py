@@ -160,6 +160,13 @@ class CoreSocket:
     def _projects_state(self) -> list[Project]:
         return cast(list[Project], self._store.get("projects"))
 
+    def _sync_selected_build(self) -> None:
+        project_state = self._store.get("project_state")
+        self._store.set(
+            "selected_build",
+            builds.get_selected_build(project_state.selected_target),
+        )
+
     @staticmethod
     def _request_key(msg: dict[str, Any]) -> str:
         payload = {
@@ -267,14 +274,16 @@ class CoreSocket:
         self._store.set("projects", result.projects)
         return result.projects
 
-    async def _refresh_project_entry(self, project_root: str) -> None:
-        replacement = await asyncio.to_thread(projects.handle_get_project, project_root)
-        if replacement is None:
-            return
-        self._store.set(
-            "projects",
-            projects.replace_project(self._projects_state(), replacement),
+    async def _refresh_project_entry(self, project_root: str) -> Project | None:
+        project_list, replacement = await asyncio.to_thread(
+            projects.refresh_project,
+            self._projects_state(),
+            project_root,
         )
+        if replacement is None:
+            return None
+        self._store.set("projects", project_list)
+        return replacement
 
     # -- Action dispatch ---------------------------------------------------
 
@@ -335,6 +344,7 @@ class CoreSocket:
                         "selectedTarget": None,
                     },
                 )
+                self._sync_selected_build()
                 if project_root:
                     await self._project_files.watch([Path(project_root)])
                 else:
@@ -342,12 +352,14 @@ class CoreSocket:
                 return
 
             case "selectTarget":
+                target = projects.parse_target(msg.get("target"))
                 self._store.merge(
                     "project_state",
                     {
-                        "selectedTarget": msg.get("target") or None,
+                        "selectedTarget": target.model_dump() if target else None,
                     },
                 )
+                self._sync_selected_build()
                 return
 
             case "setLogViewCurrentId":
@@ -429,6 +441,7 @@ class CoreSocket:
                         "selectedTarget": None,
                     },
                 )
+                self._sync_selected_build()
                 return
 
             case "addBuildTarget":
@@ -440,14 +453,22 @@ class CoreSocket:
                 add_result = await asyncio.to_thread(
                     projects.handle_add_build_target, request
                 )
-                await self._refresh_project_entry(request.project_root)
+                project = await self._refresh_project_entry(request.project_root)
+                selected_target = projects.find_target(
+                    project,
+                    add_result.target,
+                    request.project_root,
+                )
                 self._store.merge(
                     "project_state",
                     {
                         "selectedProject": request.project_root,
-                        "selectedTarget": add_result.target,
+                        "selectedTarget": selected_target.model_dump()
+                        if selected_target
+                        else None,
                     },
                 )
+                self._sync_selected_build()
                 return
 
             case "updateBuildTarget":
@@ -468,15 +489,27 @@ class CoreSocket:
                 update_result = await asyncio.to_thread(
                     projects.handle_update_build_target, request
                 )
-                await self._refresh_project_entry(request.project_root)
-                project_state = cast(dict[str, Any], self._store.dump("project_state"))
-                if project_state.get("selectedProject") == request.project_root and (
-                    project_state.get("selectedTarget") == request.old_name
+                project = await self._refresh_project_entry(request.project_root)
+                project_state = self._store.get("project_state")
+                if projects.is_selected_target(
+                    project_state,
+                    request.project_root,
+                    request.old_name,
                 ):
+                    replacement = projects.find_target(
+                        project,
+                        update_result.target or request.old_name,
+                        request.project_root,
+                    )
                     self._store.merge(
                         "project_state",
-                        {"selectedTarget": update_result.target or request.old_name},
+                        {
+                            "selectedTarget": (
+                                replacement.model_dump() if replacement else None
+                            ),
+                        },
                     )
+                    self._sync_selected_build()
                 return
 
             case "deleteBuildTarget":
@@ -485,27 +518,24 @@ class CoreSocket:
                     name=str(msg.get("name") or ""),
                 )
                 await asyncio.to_thread(projects.handle_delete_build_target, request)
-                await self._refresh_project_entry(request.project_root)
-                project_state = cast(dict[str, Any], self._store.dump("project_state"))
-                selected_project = project_state.get("selectedProject")
-                selected_target = project_state.get("selectedTarget")
-                if (
-                    selected_project == request.project_root
-                    and selected_target == request.name
+                project = await self._refresh_project_entry(request.project_root)
+                project_state = self._store.get("project_state")
+                if projects.is_selected_target(
+                    project_state,
+                    request.project_root,
+                    request.name,
                 ):
-                    project = projects.find_project(
-                        self._projects_state(), request.project_root
-                    )
                     self._store.merge(
                         "project_state",
                         {
                             "selectedTarget": (
-                                project.targets[0].name
+                                project.targets[0].model_dump()
                                 if project and project.targets
                                 else None
                             ),
                         },
                     )
+                    self._sync_selected_build()
                 return
 
             case "checkEntry":
@@ -637,7 +667,7 @@ class CoreSocket:
                     "layout_data",
                     {
                         "projectRoot": request.project_root,
-                        "target": request.target,
+                        "target": request.target.model_dump(),
                         "path": str(layout_path),
                     },
                 )
@@ -790,6 +820,8 @@ class CoreSocket:
                     lcsc,
                     project_root,
                 )
+                if create_package:
+                    await self._refresh_project_entry(project_root)
                 installed_parts = await asyncio.to_thread(
                     parts_search.handle_list_installed_parts,
                     project_root,
@@ -901,7 +933,7 @@ class CoreSocket:
 
             case "getVariables":
                 project_root = msg.get("projectRoot", "")
-                target = msg.get("target", "default")
+                target = projects.parse_target(msg.get("target"))
                 variables = await asyncio.to_thread(
                     artifacts.handle_get_variables,
                     project_root,
@@ -912,7 +944,7 @@ class CoreSocket:
 
             case "getBom":
                 project_root = msg.get("projectRoot", "")
-                target = msg.get("target", "default")
+                target = projects.parse_target(msg.get("target"))
                 bom = await asyncio.to_thread(
                     artifacts.handle_get_bom,
                     project_root,
@@ -922,7 +954,7 @@ class CoreSocket:
                     "bom_data",
                     {
                         "projectRoot": project_root or None,
-                        "target": target,
+                        "target": target.model_dump() if target else None,
                         **(
                             bom
                             or {
@@ -939,7 +971,7 @@ class CoreSocket:
 
             case "getBuildsByProject":
                 project_root = msg.get("projectRoot") or None
-                target = msg.get("target") or None
+                target = projects.parse_target(msg.get("target"))
                 limit = int(msg.get("limit", 50))
                 result = await asyncio.to_thread(
                     builds.handle_get_builds_by_project,
@@ -951,7 +983,7 @@ class CoreSocket:
                     "builds_by_project_data",
                     {
                         "projectRoot": project_root,
-                        "target": target,
+                        "target": target.model_dump() if target else None,
                         "limit": limit,
                         "builds": result.get("builds", []),
                     },
@@ -1091,6 +1123,7 @@ class CoreSocket:
     async def _push_builds(self) -> None:
         self._store.set("current_builds", get_active_builds())
         self._store.set("previous_builds", get_finished_builds())
+        self._sync_selected_build()
 
     # -- Broadcasting ------------------------------------------------------
 

@@ -46,7 +46,7 @@ export function BuildQueuePane({ builds }: BuildQueuePaneProps) {
           ) : (
             builds.map((build) => (
               <BuildQueueItem
-                key={build.buildId ?? `${build.projectRoot}:${build.name}`}
+                key={build.buildId ?? build.name}
                 build={build}
               />
             ))

@@ -1,58 +1,6 @@
 import * as cp from 'child_process';
 import { glob } from 'glob';
 import * as path from 'path';
-import * as vscode from 'vscode';
-import * as yaml from 'js-yaml';
-import type { ResolvedBuildTarget } from '../../ui/shared/generated-types';
-import type { AtoYaml } from '../../ui/shared/types';
-
-async function loadBuilds(): Promise<ResolvedBuildTarget[]> {
-    const builds: ResolvedBuildTarget[] = [];
-    const manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.*/**');
-
-    for (const manifest of manifests) {
-        try {
-            const file = await vscode.workspace.fs.readFile(manifest);
-            const data = yaml.load(String.fromCharCode(...file)) as AtoYaml;
-            const rootDir = path.dirname(manifest.fsPath);
-            const layoutSubDir = data.paths?.layout || 'elec/layout';
-
-            for (const [name, buildCfg] of Object.entries(data.builds)) {
-                try {
-                    let layoutPath = path.join(buildCfg.paths?.layout || layoutSubDir, name, `${name}.kicad_pcb`);
-                    const modelPath = path.join(rootDir, 'build', 'builds', name, `${name}.pcba.glb`);
-
-                    if (!path.isAbsolute(layoutPath)) {
-                        layoutPath = path.resolve(rootDir, layoutPath);
-                    }
-
-                    builds.push({
-                        name,
-                        entry: buildCfg.entry,
-                        pcbPath: layoutPath,
-                        modelPath: modelPath,
-                        root: rootDir,
-                    });
-                } catch (err) {
-                    console.error(`Error processing build config ${name}: ${err}`);
-                }
-            }
-        } catch {
-            // skip unreadable manifests
-        }
-    }
-
-    return builds;
-}
-
-export async function getBuildTarget(projectRoot: string, target: string): Promise<ResolvedBuildTarget> {
-    const builds = await loadBuilds();
-    const build = builds.find((candidate) => candidate.root === projectRoot && candidate.name === target);
-    if (!build) {
-        throw new Error(`No build config found for target "${target}".`);
-    }
-    return build;
-}
 
 /**
  * Creates a new environment object with Python virtual environment-specific
@@ -157,11 +105,3 @@ export async function openPcb(pcbPath: string): Promise<void> {
     child.unref(); // Allows the parent (VS Code extension) to exit independently
 }
 
-/**
- * Finds the PCB path for a build target and opens it with pcbnew.
- * @throws Error if the build target cannot be found.
- */
-export async function openKicadForBuild(projectRoot: string, target: string): Promise<void> {
-    const build = await getBuildTarget(projectRoot, target);
-    await openPcb(build.pcbPath);
-}

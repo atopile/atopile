@@ -115,3 +115,7 @@ behave like product features instead of demos.
 - Delete placeholder or unused surfaces that are not part of the final parity story.
 - Do not keep duplicate ways to do the same thing unless mainline users rely on them.
 - Prefer one good rewrite-native path per user task.
+
+### 7. General cleanup
+
+- Move frontend path manipulation to the backend. `FileNode` only carries `name`; the frontend reconstructs relative paths, computes ancestors, and converts absolute `activeFilePath` to relative on every render. The backend should send `relative_path` on `FileNode` and `active_file_path` relative to the project root, eliminating `relativeToProject`, `ancestorPaths`, `parentRelativePath`, and most `joinPath` calls from the frontend. `validateName` stays in the frontend (UI input validation).

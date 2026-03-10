@@ -406,6 +406,21 @@ class FileNode(CamelModel):
 
 
 # =============================================================================
+# Shared Project/Build Models
+# =============================================================================
+
+
+class ResolvedBuildTarget(CamelModel):
+    """A build target with resolved artifact paths."""
+
+    name: str = "default"
+    entry: str = ""
+    pcb_path: str = ""
+    model_path: str = ""
+    root: str
+
+
+# =============================================================================
 # Build-related Pydantic Models
 # =============================================================================
 
@@ -426,7 +441,7 @@ class Build(CamelModel):
     """A build (active, queued, or completed)."""
 
     # Core identification
-    name: str
+    name: str = "default"
     project_name: Optional[str] = None
     build_id: Optional[str] = None
 
@@ -440,7 +455,7 @@ class Build(CamelModel):
 
     # Context
     project_root: Optional[str] = None
-    entry: Optional[str] = None
+    target: Optional[ResolvedBuildTarget] = None
     started_at: Optional[float] = None
 
     # Active build fields
@@ -465,7 +480,6 @@ class Build(CamelModel):
     def _fill_display_fields(cls, values: Any) -> Any:
         if not isinstance(values, dict):
             return values
-        values.setdefault("name", values.get("name") or "default")
         project_root = values.get("project_root")
         if project_root and not values.get("project_name"):
             values["project_name"] = Path(project_root).name
@@ -476,14 +490,14 @@ class BuildRequest(CamelModel):
     """Request to start a build."""
 
     project_root: str
-    targets: list[str] = []  # Empty = all targets
+    targets: list[ResolvedBuildTarget] = Field(default_factory=list)
     frozen: bool = False
     # For standalone builds (entry point without ato.yaml build config)
     entry: Optional[str] = None  # e.g., "main.ato:App" - if set, runs standalone build
     standalone: bool = False  # Whether to use standalone mode
     # Muster targets to include (e.g., "all", "mfg-data") - defaults to "default"
-    include_targets: list[str] = []
-    exclude_targets: list[str] = []
+    include_targets: list[str] = Field(default_factory=list)
+    exclude_targets: list[str] = Field(default_factory=list)
 
 
 class BuildsResponse(CamelModel):
@@ -501,16 +515,6 @@ class MaxConcurrentRequest(BaseModel):
 # =============================================================================
 # Project-related Pydantic Models
 # =============================================================================
-
-
-class ResolvedBuildTarget(CamelModel):
-    """A build target with resolved artifact paths."""
-
-    name: str
-    entry: str = ""
-    pcb_path: str
-    model_path: str
-    root: str
 
 
 class Project(CamelModel):
@@ -582,7 +586,7 @@ class DependenciesResponse(CamelModel):
     total: int
 
 
-class CreateProjectRequest(BaseModel):
+class CreateProjectRequest(CamelModel):
     parent_directory: str
     name: str | None = None
 
@@ -594,7 +598,7 @@ class CreateProjectResponse(CamelModel):
     project_name: str | None = None
 
 
-class RenameProjectRequest(BaseModel):
+class RenameProjectRequest(CamelModel):
     project_root: str
     new_name: str
 
@@ -609,37 +613,37 @@ class RenameProjectResponse(CamelModel):
 # --- Build Target Management ---
 
 
-class AddBuildTargetRequest(BaseModel):
+class AddBuildTargetRequest(CamelModel):
     project_root: str
     name: str
     entry: str
 
 
-class AddBuildTargetResponse(BaseModel):
+class AddBuildTargetResponse(CamelModel):
     success: bool
     message: str
     target: Optional[str] = None
 
 
-class UpdateBuildTargetRequest(BaseModel):
+class UpdateBuildTargetRequest(CamelModel):
     project_root: str
     old_name: str
     new_name: Optional[str] = None
     new_entry: Optional[str] = None
 
 
-class UpdateBuildTargetResponse(BaseModel):
+class UpdateBuildTargetResponse(CamelModel):
     success: bool
     message: str
     target: Optional[str] = None
 
 
-class DeleteBuildTargetRequest(BaseModel):
+class DeleteBuildTargetRequest(CamelModel):
     project_root: str
     name: str
 
 
-class DeleteBuildTargetResponse(BaseModel):
+class DeleteBuildTargetResponse(CamelModel):
     success: bool
     message: str
 
@@ -660,7 +664,7 @@ class UpdateDependencyVersionResponse(BaseModel):
 
 class OpenLayoutRequest(CamelModel):
     project_root: str
-    target: str
+    target: ResolvedBuildTarget
 
 
 # =============================================================================
@@ -1058,7 +1062,7 @@ class UiProjectState(CamelModel):
     """UI selection state for the active project/target/file."""
 
     selected_project: str | None = None
-    selected_target: str | None = None
+    selected_target: ResolvedBuildTarget | None = None
     active_file_path: str | None = None
     log_view_build_id: str | None = None
     log_view_stage: str | None = None
@@ -1273,7 +1277,7 @@ class UiBOMData(CamelModel):
     """BOM panel data for the VS Code UI store."""
 
     project_root: str | None = None
-    target: str | None = None
+    target: ResolvedBuildTarget | None = None
     loading: bool = False
     error: str | None = None
     version: str | None = None
@@ -1312,7 +1316,7 @@ class UiLcscPartsData(CamelModel):
     """State for BOM LCSC part enrichment requests."""
 
     project_root: str | None = None
-    target: str | None = None
+    target: ResolvedBuildTarget | None = None
     parts: dict[str, UiLcscPartData | None] = Field(default_factory=dict)
     loading_ids: list[str] = Field(default_factory=list)
 
@@ -1321,7 +1325,7 @@ class UiBuildsByProjectData(CamelModel):
     """Recent builds query state for a selected project/target."""
 
     project_root: str | None = None
-    target: str | None = None
+    target: ResolvedBuildTarget | None = None
     limit: int = 0
     builds: list[Build] = Field(default_factory=list)
     loading: bool = False
@@ -1331,7 +1335,7 @@ class UiLayoutData(CamelModel):
     """Layout panel state for the active project selection."""
 
     project_root: str | None = None
-    target: str | None = None
+    target: ResolvedBuildTarget | None = None
     path: str | None = None
     loading: bool = False
     error: str | None = None

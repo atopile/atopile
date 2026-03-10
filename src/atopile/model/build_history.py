@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 
+from atopile.dataclasses import ResolvedBuildTarget
+from atopile.model import projects
 from atopile.model.sqlite import BuildHistory
 
 log = logging.getLogger(__name__)
@@ -15,7 +17,7 @@ log = logging.getLogger(__name__)
 
 def get_builds_by_project_target(
     project_root: str | None = None,
-    target: str | None = None,
+    target: ResolvedBuildTarget | None = None,
     limit: int = 50,
 ) -> list:
     """
@@ -28,7 +30,9 @@ def get_builds_by_project_target(
         if project_root:
             builds = [b for b in builds if b.project_root == project_root]
         if target:
-            builds = [b for b in builds if b.name == target]
+            builds = [
+                b for b in builds if b.target and projects.same_target(b.target, target)
+            ]
         return builds
     except Exception as exc:
         log.error(f"Failed to get builds by project/target: {exc}")
@@ -36,12 +40,11 @@ def get_builds_by_project_target(
 
 
 def get_latest_build_for_target(
-    project_root: str,
-    target: str,
+    target: ResolvedBuildTarget,
 ):
     """Get the most recent build for a specific project/target."""
     try:
-        return BuildHistory.get_latest_for_target(project_root, target)
+        return BuildHistory.get_latest_for_target(target)
     except Exception as exc:
         log.error(f"Failed to get latest build for target: {exc}")
         return None

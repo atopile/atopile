@@ -18,6 +18,18 @@ export type UiAudience = "user" | "developer" | "agent";
 
 export type UiLogLevel = "DEBUG" | "INFO" | "WARNING" | "ERROR" | "ALERT";
 
+export interface AddBuildTargetRequest {
+  projectRoot: string;
+  name: string;
+  entry: string;
+}
+
+export interface AddBuildTargetResponse {
+  success: boolean;
+  message: string;
+  target: string | null;
+}
+
 export interface Build {
   name: string;
   projectName: string | null;
@@ -29,7 +41,7 @@ export interface Build {
   returnCode: number | null;
   error: string | null;
   projectRoot: string | null;
-  entry: string | null;
+  target: ResolvedBuildTarget | null;
   startedAt: number | null;
   standalone: boolean;
   frozen: boolean | null;
@@ -39,7 +51,7 @@ export interface Build {
 
 export interface BuildRequest {
   projectRoot: string;
-  targets: string[];
+  targets: ResolvedBuildTarget[];
   frozen: boolean;
   entry: string | null;
   standalone: boolean;
@@ -62,11 +74,26 @@ export interface BuildsResponse {
   total: number | null;
 }
 
+export interface CreateProjectRequest {
+  parentDirectory: string;
+  name: string | null;
+}
+
 export interface CreateProjectResponse {
   success: boolean;
   message: string;
   projectRoot: string | null;
   projectName: string | null;
+}
+
+export interface DeleteBuildTargetRequest {
+  projectRoot: string;
+  name: string;
+}
+
+export interface DeleteBuildTargetResponse {
+  success: boolean;
+  message: string;
 }
 
 export interface DependenciesResponse {
@@ -117,7 +144,7 @@ export interface ModulesResponse {
 
 export interface OpenLayoutRequest {
   projectRoot: string;
-  target: string;
+  target: ResolvedBuildTarget;
 }
 
 export interface PackageActionRequest {
@@ -296,6 +323,11 @@ export interface RegistrySearchResponse {
   query: string;
 }
 
+export interface RenameProjectRequest {
+  projectRoot: string;
+  newName: string;
+}
+
 export interface RenameProjectResponse {
   success: boolean;
   message: string;
@@ -383,7 +415,7 @@ export interface UiBOMComponent {
 
 export interface UiBOMData {
   projectRoot: string | null;
-  target: string | null;
+  target: ResolvedBuildTarget | null;
   loading: boolean;
   error: string | null;
   version: string | null;
@@ -427,7 +459,7 @@ export interface UiBuildLogRequest {
 
 export interface UiBuildsByProjectData {
   projectRoot: string | null;
-  target: string | null;
+  target: ResolvedBuildTarget | null;
   limit: number;
   builds: Build[];
   loading: boolean;
@@ -478,7 +510,7 @@ export interface UiInstalledPartsData {
 
 export interface UiLayoutData {
   projectRoot: string | null;
-  target: string | null;
+  target: ResolvedBuildTarget | null;
   path: string | null;
   loading: boolean;
   error: string | null;
@@ -496,7 +528,7 @@ export interface UiLcscPartData {
 
 export interface UiLcscPartsData {
   projectRoot: string | null;
-  target: string | null;
+  target: ResolvedBuildTarget | null;
   parts: Record<string, UiLcscPartData | null>;
   loadingIds: string[];
 }
@@ -621,7 +653,7 @@ export interface UiPartsSearchData {
 
 export interface UiProjectState {
   selectedProject: string | null;
-  selectedTarget: string | null;
+  selectedTarget: ResolvedBuildTarget | null;
   activeFilePath: string | null;
   logViewBuildId: string | null;
   logViewStage: string | null;
@@ -648,6 +680,7 @@ export interface UiStore {
   projectFiles: FileNode[];
   currentBuilds: Build[];
   previousBuilds: Build[];
+  selectedBuild: Build | null;
   packagesSummary: PackagesSummaryData;
   partsSearch: UiPartsSearchData;
   installedParts: UiInstalledPartsData;
@@ -692,13 +725,25 @@ export interface UiVariablesData {
   nodes: UiVariableNode[];
 }
 
-export const STORE_KEYS = ["blobAsset", "bomData", "buildsByProjectData", "coreStatus", "currentBuilds", "entryCheck", "extensionSettings", "fileAction", "installedParts", "layoutData", "lcscPartsData", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "sidebarDetails", "stdlibData", "structureData", "variablesData"] as const;
+export interface UpdateBuildTargetRequest {
+  projectRoot: string;
+  oldName: string;
+  newName: string | null;
+  newEntry: string | null;
+}
+
+export interface UpdateBuildTargetResponse {
+  success: boolean;
+  message: string;
+  target: string | null;
+}
+
+export const STORE_KEYS = ["blobAsset", "bomData", "buildsByProjectData", "coreStatus", "currentBuilds", "entryCheck", "extensionSettings", "fileAction", "installedParts", "layoutData", "lcscPartsData", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "selectedBuild", "sidebarDetails", "stdlibData", "structureData", "variablesData"] as const;
 export type StoreKey = typeof STORE_KEYS[number];
 
 export const DEFAULT_Build: Build = {
   "buildId": null,
   "elapsedSeconds": 0.0,
-  "entry": null,
   "error": null,
   "errors": 0,
   "frozen": false,
@@ -710,6 +755,7 @@ export const DEFAULT_Build: Build = {
   "standalone": false,
   "startedAt": null,
   "status": "queued",
+  "target": null,
   "totalStages": null,
   "warnings": 0
 };
@@ -1198,6 +1244,7 @@ export const DEFAULT_UiStore: UiStore = {
     "selectedTarget": null
   },
   "projects": [],
+  "selectedBuild": null,
   "sidebarDetails": {
     "migration": {
       "completed": false,

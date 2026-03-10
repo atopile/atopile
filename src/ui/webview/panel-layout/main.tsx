@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
+import type { OpenLayoutRequest } from "../../shared/generated-types";
 
 declare global {
   interface Window {
@@ -8,48 +9,31 @@ declare global {
   }
 }
 
-type LayoutSelection = {
-  projectRoot: string;
-  target: string;
-};
-
 const layoutServerUrl = window.__ATOPILE_LAYOUT_SERVER_URL__ ?? "";
 
 function App() {
   const projectState = WebviewRpcClient.useSubscribe("projectState");
   const layoutData = WebviewRpcClient.useSubscribe("layoutData");
 
-  const selection: LayoutSelection | null =
-    projectState.selectedProject && projectState.selectedTarget
-      ? {
-          projectRoot: projectState.selectedProject,
-          target: projectState.selectedTarget,
-        }
-      : null;
-  const selectionKey = selection ? `${selection.projectRoot}\n${selection.target}` : null;
+  const selection = useMemo<OpenLayoutRequest | null>(
+    () =>
+      projectState.selectedProject && projectState.selectedTarget
+        ? {
+            projectRoot: projectState.selectedProject,
+            target: projectState.selectedTarget,
+          }
+        : null,
+    [projectState.selectedProject, projectState.selectedTarget],
+  );
 
   useEffect(() => {
     if (!layoutServerUrl || !selection) {
       return;
     }
     rpcClient?.sendAction("openLayout", selection);
-  }, [selectionKey]);
+  }, [selection]);
 
-  const layoutPath =
-    layoutData.projectRoot === selection?.projectRoot &&
-    layoutData.target === selection?.target
-      ? layoutData.path
-      : null;
-  const error =
-    layoutData.projectRoot === selection?.projectRoot &&
-    layoutData.target === selection?.target
-      ? layoutData.error
-      : null;
-  const isLoading =
-    layoutData.projectRoot === selection?.projectRoot &&
-    layoutData.target === selection?.target
-      ? layoutData.loading
-      : false;
+  const { path: layoutPath, error, loading: isLoading } = layoutData;
 
   if (!layoutServerUrl) {
     return (

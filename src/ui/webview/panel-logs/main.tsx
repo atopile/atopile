@@ -10,7 +10,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Dropdown
 import { SearchBar, RegexSearchBar } from '../shared/components/SearchBar';
 import { Button } from '../shared/components/Button';
 import type { SourceMode, TimeMode, TreeNode } from '../../shared/types';
-import { LEVEL_SHORT } from '../../shared/types';
+import { LEVEL_SHORT, sameTarget } from '../../shared/types';
 import type {
   Build,
   UiAudience,
@@ -284,6 +284,7 @@ function LogViewer() {
       stage: stage.trim() || null,
       logLevels: logLevels.length > 0 ? logLevels : null,
       audience,
+      count: null,
     });
     setAutoScroll(true);
   }, [buildId, stage, logLevels, audience]);
@@ -300,11 +301,8 @@ function LogViewer() {
     const project = projectState.selectedProject;
     const target = projectState.selectedTarget;
     if (!project) return [];
-    const matchesSelection = (b: Build) =>
-      b.projectRoot === project && (!target || b.name === target);
-
     return [...(currentBuilds || []), ...(previousBuilds || [])]
-      .filter(matchesSelection)
+      .filter((b) => !target || sameTarget(b.target, target))
       .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
   }, [
     currentBuilds,

@@ -115,7 +115,9 @@ export function BuildQueueItem({
     if (build.projectRoot) {
       rpcClient?.sendAction("selectProject", { projectRoot: build.projectRoot });
     }
-    rpcClient?.sendAction("selectTarget", { target: build.name });
+    if (build.target) {
+      rpcClient?.sendAction("selectTarget", { target: build.target });
+    }
     if (build.buildId) {
       rpcClient?.sendAction("setLogViewCurrentId", {
         buildId: build.buildId,
@@ -162,7 +164,7 @@ export function BuildQueueItem({
         ) : null}
         <span className="build-queue-info">
           <span className="build-queue-target">
-            {build.name || build.entry || "default"}
+            {build.name}
           </span>
           {build.status === "building" && !hasFailedStage && build.currentStage && (
             <span className="build-queue-stage" title={build.currentStage.name}>

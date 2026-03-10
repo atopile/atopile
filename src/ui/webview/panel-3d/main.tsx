@@ -1,87 +1,93 @@
 import { useEffect, useState } from "react";
+import type { ResolvedBuildTarget } from "../../shared/generated-types";
 import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import { createWebviewLogger } from "../shared/logger";
 import { ThreeDPreview } from "./threeDPreviewManager";
-import {
-  getSelectedThreeDBuild,
-  resolveThreeDModel,
-  type ResolvedThreeDModel,
-} from "./threeDViewerState";
 import "./panel-3d.css";
 
 const logger = createWebviewLogger("Panel3D");
 
 function App() {
   const projectState = WebviewRpcClient.useSubscribe("projectState");
-  const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
-  const previousBuilds = WebviewRpcClient.useSubscribe("previousBuilds");
+  const selectedBuild = WebviewRpcClient.useSubscribe("selectedBuild");
 
-  const [model, setModel] = useState<ResolvedThreeDModel | null>(null);
-  const [isResolving, setIsResolving] = useState(false);
+  const [model, setModel] = useState<{
+    exists: boolean;
+    modelPath: string;
+    modelUri: string;
+    version: number | null;
+  } | null>(null);
 
-  const selectedProject = projectState.selectedProject;
-  const selectedTarget = projectState.selectedTarget;
-  const isSelected = Boolean(selectedProject && selectedTarget);
-  const build = getSelectedThreeDBuild(
-    selectedProject,
-    selectedTarget,
-    currentBuilds,
-    previousBuilds,
-  );
-  const isBuilding = build?.status === "queued" || build?.status === "building";
+  const isSelected = Boolean(projectState.selectedProject && projectState.selectedTarget);
+  const isBuilding =
+    selectedBuild?.status === "queued" || selectedBuild?.status === "building";
   const resolvedModel = model?.exists && model.modelUri ? model : null;
 
   const startBuild = () => {
-    if (!selectedProject || !selectedTarget) {
+    if (!projectState.selectedProject || !projectState.selectedTarget) {
       return;
     }
     rpcClient?.sendAction("startBuild", {
-      projectRoot: selectedProject,
-      targets: [selectedTarget],
+      projectRoot: projectState.selectedProject,
+      targets: [projectState.selectedTarget],
       includeTargets: ["glb-only"],
       excludeTargets: ["default"],
     });
   };
 
   const resolveModel = async () => {
-    if (!selectedProject || !selectedTarget) {
+    if (!selectedBuild?.projectRoot || !selectedBuild.target) {
       setModel(null);
       return;
     }
 
-    setIsResolving(true);
-
     try {
-      const result = await resolveThreeDModel(selectedProject, selectedTarget);
+      if (!rpcClient) {
+        throw new Error("RPC client is not initialized");
+      }
+      const result = await rpcClient.requestAction<{
+        exists: boolean;
+        modelPath: string;
+        modelUri: string;
+        version: number | null;
+      }>("vscode.resolveThreeDModel", {
+        projectRoot: selectedBuild.projectRoot,
+        target: selectedBuild.target,
+      });
       setModel(result);
     } catch (error) {
       logger.error(
         `Failed to resolve 3D model: ${error instanceof Error ? error.message : String(error)}`,
       );
       setModel(null);
-    } finally {
-      setIsResolving(false);
     }
   };
 
   useEffect(() => {
     void resolveModel();
-  }, [selectedProject, selectedTarget]);
+  }, [selectedBuild?.projectRoot, selectedBuild?.target]);
 
   useEffect(() => {
     if (!isSelected) {
       return;
     }
     startBuild();
-  }, [selectedProject, selectedTarget]);
+  }, [projectState.selectedProject, projectState.selectedTarget]);
 
   useEffect(() => {
     if (!isSelected || isBuilding) {
       return;
     }
     void resolveModel();
-  }, [build?.buildId, build?.status, isBuilding, selectedProject, selectedTarget]);
+  }, [
+    selectedBuild?.buildId,
+    selectedBuild?.status,
+    selectedBuild?.projectRoot,
+    selectedBuild?.target,
+    isBuilding,
+    isSelected,
+  ]);
 
   if (!isSelected) {
     return (

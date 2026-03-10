@@ -28,6 +28,7 @@ from atopile.dataclasses import (
     RenameProjectRequest,
     RenameProjectResponse,
     ResolvedBuildTarget,
+    UiProjectState,
     UpdateBuildTargetRequest,
     UpdateBuildTargetResponse,
     UpdateDependencyVersionRequest,
@@ -239,9 +240,8 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 if b"builds:" not in raw and b"builds :" not in raw:
                     continue
 
-                data = yaml.safe_load(raw)
-
-                if not data or "builds" not in data:
+                project_config = config.ProjectConfig.from_path(project_root)
+                if project_config is None or not project_config.builds:
                     continue
 
                 targets = _resolved_targets_for_project(project_root)
@@ -255,7 +255,7 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                             name=project_root.name,
                             targets=targets,
                             needs_migration=needs_migration(
-                                data.get("requires-atopile")
+                                project_config.requires_atopile
                             ),
                         )
                     )
@@ -629,6 +629,16 @@ def handle_get_project(project_root: str) -> Project | None:
     return next(iter(handle_get_projects([Path(project_root)]).projects), None)
 
 
+def refresh_project(
+    projects: list[Project], project_root: str
+) -> tuple[list[Project], Project | None]:
+    """Reload a single project entry and replace it in an existing list."""
+    replacement = handle_get_project(project_root)
+    if replacement is None:
+        return projects, None
+    return replace_project(projects, replacement), replacement
+
+
 def find_project(projects: list[Project], project_root: str | None) -> Project | None:
     """Find a project in an existing project list by root path."""
     if not project_root:
@@ -642,6 +652,56 @@ def replace_project(projects: list[Project], replacement: Project) -> list[Proje
         replacement if project.root == replacement.root else project
         for project in projects
     ]
+
+
+def find_target(
+    project: Project | None,
+    target_name: str | None,
+    target_root: str | None = None,
+) -> ResolvedBuildTarget | None:
+    """Find a resolved target on a project by name and root."""
+    if project is None or not target_name:
+        return None
+    resolved_root = target_root or project.root
+    return next(
+        (
+            target
+            for target in project.targets
+            if target.name == target_name and target.root == resolved_root
+        ),
+        None,
+    )
+
+
+def parse_target(raw_target: object) -> ResolvedBuildTarget | None:
+    """Coerce a websocket payload target into a resolved target."""
+    if raw_target is None:
+        return None
+    return ResolvedBuildTarget.model_validate(raw_target)
+
+
+def same_target(
+    left: ResolvedBuildTarget | None,
+    right: ResolvedBuildTarget | None,
+) -> bool:
+    """Compare targets by root and name."""
+    if left is None or right is None:
+        return False
+    return left.name == right.name and Path(left.root) == Path(right.root)
+
+
+def is_selected_target(
+    project_state: UiProjectState,
+    target_root: str,
+    target_name: str,
+) -> bool:
+    """Check whether the UI currently has the target selected."""
+    target = project_state.selected_target
+    return (
+        target is not None
+        and target.name == target_name
+        and Path(target.root) == Path(target_root)
+    )
 
 
 def handle_get_modules(

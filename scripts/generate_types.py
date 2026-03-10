@@ -8,7 +8,7 @@ import re
 import types
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any, ForwardRef, Literal, Union, get_args, get_origin
+from typing import Annotated, Any, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -103,14 +103,6 @@ def collect_enums(annotation: Any, enums: dict[str, type[Enum]]) -> None:
         collect_enums(get_args(annotation)[0], enums)
         return
 
-    if isinstance(annotation, ForwardRef):
-        resolved = getattr(dataclasses_module, annotation.__forward_arg__, None)
-        if resolved is None:
-            resolved = getattr(store_module, annotation.__forward_arg__, None)
-        if resolved is not None:
-            collect_enums(resolved, enums)
-        return
-
     if origin in {Union, types.UnionType, list, tuple, set, frozenset}:
         for arg in get_args(annotation):
             collect_enums(arg, enums)
@@ -142,7 +134,11 @@ def render_model(model: type[BaseModel]) -> list[str]:
     for field_name, field in model.model_fields.items():
         if field.exclude is True:
             continue
-        ts_name = field.serialization_alias if serialize_by_alias else field_name
+        ts_name = (
+            (field.serialization_alias or field_name)
+            if serialize_by_alias
+            else field_name
+        )
         ts_type = override_model_field_ts_type(model.__name__, field_name)
         if ts_type is None:
             ts_type = annotation_to_ts(field.annotation)
@@ -199,9 +195,6 @@ def annotation_to_ts(annotation: Any) -> str:
     origin = get_origin(annotation)
     if origin is Annotated:
         return annotation_to_ts(get_args(annotation)[0])
-
-    if isinstance(annotation, ForwardRef):
-        return annotation.__forward_arg__
 
     if origin in {list, tuple, set, frozenset}:
         item_type = annotation_to_ts(

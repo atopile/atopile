@@ -12,6 +12,7 @@ import {
 import { EmptyState, PanelSearchBox } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import type { UiBOMComponent, UiLcscPartData } from "../../shared/generated-types";
+import { sameTarget } from "../../shared/types";
 import "./BOMPanel.css";
 
 interface UsageLocation {
@@ -47,6 +48,8 @@ interface BOMComponentUI {
   source?: string;
   usages: UsageLocation[];
 }
+
+
 
 function normalizeUsagePath(path: string): string {
   const parts = path.split("::");
@@ -419,7 +422,7 @@ export function BOMPanel() {
   const [forceRefreshBuildId, setForceRefreshBuildId] = useState<string | null>(null);
   const lastLcscRefreshBuildIdRef = useRef<string | null>(null);
 
-  const target = selectedTarget ?? "default";
+  const target = selectedTarget;
 
   const refreshBom = useCallback(() => {
     if (!projectRoot) {
@@ -458,7 +461,7 @@ export function BOMPanel() {
   const latestBuildInfo = useMemo(
     () =>
       buildsByProjectData.projectRoot === projectRoot &&
-      buildsByProjectData.target === target
+      sameTarget(buildsByProjectData.target, target)
         ? buildsByProjectData.builds[0] ?? null
         : null,
     [buildsByProjectData, projectRoot, target],
@@ -512,11 +515,11 @@ export function BOMPanel() {
       return;
     }
     const lcscParts =
-      lcscPartsData.projectRoot === projectRoot && lcscPartsData.target === target
+      lcscPartsData.projectRoot === projectRoot && sameTarget(lcscPartsData.target, target)
         ? lcscPartsData.parts
         : {};
     const lcscLoadingIds = new Set(
-      lcscPartsData.projectRoot === projectRoot && lcscPartsData.target === target
+      lcscPartsData.projectRoot === projectRoot && sameTarget(lcscPartsData.target, target)
         ? lcscPartsData.loadingIds
         : [],
     );
@@ -539,15 +542,15 @@ export function BOMPanel() {
 
   const lcscParts = useMemo<Record<string, UiLcscPartData | null>>(
     () =>
-      lcscPartsData.projectRoot === projectRoot && lcscPartsData.target === target
+      lcscPartsData.projectRoot === projectRoot && sameTarget(lcscPartsData.target, target)
         ? lcscPartsData.parts
         : {},
     [lcscPartsData, projectRoot, target],
   );
   const lcscLoadingIds = useMemo(
     () =>
-      new Set(
-        lcscPartsData.projectRoot === projectRoot && lcscPartsData.target === target
+        new Set(
+        lcscPartsData.projectRoot === projectRoot && sameTarget(lcscPartsData.target, target)
           ? lcscPartsData.loadingIds
           : [],
       ),

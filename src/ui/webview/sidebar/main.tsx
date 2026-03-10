@@ -3,6 +3,7 @@ import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import { createWebviewLogger } from "../shared/logger";
 import type { Build } from "../../shared/generated-types";
+import { sameTarget } from "../../shared/types";
 import { Spinner, Alert, AlertTitle, AlertDescription } from "../shared/components";
 import { getCurrentStage } from "../shared/utils";
 import { BuildQueuePane } from "./BuildQueuePane";
@@ -26,6 +27,8 @@ import "./sidebar.css";
 
 const POST_CONNECT_DISCONNECT_GRACE_MS = 5_000;
 const logger = createWebviewLogger("Sidebar");
+
+
 
 function DisconnectedOverlay({
   isConnected,
@@ -118,27 +121,22 @@ function App() {
     [projects, projectState.selectedProject],
   );
 
+  // Auto-select first project/target when nothing is selected or selection becomes invalid
   useEffect(() => {
-    const firstProject = projects[0];
-    if (!firstProject) {
-      return;
-    }
+    if (!projects.length) return;
 
-    if (!projectState.selectedProject) {
-      rpcClient?.sendAction("selectProject", { projectRoot: firstProject.root });
-      return;
-    }
-
+    // No project selected → pick the first one
     if (!selectedProject) {
+      rpcClient?.sendAction("selectProject", { projectRoot: projects[0].root });
       return;
     }
 
-    const firstTarget = selectedProject.targets[0]?.name;
-    const hasSelectedTarget = selectedProject.targets.some(
-      (target) => target.name === projectState.selectedTarget,
+    // Project selected but target is missing/invalid → pick the first target
+    const targetValid = selectedProject.targets.some(
+      (t) => sameTarget(t, projectState.selectedTarget),
     );
-    if (!hasSelectedTarget && firstTarget) {
-      rpcClient?.sendAction("selectTarget", { target: firstTarget });
+    if (!targetValid && selectedProject.targets[0]) {
+      rpcClient?.sendAction("selectTarget", { target: selectedProject.targets[0] });
     }
   }, [projects, projectState.selectedTarget, selectedProject]);
 
@@ -153,13 +151,17 @@ function App() {
     const project = projectState.selectedProject;
     // Active builds for this project
     const active = currentBuilds.filter((b) => b.projectRoot === project);
-    const activeTargets = new Set(active.map((b) => b.name));
+    const hasActiveBuild = (build: Build) =>
+      active.some((activeBuild) => sameTarget(activeBuild.target, build.target));
 
     // For targets without an active build, pick the latest previous build
     const latestPrevious = new Map<string, Build>();
     for (const b of previousBuilds) {
-      if (b.projectRoot === project && !activeTargets.has(b.name) && !latestPrevious.has(b.name)) {
-        latestPrevious.set(b.name, b);
+      const key = b.buildId ?? (b.target
+        ? `${b.target.root}:${b.name}`
+        : `${b.projectRoot}:${b.name}`);
+      if (b.projectRoot === project && !hasActiveBuild(b) && !latestPrevious.has(key)) {
+        latestPrevious.set(key, b);
       }
     }
 
@@ -174,7 +176,7 @@ function App() {
       projectBuilds.some(
         (b) =>
           (b.status === "queued" || b.status === "building") &&
-          b.name === projectState.selectedTarget,
+          sameTarget(b.target, projectState.selectedTarget),
       ),
     [projectBuilds, projectState.selectedTarget],
   );
@@ -298,7 +300,7 @@ function App() {
               onBuild={() =>
                 rpcClient?.sendAction("startBuild", {
                   projectRoot: projectState.selectedProject,
-                  targets: [projectState.selectedTarget],
+                  targets: projectState.selectedTarget ? [projectState.selectedTarget] : [],
                 })
               }
               onOpenKicad={() =>

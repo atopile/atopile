@@ -330,15 +330,46 @@
   height: 12px;
 }
 
-.target-trigger-name {
+.target-trigger-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex: 1;
   min-width: 0;
+}
+
+.target-trigger-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex: 1;
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: var(--font-size-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.target-trigger-entry,
+.target-option-entry {
+  margin-left: auto;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.target-scope-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ctp-teal) 12%, transparent);
+  color: color-mix(in srgb, var(--ctp-teal) 85%, white 15%);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .target-combobox-chevron {
@@ -405,16 +436,6 @@
   font-family: var(--font-sans);
   font-size: var(--font-size-xs);
   font-weight: 500;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.target-option-entry {
-  margin-left: auto;
-  font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;

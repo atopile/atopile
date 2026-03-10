@@ -11,11 +11,15 @@ import {
   X,
 } from "lucide-react";
 import type {
+  AddBuildTargetRequest,
+  CreateProjectRequest,
   ModuleDefinition,
   Project,
   ResolvedBuildTarget,
   UiEntryCheckData,
 } from "../../shared/generated-types";
+import { sameTarget } from "../../shared/types";
+import { formatPath, relativeTargetRoot } from "../../shared/paths";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import "./ProjectTargetSelector.css";
 
@@ -24,32 +28,16 @@ interface ProjectTargetSelectorProps {
   modules: ModuleDefinition[];
   selectedProject: string | null;
   onSelectProject: (root: string) => void;
-  selectedTarget: string | null;
-  onSelectTarget: (target: string) => void;
+  selectedTarget: ResolvedBuildTarget | null;
+  onSelectTarget: (target: ResolvedBuildTarget) => void;
 }
 
-interface NewProjectData {
-  name: string;
-  parentDirectory: string;
-  license?: string;
-  description?: string;
-}
 
-interface NewTargetData {
-  name: string;
-  entry: string;
-}
-
-interface EntryStatus {
-  fileExists: boolean;
-  moduleExists: boolean;
-  targetExists: boolean;
-}
-
-function formatPath(path: string): string {
-  if (!path) return "";
-  const parts = path.split("/");
-  return parts.slice(-2).join("/");
+function targetEntryLabel(target: ResolvedBuildTarget | null): string | null {
+  if (!target?.entry) {
+    return null;
+  }
+  return target.entry.split(":").pop() || target.entry;
 }
 
 function fuzzyMatch(text: string, query: string): boolean {
@@ -235,20 +223,20 @@ function ProjectSelector({
 
 function TargetSelector({
   targets,
-  activeTargetName,
+  activeTarget,
+  projectRoot,
   onSelectTarget,
   disabled,
 }: {
   targets: ResolvedBuildTarget[];
-  activeTargetName: string | null;
-  onSelectTarget: (targetName: string) => void;
+  activeTarget: ResolvedBuildTarget | null;
+  projectRoot: string;
+  onSelectTarget: (target: ResolvedBuildTarget) => void;
   disabled?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const comboboxRef = useRef<HTMLDivElement>(null);
-
-  const activeTarget = targets.find((target) => target.name === activeTargetName) ?? targets[0] ?? null;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -286,14 +274,14 @@ function TargetSelector({
         event.preventDefault();
         const target = targets[highlightedIndex];
         if (!target) return;
-        onSelectTarget(target.name);
+        onSelectTarget(target);
         setIsOpen(false);
       }
     },
     [highlightedIndex, isOpen, onSelectTarget, targets],
   );
 
-  if (targets.length === 0 && !activeTargetName) {
+  if (targets.length === 0 && !activeTarget) {
     return (
       <div className="target-selector-empty">
         <span>No builds defined</span>
@@ -315,8 +303,22 @@ function TargetSelector({
         aria-expanded={isOpen}
       >
         <Target size={14} className="target-icon" />
-        <span className="target-trigger-name">
-          {activeTarget?.name || activeTargetName || "Select build"}
+        <span className="target-trigger-main">
+          <span className="target-trigger-name">
+            {activeTarget?.name || "Select build"}
+          </span>
+          {activeTarget ? (
+            <>
+              {relativeTargetRoot(projectRoot, activeTarget.root) ? (
+                <span className="target-scope-badge">
+                  {relativeTargetRoot(projectRoot, activeTarget.root)}
+                </span>
+              ) : null}
+              {targetEntryLabel(activeTarget) ? (
+                <span className="target-trigger-entry">{targetEntryLabel(activeTarget)}</span>
+              ) : null}
+            </>
+          ) : null}
         </span>
         <span className="target-combobox-chevron">
           <ChevronDown size={14} className={`chevron ${isOpen ? "open" : ""}`} />
@@ -327,14 +329,16 @@ function TargetSelector({
         <div className="target-combobox-dropdown">
           <div className="target-combobox-list" role="listbox">
             {targets.map((target, index) => {
-              const isActive = target.name === activeTargetName;
+              const isActive = sameTarget(target, activeTarget);
               const isHighlighted = index === highlightedIndex;
+              const scope = relativeTargetRoot(projectRoot, target.root);
+              const entryLabel = targetEntryLabel(target);
               return (
                 <button
-                  key={target.name}
+                  key={`${target.root}:${target.name}`}
                   className={`target-option ${isActive ? "active" : ""} ${isHighlighted ? "highlighted" : ""}`}
                   onClick={() => {
-                    onSelectTarget(target.name);
+                    onSelectTarget(target);
                     setIsOpen(false);
                   }}
                   onMouseEnter={() => setHighlightedIndex(index)}
@@ -343,8 +347,11 @@ function TargetSelector({
                 >
                   <Target size={12} className="option-icon" />
                   <span className="target-option-name">{target.name}</span>
-                  {target.entry ? (
-                    <span className="target-option-entry">{target.entry.split(":").pop()}</span>
+                  {scope ? (
+                    <span className="target-scope-badge">{scope}</span>
+                  ) : null}
+                  {entryLabel ? (
+                    <span className="target-option-entry">{entryLabel}</span>
                   ) : null}
                   {isActive ? <Check size={12} className="check-icon" /> : null}
                 </button>
@@ -365,15 +372,13 @@ function NewProjectForm({
   error,
 }: {
   initialParentDirectory: string;
-  onSubmit: (data: NewProjectData) => void;
+  onSubmit: (data: CreateProjectRequest) => void;
   onCancel: () => void;
   isCreating: boolean;
   error: string | null;
 }) {
   const [name, setName] = useState("");
   const [parentDirectory, setParentDirectory] = useState(initialParentDirectory);
-  const [license, setLicense] = useState("");
-  const [description, setDescription] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -391,8 +396,6 @@ function NewProjectForm({
         onSubmit({
           name: name.trim(),
           parentDirectory: parentDirectory.trim(),
-          license: license || undefined,
-          description: description.trim() || undefined,
         });
       }}
       onKeyDown={(event) => {
@@ -464,30 +467,6 @@ function NewProjectForm({
         </div>
       </div>
 
-      <div className="form-field">
-        <label htmlFor="project-license">License</label>
-        <input
-          id="project-license"
-          type="text"
-          placeholder="MIT"
-          value={license}
-          onChange={(event) => setLicense(event.target.value)}
-          disabled={isCreating}
-        />
-      </div>
-
-      <div className="form-field">
-        <label htmlFor="project-description">Description</label>
-        <textarea
-          id="project-description"
-          placeholder="Project description (optional)"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          disabled={isCreating}
-          rows={2}
-        />
-      </div>
-
       <div className="form-actions">
         <button
           type="button"
@@ -529,15 +508,13 @@ function NewTargetForm({
   initialName?: string;
   initialEntry?: string;
   entryCheck: UiEntryCheckData;
-  onSubmit: (data: NewTargetData) => void;
+  onSubmit: (data: Pick<AddBuildTargetRequest, "name" | "entry">) => void;
   onCancel: () => void;
   isCreating: boolean;
   error: string | null;
 }) {
   const [name, setName] = useState(initialName);
   const [entry, setEntry] = useState(initialEntry);
-  const [entryStatus, setEntryStatus] = useState<EntryStatus | null>(null);
-  const [isCheckingEntry, setIsCheckingEntry] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -585,13 +562,8 @@ function NewTargetForm({
   }, [showSuggestions]);
 
   useEffect(() => {
-    if (!projectRoot || !entry.trim()) {
-      setEntryStatus(null);
-      setIsCheckingEntry(false);
-      return;
-    }
+    if (!projectRoot || !entry.trim()) return;
     const timer = window.setTimeout(() => {
-      setIsCheckingEntry(true);
       rpcClient?.sendAction("checkEntry", {
         projectRoot,
         entry: entry.trim(),
@@ -600,17 +572,12 @@ function NewTargetForm({
     return () => window.clearTimeout(timer);
   }, [entry, projectRoot]);
 
-  useEffect(() => {
-    if (entryCheck.projectRoot !== projectRoot || entryCheck.entry !== entry.trim()) {
-      return;
-    }
-    setEntryStatus({
-      fileExists: entryCheck.fileExists,
-      moduleExists: entryCheck.moduleExists,
-      targetExists: entryCheck.targetExists,
-    });
-    setIsCheckingEntry(entryCheck.loading);
-  }, [entry, entryCheck, projectRoot]);
+  const entryCheckMatches =
+    !!entry.trim() &&
+    entryCheck.projectRoot === projectRoot &&
+    entryCheck.entry === entry.trim();
+  const isCheckingEntry =
+    !!entry.trim() && !!projectRoot && (!entryCheckMatches || entryCheck.loading);
 
   const isValidEntryFormat = (value: string): boolean =>
     /\.ato:(.+)$/.test(value.trim());
@@ -623,24 +590,24 @@ function NewTargetForm({
   const entryStatusMessage = (() => {
     if (entryFormatError) return entryFormatError;
     if (isCheckingEntry) return "Checking...";
-    if (!entryStatus) return "Format: file.ato:ModuleName";
-    if (entryStatus.targetExists && entry.trim() !== initialEntry.trim()) {
+    if (!entryCheckMatches) return "Format: file.ato:ModuleName";
+    if (entryCheck.targetExists && entry.trim() !== initialEntry.trim()) {
       return "Entry already used as build target";
     }
-    if (entryStatus.moduleExists) return "Module exists";
-    if (entryStatus.fileExists) return "Module not found in file";
+    if (entryCheck.moduleExists) return "Module exists";
+    if (entryCheck.fileExists) return "Module not found in file";
     return "Entry does not exist";
   })();
 
   const entryStatusClass = (() => {
     if (
       entryFormatError ||
-      (entryStatus?.targetExists && entry.trim() !== initialEntry.trim())
+      (entryCheckMatches && entryCheck.targetExists && entry.trim() !== initialEntry.trim())
     ) {
       return "status-error";
     }
-    if (entryStatus?.moduleExists) return "status-exists";
-    if (entryStatus?.fileExists === false || entryStatus?.moduleExists === false) {
+    if (entryCheckMatches && entryCheck.moduleExists) return "status-exists";
+    if (entryCheckMatches && (!entryCheck.fileExists || !entryCheck.moduleExists)) {
       return "status-create";
     }
     return "";
@@ -650,7 +617,7 @@ function NewTargetForm({
     !!name.trim() &&
     !!entry.trim() &&
     isValidEntryFormat(entry) &&
-    !(entryStatus?.targetExists && entry.trim() !== initialEntry.trim());
+    !(entryCheckMatches && entryCheck.targetExists && entry.trim() !== initialEntry.trim());
 
   return (
     <form
@@ -830,17 +797,9 @@ export function ProjectTargetSelector({
     [projects, selectedProject],
   );
 
-  const activeTargetName = useMemo(
-    () => selectedTarget || activeProject?.targets[0]?.name || null,
-    [activeProject, selectedTarget],
-  );
-
   const activeTarget = useMemo(
-    () =>
-      activeProject?.targets.find((target) => target.name === activeTargetName) ??
-      activeProject?.targets[0] ??
-      null,
-    [activeProject, activeTargetName],
+    () => activeProject?.targets.find((target) => sameTarget(target, selectedTarget)) ?? activeProject?.targets[0] ?? null,
+    [activeProject, selectedTarget],
   );
 
   const defaultParentDirectory = useMemo(() => {
@@ -862,12 +821,7 @@ export function ProjectTargetSelector({
           onSubmit={(data) => {
             setIsCreatingProject(true);
             setCreateProjectError(null);
-            rpcClient?.sendAction("createProject", {
-              name: data.name,
-              parentDirectory: data.parentDirectory,
-              license: data.license,
-              description: data.description,
-            });
+            rpcClient?.sendAction("createProject", { ...data });
             setShowNewProjectForm(false);
             setIsCreatingProject(false);
           }}
@@ -904,7 +858,7 @@ export function ProjectTargetSelector({
         <NewTargetForm
           mode="edit"
           projectName={activeProject.name}
-          projectRoot={activeProject.root}
+          projectRoot={activeTarget.root}
           modules={modules}
           initialName={activeTarget.name}
           initialEntry={activeTarget.entry}
@@ -913,7 +867,7 @@ export function ProjectTargetSelector({
             setIsUpdatingTarget(true);
             setEditTargetError(null);
             rpcClient?.sendAction("updateBuildTarget", {
-              projectRoot: activeProject.root,
+              projectRoot: activeTarget.root,
               oldName: activeTarget.name,
               newName: data.name,
               newEntry: data.entry,
@@ -951,7 +905,8 @@ export function ProjectTargetSelector({
           <span className="section-label">Build</span>
           <TargetSelector
             targets={activeProject?.targets || []}
-            activeTargetName={activeTargetName}
+            activeTarget={activeTarget}
+            projectRoot={activeProject?.root || ""}
             onSelectTarget={onSelectTarget}
             disabled={!activeProject}
           />
@@ -968,7 +923,7 @@ export function ProjectTargetSelector({
               className="icon-action-btn"
               onClick={() => setShowEditTargetForm(true)}
               title="Edit selected build"
-              disabled={!activeProject || !activeTarget}
+              disabled={!activeProject || !activeTarget || activeTarget.root !== activeProject.root}
             >
               <Pencil size={13} />
             </button>
@@ -981,14 +936,14 @@ export function ProjectTargetSelector({
                 setCreateTargetError(null);
                 setEditTargetError(null);
                 rpcClient?.sendAction("deleteBuildTarget", {
-                  projectRoot: activeProject.root,
+                  projectRoot: activeTarget.root,
                   name: activeTarget.name,
                 });
                 setShowEditTargetForm(false);
                 setIsDeletingTarget(false);
               }}
               title="Delete selected build"
-              disabled={!activeProject || !activeTarget || isDeletingTarget}
+              disabled={!activeProject || !activeTarget || isDeletingTarget || activeTarget.root !== activeProject.root}
             >
               <Trash2 size={13} />
             </button>

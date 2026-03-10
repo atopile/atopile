@@ -59,7 +59,10 @@ export class WebviewRpcClient {
     return this._client.sendAction(action, payload);
   }
 
-  requestAction<T>(action: string, payload?: Record<string, unknown>): Promise<T> {
+  requestAction<T>(
+    action: `vscode.${string}`,
+    payload?: Record<string, unknown>,
+  ): Promise<T> {
     return this._client.requestAction<T>(action, payload);
   }
 

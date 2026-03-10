@@ -16,7 +16,14 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable
 
-from atopile.dataclasses import Build, BuildStage, BuildStatus, StageStatus
+from atopile.dataclasses import (
+    Build,
+    BuildStage,
+    BuildStatus,
+    ResolvedBuildTarget,
+    StageStatus,
+)
+from atopile.model import projects
 from atopile.model.sqlite import BUILD_HISTORY_DB, BuildHistory, Logs
 
 # ---------------------------------------------------------------------------
@@ -78,8 +85,10 @@ def _build_subprocess_command(build: Build) -> list[str]:
     else:
         cmd = [sys.executable, "-m", "atopile", "build"]
 
-    if build.standalone and build.entry:
-        cmd.append(build.entry)
+    if build.standalone:
+        if not build.target or not build.target.entry:
+            raise RuntimeError("Standalone builds require a target entry")
+        cmd.append(build.target.entry)
         cmd.append("--standalone")
     elif build.name:
         cmd.extend(["--build", build.name])
@@ -168,6 +177,9 @@ def _run_build_subprocess(
     try:
         cmd = _build_subprocess_command(build)
         env = _build_subprocess_env(build)
+        if not build.target:
+            raise RuntimeError("Build target is required")
+        build_root = build.target.root
 
         preexec_fn = None
         if env.get("ATO_SAFE"):
@@ -189,7 +201,7 @@ def _run_build_subprocess(
             "Build %s: starting subprocess - cmd=%s, cwd=%s",
             build.build_id,
             " ".join(cmd),
-            build.project_root,
+            build_root,
         )
 
         # For verbose mode, pipe stdout/stderr to stream output to parent
@@ -200,7 +212,7 @@ def _run_build_subprocess(
         if build.verbose:
             process = subprocess.Popen(
                 cmd,
-                cwd=build.project_root,
+                cwd=build_root,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
@@ -237,7 +249,7 @@ def _run_build_subprocess(
             # Capture stderr for error reporting even in non-verbose mode
             process = subprocess.Popen(
                 cmd,
-                cwd=build.project_root,
+                cwd=build_root,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 env=env,
@@ -443,7 +455,9 @@ class BuildQueue:
         return True
 
     def is_duplicate(
-        self, project_root: str, target: str, entry: str | None
+        self,
+        project_root: str,
+        target: ResolvedBuildTarget,
     ) -> str | None:
         """
         Check if a build with the same config is already running or queued.
@@ -460,9 +474,9 @@ class BuildQueue:
                 continue
             if build.project_root != project_root:
                 continue
-            if build.name != target:
+            if not build.target:
                 continue
-            if build.entry != entry:
+            if not projects.same_target(build.target, target):
                 continue
             return build.build_id
         return None
@@ -677,7 +691,7 @@ class BuildQueue:
 
             if isinstance(msg, BuildStartedMsg):
                 BuildHistory.set(
-                    Build(build_id=msg.build_id, name="", status=BuildStatus.BUILDING)
+                    Build(build_id=msg.build_id, status=BuildStatus.BUILDING)
                 )
                 self._emit_change(msg.build_id, "started")
 
@@ -692,7 +706,6 @@ class BuildQueue:
                 BuildHistory.set(
                     Build(
                         build_id=msg.build_id,
-                        name="",
                         status=BuildStatus.CANCELLED,
                         error="Build cancelled by user",
                     )
@@ -722,22 +735,23 @@ class BuildQueue:
 
         existing = BuildHistory.get(msg.build_id)
 
-        BuildHistory.set(
-            Build(
-                build_id=msg.build_id,
-                name=existing.name if existing else "default",
-                project_root=(existing.project_root if existing else "") or "",
-                entry=existing.entry if existing else None,
-                status=status,
-                return_code=msg.return_code,
-                error=msg.error,
-                started_at=existing.started_at if existing else None,
-                elapsed_seconds=existing.elapsed_seconds if existing else None,
-                stages=msg.stages,
-                warnings=warnings,
-                errors=errors,
-            )
+        build = Build(
+            build_id=msg.build_id,
+            project_root=(existing.project_root if existing else "") or "",
+            target=existing.target if existing else None,
+            status=status,
+            return_code=msg.return_code,
+            error=msg.error,
+            started_at=existing.started_at if existing else None,
+            elapsed_seconds=existing.elapsed_seconds if existing else None,
+            stages=msg.stages,
+            warnings=warnings,
+            errors=errors,
         )
+        if existing and existing.name:
+            build.name = existing.name
+
+        BuildHistory.set(build)
 
         with self._active_lock:
             self._active.discard(msg.build_id)
@@ -822,7 +836,6 @@ class BuildQueue:
             BuildHistory.set(
                 Build(
                     build_id=build_id,
-                    name="",
                     status=BuildStatus.CANCELLED,
                     error="Build cancelled by user",
                 )

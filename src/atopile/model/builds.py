@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import Optional
 
 from atopile.buildutil import generate_build_id
-from atopile.config import ProjectConfig
 from atopile.dataclasses import (
     Build,
     BuildRequest,
     BuildStatus,
     MaxConcurrentRequest,
     OpenLayoutRequest,
+    ResolvedBuildTarget,
 )
 from atopile.model import build_history
 from atopile.model.build_queue import (
@@ -22,6 +22,7 @@ from atopile.model.build_queue import (
     _build_queue,
     _build_settings,
 )
+from atopile.model.projects import _resolved_targets_for_project
 from atopile.model.sqlite import BuildHistory
 
 log = logging.getLogger(__name__)
@@ -49,13 +50,21 @@ def get_finished_builds() -> list[dict]:
     return [b.model_dump() for b in BuildHistory.get_finished()]
 
 
+def get_selected_build(
+    target: ResolvedBuildTarget | None,
+) -> Build | None:
+    """Get the latest build for the selected target."""
+    if target is None:
+        return None
+    return build_history.get_latest_build_for_target(target)
+
+
 def validate_build_request(request: BuildRequest) -> str | None:
     """Validate a build request. Returns error message or None if valid."""
-    project_path = Path(request.project_root)
-    if not project_path.exists():
-        return f"Project path does not exist: {request.project_root}"
-
     if request.standalone:
+        project_path = Path(request.project_root)
+        if not project_path.exists():
+            return f"Project path does not exist: {project_path}"
         if not request.entry:
             return "Standalone builds require an entry point"
         entry_file = (
@@ -64,45 +73,46 @@ def validate_build_request(request: BuildRequest) -> str | None:
         entry_path = project_path / entry_file
         if not entry_path.exists():
             return f"Entry file not found: {entry_path}"
-    else:
+        return None
+
+    project_roots = (
+        {Path(target.root) for target in request.targets}
+        if request.targets
+        else {Path(request.project_root)}
+    )
+    for project_path in project_roots:
+        if not project_path.exists():
+            return f"Project path does not exist: {project_path}"
         if not (project_path / "ato.yaml").exists():
-            return f"No ato.yaml found in: {request.project_root}"
+            return f"No ato.yaml found in: {project_path}"
 
     return None
 
 
-def _resolve_request_targets(request: BuildRequest) -> list[str]:
+def _resolve_request_targets(request: BuildRequest) -> list[ResolvedBuildTarget]:
     """Resolve targets for a build request (empty list means all targets)."""
     if request.targets:
         return request.targets
 
     if request.standalone:
-        return ["default"]
+        return [
+            ResolvedBuildTarget(root=request.project_root, entry=request.entry or "")
+        ]
 
     project_path = Path(request.project_root)
     try:
-        project_config = ProjectConfig.from_path(project_path)
-        targets = list(project_config.builds.keys()) if project_config else []
-        return targets or ["default"]
+        targets = _resolved_targets_for_project(project_path)
+        return targets or [ResolvedBuildTarget(root=request.project_root)]
     except Exception as exc:
         log.warning(
             f"Failed to read targets from ato.yaml at {project_path}: {exc}; "
             "falling back to 'default'"
         )
-        return ["default"]
+        return [ResolvedBuildTarget(root=request.project_root)]
 
 
 def resolve_layout_path(request: OpenLayoutRequest) -> Path:
-    project_path = Path(request.project_root)
-    project_config = ProjectConfig.from_path(project_path)
-    if project_config is None:
-        raise FileNotFoundError(f"No ato.yaml found in: {request.project_root}")
-
-    try:
-        layout_path = project_config.builds[request.target].paths.layout
-    except KeyError as exc:
-        raise ValueError(f'Unknown build target: "{request.target}"') from exc
-
+    layout_path = Path(request.target.pcb_path)
     if not layout_path.exists():
         raise FileNotFoundError(f"Layout not found: {layout_path}")
 
@@ -127,16 +137,16 @@ def handle_start_build(request: BuildRequest) -> None:
         raise ValueError("No build targets resolved")
 
     for target in targets:
-        if _build_queue.is_duplicate(request.project_root, target, request.entry):
+        if _build_queue.is_duplicate(request.project_root, target):
             continue
         started_at = time.time()
-        build_id = generate_build_id(request.project_root, target, started_at)
+        build_id = generate_build_id(target.root, target.name, started_at)
         _build_queue.enqueue(
             Build(
                 build_id=build_id,
                 project_root=request.project_root,
-                name=target,
-                entry=request.entry,
+                name=target.name,
+                target=target,
                 standalone=request.standalone,
                 frozen=request.frozen,
                 include_targets=request.include_targets,
@@ -230,7 +240,7 @@ def handle_get_build_info(build_id: str) -> dict | None:
 
 def handle_get_builds_by_project(
     project_root: Optional[str] = None,
-    target: Optional[str] = None,
+    target: Optional[ResolvedBuildTarget] = None,
     limit: int = 50,
 ) -> dict:
     """

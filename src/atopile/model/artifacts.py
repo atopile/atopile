@@ -6,24 +6,32 @@ import json
 import logging
 from pathlib import Path
 
+from atopile.dataclasses import ResolvedBuildTarget
+
 log = logging.getLogger(__name__)
 
 
-def handle_get_bom(project_root: str, target: str = "default") -> dict | None:
+def handle_get_bom(
+    project_root: str,
+    target: ResolvedBuildTarget | None = None,
+) -> dict | None:
     """
     Get the bill of materials for a build target.
 
     Returns BOM data or None if not found.
     Raises ValueError for invalid project path.
     """
-    project_path = Path(project_root)
+    project_path = Path(target.root if target else project_root)
     if not project_path.exists():
-        raise ValueError(f"Project path does not exist: {project_root}")
+        raise ValueError(f"Project path does not exist: {project_path}")
 
     if not (project_path / "ato.yaml").exists():
-        raise ValueError(f"No ato.yaml found in: {project_root}")
+        raise ValueError(f"No ato.yaml found in: {project_path}")
 
-    bom_path = project_path / "build" / "builds" / target / f"{target}.bom.json"
+    target_name = target.name if target else "default"
+    bom_path = (
+        project_path / "build" / "builds" / target_name / f"{target_name}.bom.json"
+    )
 
     if not bom_path.exists():
         return None
@@ -55,22 +63,30 @@ def handle_get_bom_targets(project_root: str) -> dict:
     return {"targets": targets, "project_root": project_root}
 
 
-def handle_get_variables(project_root: str, target: str = "default") -> dict | None:
+def handle_get_variables(
+    project_root: str,
+    target: ResolvedBuildTarget | None = None,
+) -> dict | None:
     """
     Get design variables for a build target.
 
     Returns variables data or None if not found.
     Raises ValueError for invalid project path.
     """
-    project_path = Path(project_root)
+    project_path = Path(target.root if target else project_root)
     if not project_path.exists():
-        raise ValueError(f"Project path does not exist: {project_root}")
+        raise ValueError(f"Project path does not exist: {project_path}")
 
     if not (project_path / "ato.yaml").exists():
-        raise ValueError(f"No ato.yaml found in: {project_root}")
+        raise ValueError(f"No ato.yaml found in: {project_path}")
 
+    target_name = target.name if target else "default"
     variables_path = (
-        project_path / "build" / "builds" / target / f"{target}.variables.json"
+        project_path
+        / "build"
+        / "builds"
+        / target_name
+        / f"{target_name}.variables.json"
     )
 
     if not variables_path.exists():
@@ -119,14 +135,14 @@ def handle_get_bom_by_build_id(build_id: str) -> dict | None:
     if not build_info:
         return None
 
-    project_root = build_info.get("project_root")
-    target = build_info.get("target")
-
-    if not project_root or not target:
+    target = build_info.target
+    if not target:
         return None
 
-    project_path = Path(project_root)
-    bom_path = project_path / "build" / "builds" / target / f"{target}.bom.json"
+    project_path = Path(target.root)
+    bom_path = (
+        project_path / "build" / "builds" / target.name / f"{target.name}.bom.json"
+    )
 
     if not bom_path.exists():
         return None
@@ -161,15 +177,17 @@ def handle_get_variables_by_build_id(build_id: str) -> dict | None:
     if not build_info:
         return None
 
-    project_root = build_info.get("project_root")
-    target = build_info.get("target")
-
-    if not project_root or not target:
+    target = build_info.target
+    if not target:
         return None
 
-    project_path = Path(project_root)
+    project_path = Path(target.root)
     variables_path = (
-        project_path / "build" / "builds" / target / f"{target}.variables.json"
+        project_path
+        / "build"
+        / "builds"
+        / target.name
+        / f"{target.name}.variables.json"
     )
 
     if not variables_path.exists():

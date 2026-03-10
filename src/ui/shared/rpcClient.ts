@@ -2,6 +2,8 @@ import type { StoreKey } from "./generated-types";
 import { MSG_TYPE, type RpcMessage } from "./types";
 import type { RpcTransport } from "./rpcTransport";
 
+type ExtensionRequestAction = `vscode.${string}`;
+
 class ReconnectScheduler {
   private _delay: number;
   private readonly _initialDelay: number;
@@ -180,7 +182,10 @@ export class RpcClient {
     return this.sendRaw(JSON.stringify({ type: MSG_TYPE.ACTION, action, ...payload }));
   }
 
-  requestAction<T>(action: string, payload?: Record<string, unknown>): Promise<T> {
+  requestAction<T>(
+    action: ExtensionRequestAction,
+    payload?: Record<string, unknown>,
+  ): Promise<T> {
     const requestId = `rpc-${this._requestCounter++}`;
 
     return new Promise<T>((resolve, reject) => {

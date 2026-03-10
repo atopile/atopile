@@ -22,6 +22,16 @@ import { EmptyState, Button, Input } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import { createWebviewLogger } from "../shared/logger";
 import type { FileNode } from "../../shared/generated-types";
+import {
+  normalizePath,
+  joinPath,
+  relativeToProject,
+  parentRelativePath,
+  basename,
+  joinChildPath,
+  validateName,
+  ancestorPaths,
+} from "../../shared/paths";
 import "./FilesPanel.css";
 
 const logger = createWebviewLogger("FilesPanel");
@@ -136,57 +146,6 @@ interface TreeNodeProps {
   onOpenContextMenu: (event: ReactMouseEvent, target: ContextMenuTarget) => void;
 }
 
-function normalizePath(value: string): string {
-  const normalized = value.replace(/\\/g, "/");
-  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
-}
-
-function joinPath(base: string, relativePath: string): string {
-  return `${base.replace(/[\\/]+$/, "")}/${relativePath}`;
-}
-
-function relativeToProject(projectRoot: string, fullPath: string): string | null {
-  const root = normalizePath(projectRoot);
-  const absolute = normalizePath(fullPath);
-  if (absolute === root) {
-    return "";
-  }
-  if (!absolute.startsWith(`${root}/`)) {
-    return null;
-  }
-  return absolute.slice(root.length + 1);
-}
-
-function parentRelativePath(relativePath: string): string {
-  const index = relativePath.lastIndexOf("/");
-  return index === -1 ? "" : relativePath.slice(0, index);
-}
-
-function basename(filePath: string): string {
-  const normalized = normalizePath(filePath);
-  const index = normalized.lastIndexOf("/");
-  return index === -1 ? normalized : normalized.slice(index + 1);
-}
-
-function joinChildPath(directoryPath: string, name: string): string {
-  return joinPath(directoryPath, name.trim());
-}
-
-function validateName(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "Name cannot be empty.";
-  }
-  if (trimmed.includes("/") || trimmed.includes("\\")) {
-    return "Name cannot contain path separators.";
-  }
-  return null;
-}
-
-function ancestorPaths(relativePath: string): string[] {
-  const segments = relativePath.split("/").filter(Boolean);
-  return segments.slice(0, -1).map((_, index) => segments.slice(0, index + 1).join("/"));
-}
 
 function contextMenuItems(target: ContextMenuTarget): { action: ExplorerAction; label: string }[] {
   if (target.isRoot) {

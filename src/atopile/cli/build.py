@@ -14,6 +14,7 @@ from atopile.buildutil import generate_build_id
 from atopile.dataclasses import (
     Build,
     BuildStatus,
+    ResolvedBuildTarget,
 )
 from atopile.logging import get_logger
 from atopile.logging_utils import BuildPrinter, print_subprocess_output
@@ -226,12 +227,11 @@ def _build_all_projects(
 
     logger.info("Found %d projects", len(projects))
 
-    # Collect build tasks from all projects
-    # Format: (build_name, project_root, project_name)
-    build_tasks: list[tuple[str, Path, str | None]] = []
+    builds: list[Build] = []
 
     for project_path in projects:
         project_name = project_path.name
+        resolved_project_root = str(project_path.resolve())
 
         # Load project config to get build targets
         project_config = ProjectConfig.from_path(project_path)
@@ -242,52 +242,56 @@ def _build_all_projects(
         # Get builds to run for this project
         if selected_builds:
             # Use specified builds if they exist in this project
-            builds = [b for b in selected_builds if b in project_config.builds]
+            build_names = [b for b in selected_builds if b in project_config.builds]
         else:
             # Build ALL targets in the project
-            builds = list(project_config.builds.keys())
+            build_names = list(project_config.builds.keys())
 
-        if not builds:
+        if not build_names:
             logger.warning("Skipping %s: no matching builds", project_name)
             continue
 
-        for build_name in builds:
-            build_tasks.append((build_name, project_path, project_name))
+        for build_name in build_names:
+            build_cfg = project_config.builds[build_name]
+            build_target = ResolvedBuildTarget(
+                name=build_name,
+                entry=build_cfg.address or "",
+                pcb_path=str(build_cfg.paths.layout),
+                model_path=str(build_cfg.paths.output_base.with_suffix(".pcba.glb")),
+                root=resolved_project_root,
+            )
+            started_at = time.time()
+            builds.append(
+                Build(
+                    build_id=generate_build_id(
+                        build_target.root, build_target.name, started_at
+                    ),
+                    name=build_target.name,
+                    project_root=build_target.root,
+                    project_name=project_name,
+                    target=build_target,
+                    frozen=frozen,
+                    status=BuildStatus.QUEUED,
+                    started_at=started_at,
+                    include_targets=targets or [],
+                    exclude_targets=exclude_targets or [],
+                    keep_picked_parts=keep_picked_parts,
+                    keep_net_names=keep_net_names,
+                    keep_designators=keep_designators,
+                    verbose=verbose,
+                )
+            )
 
-    if not build_tasks:
+    if not builds:
         logger.error("No builds to run")
         raise typer.Exit(1)
 
     logger.info(
         "Building %d targets across %d projects (max %d concurrent)",
-        len(build_tasks),
+        len(builds),
         len(projects),
         jobs,
     )
-
-    # Initialize build history database
-    builds: list[Build] = []
-    for build_name, project_root, project_name in build_tasks:
-        project_path = str(project_root.resolve())
-        started_at = time.time()
-        build_id = generate_build_id(project_path, build_name, started_at)
-        builds.append(
-            Build(
-                build_id=build_id,
-                name=build_name,
-                project_root=project_path,
-                project_name=project_name,
-                frozen=frozen,
-                status=BuildStatus.QUEUED,
-                started_at=started_at,
-                include_targets=targets or [],
-                exclude_targets=exclude_targets or [],
-                keep_picked_parts=keep_picked_parts,
-                keep_net_names=keep_net_names,
-                keep_designators=keep_designators,
-                verbose=verbose,
-            )
-        )
 
     results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
 
@@ -299,7 +303,7 @@ def _build_all_projects(
     ]
     exit_code = _report_build_results(
         failed=failed,
-        total=len(build_tasks),
+        total=len(builds),
         failed_names=failed[:10],
     )
     if exit_code != 0:
@@ -496,19 +500,39 @@ def build(
     # Get the list of builds to run
     build_names = list(config.selected_builds)
     project_root = config.project.paths.root
+    resolved_project_root = str(project_root.resolve())
 
     builds: list[Build] = []
     for build_name in build_names:
-        started_at = time.time()
-        build_id = generate_build_id(
-            str(project_root.resolve()), build_name, started_at
+        build_target = (
+            ResolvedBuildTarget(
+                name=build_name,
+                entry=entry or "",
+                pcb_path="",
+                model_path="",
+                root=resolved_project_root,
+            )
+            if standalone
+            else ResolvedBuildTarget(
+                name=build_name,
+                entry=config.project.builds[build_name].address or "",
+                pcb_path=str(config.project.builds[build_name].paths.layout),
+                model_path=str(
+                    config.project.builds[build_name].paths.output_base.with_suffix(
+                        ".pcba.glb"
+                    )
+                ),
+                root=resolved_project_root,
+            )
         )
+        started_at = time.time()
+        build_id = generate_build_id(build_target.root, build_name, started_at)
         builds.append(
             Build(
                 build_id=build_id,
                 name=build_name,
-                project_root=str(project_root.resolve()),
-                entry=entry,
+                project_root=resolved_project_root,
+                target=build_target,
                 standalone=standalone,
                 frozen=frozen,
                 status=BuildStatus.QUEUED,

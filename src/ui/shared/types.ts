@@ -1,6 +1,7 @@
 import {
   STORE_KEYS as REMOTE_STORE_KEYS,
   createUiStore,
+  type ResolvedBuildTarget,
   type UiActionMessage,
   type UiActionResultMessage,
   type UiLogEntry,
@@ -9,6 +10,7 @@ import {
   type UiStore,
   type UiSubscribeMessage,
 } from "./generated-types";
+import { normalizePath } from "./paths";
 
 export type StoreState = UiStore & {
   connected: boolean;
@@ -36,6 +38,19 @@ export interface AtoYaml {
       };
     }
   >;
+}
+
+// -- Build target helpers ---------------------------------------------------
+
+export function sameTarget(
+  left: ResolvedBuildTarget | null | undefined,
+  right: ResolvedBuildTarget | null | undefined,
+): boolean {
+  if (!left || !right) return false;
+  return (
+    left.name === right.name
+    && normalizePath(left.root) === normalizePath(right.root)
+  );
 }
 
 // -- Log viewer UI-only helpers --------------------------------------------

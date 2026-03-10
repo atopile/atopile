@@ -6,7 +6,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from atopile.dataclasses import Build, BuildStatus, LogRow, TestLogRow
+from atopile.dataclasses import (
+    Build,
+    BuildStatus,
+    LogRow,
+    ResolvedBuildTarget,
+    TestLogRow,
+)
 from atopile.logging import get_logger
 from faebryk.libs.paths import get_log_dir
 
@@ -80,7 +86,7 @@ class BuildHistory:
                     name             TEXT,
                     project_name     TEXT,
                     project_root     TEXT,
-                    entry            TEXT,
+                    target           TEXT,
                     status           TEXT,
                     return_code      INTEGER,
                     error            TEXT,
@@ -99,12 +105,15 @@ class BuildHistory:
 
     @staticmethod
     def _from_row(row: sqlite3.Row) -> Build:
-        return Build(
+        build = Build(
             build_id=row["build_id"],
-            name=row["name"] or "default",
             project_name=row["project_name"],
             project_root=row["project_root"],
-            entry=row["entry"],
+            target=(
+                ResolvedBuildTarget.model_validate_json(row["target"])
+                if row["target"]
+                else None
+            ),
             status=BuildStatus(row["status"]),
             return_code=row["return_code"],
             error=row["error"],
@@ -117,6 +126,9 @@ class BuildHistory:
             standalone=bool(row["standalone"]),
             frozen=bool(row["frozen"]),
         )
+        if row["name"]:
+            build.name = row["name"]
+        return build
 
     @staticmethod
     def set(build: Build) -> None:
@@ -146,7 +158,7 @@ class BuildHistory:
                     """
                     INSERT OR REPLACE INTO build_history
                         (build_id, name, project_name,
-                         project_root, entry, status,
+                         project_root, target, status,
                          return_code, error, started_at,
                          elapsed_seconds, stages, total_stages, warnings,
                          errors, standalone, frozen)
@@ -163,7 +175,14 @@ class BuildHistory:
                             build.project_root,
                             existing.project_root if existing else None,
                         ),
-                        pick(build.entry, existing.entry if existing else None),
+                        pick(
+                            build.target.model_dump_json(by_alias=True)
+                            if build.target
+                            else None,
+                            existing.target.model_dump_json(by_alias=True)
+                            if existing and existing.target
+                            else None,
+                        ),
                         build.status.value,  # status is always set
                         pick(
                             build.return_code,
@@ -248,7 +267,7 @@ class BuildHistory:
 
     @staticmethod
     def get_latest_per_target(limit: int = 100) -> list[Build]:
-        """Get the latest build per (project_root, name)."""
+        """Get the latest build per target root and target name."""
         try:
             with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
@@ -258,7 +277,9 @@ class BuildHistory:
                     WHERE rowid IN (
                         SELECT rowid FROM (
                             SELECT rowid, ROW_NUMBER() OVER (
-                                PARTITION BY project_root, name
+                                PARTITION BY
+                                    json_extract(target, '$.root'),
+                                    name
                                 ORDER BY started_at DESC
                             ) AS rn
                             FROM build_history
@@ -279,7 +300,7 @@ class BuildHistory:
 
     @staticmethod
     def get_previous(limit: int = 100) -> list[Build]:
-        """Get historical builds excluding the latest per (project_root, name)."""
+        """Get historical builds excluding the latest per target identity."""
         try:
             with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
@@ -289,7 +310,9 @@ class BuildHistory:
                     WHERE rowid NOT IN (
                         SELECT rowid FROM (
                             SELECT rowid, ROW_NUMBER() OVER (
-                                PARTITION BY project_root, name
+                                PARTITION BY
+                                    json_extract(target, '$.root'),
+                                    name
                                 ORDER BY started_at DESC
                             ) AS rn
                             FROM build_history
@@ -352,17 +375,24 @@ class BuildHistory:
             raise e
 
     @staticmethod
-    def get_latest_for_target(project_root: str, target: str) -> Build | None:
+    def get_latest_for_target(
+        target: ResolvedBuildTarget,
+    ) -> Build | None:
         """Get the most recent build for a specific project/target."""
         try:
             with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
-                row = conn.execute(
+                params: list[str] = [
+                    target.name,
+                    target.root,
+                ]
+                query = (
                     "SELECT * FROM build_history"
-                    " WHERE project_root = ? AND name = ?"
-                    " ORDER BY started_at DESC LIMIT 1",
-                    (project_root, target),
-                ).fetchone()
+                    " WHERE name = ?"
+                    " AND json_extract(target, '$.root') = ?"
+                )
+                query += " ORDER BY started_at DESC LIMIT 1"
+                row = conn.execute(query, params).fetchone()
                 if row is None:
                     return None
                 return BuildHistory._from_row(row)
@@ -650,8 +680,13 @@ class Tests:
                 name="target",
                 build_id="123",
                 project_root="project_root",
-                target="target",
-                entry="entry",
+                target=ResolvedBuildTarget(
+                    name="target",
+                    entry="entry",
+                    pcb_path="",
+                    model_path="",
+                    root="project_root",
+                ),
                 status=BuildStatus.SUCCESS,
             )
         )

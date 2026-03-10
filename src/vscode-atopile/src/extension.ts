@@ -4,7 +4,7 @@ import { AtoResolver } from "./atoResolver";
 import { CoreClient } from "./coreClient";
 import { RpcProxy } from "./rpcProxy";
 import { findFreePort } from "./utils";
-import { openKicadForBuild } from "./kicad";
+import { openPcb } from "./kicad";
 import { ExtensionRequestHandler } from "./extensionRequestHandler";
 import { ExtensionLogger } from "./logger";
 import {
@@ -13,7 +13,7 @@ import {
   PanelHost,
   SIDEBAR_VIEW_ID,
 } from "./webviewHost";
-import { createUiCoreStatus } from "../../ui/shared/generated-types";
+import { createUiCoreStatus, type ResolvedBuildTarget } from "../../ui/shared/generated-types";
 
 const CORE_SERVER_READY_MARKER = "ATOPILE_SERVER_READY";
 
@@ -137,19 +137,17 @@ function registerCommands(
     vscode.commands.registerCommand(
       "atopile.openKicad",
       async ({
-        projectRoot,
         target,
       }: {
-        projectRoot?: string;
-        target?: string;
+        target?: ResolvedBuildTarget;
       } = {}) => {
-        if (!projectRoot || !target) {
+        if (!target) {
           vscode.window.showErrorMessage("Select a project and target first.");
           return;
         }
 
         try {
-          await openKicadForBuild(projectRoot, target);
+          await openPcb(target.pcbPath);
         } catch (err) {
           vscode.window.showErrorMessage(
             `Failed to open KiCad: ${err instanceof Error ? err.message : err}`,
@@ -217,10 +215,13 @@ async function startCoreServer(
     await pm.start();
     proxy.clearBootstrapState("coreStatus");
   } catch (err: any) {
-    output.appendLine(`[Extension] Core server failed to start: ${err.message}`);
-    vscode.window.showWarningMessage(`atopile core server failed to start: ${err.message}`);
+    const summary = err instanceof Error ? err.message : String(err);
+    output.show(true);
+    vscode.window.showWarningMessage(
+      `atopile core server failed to start: ${summary}. See the atopile output channel for details.`,
+    );
     const coreStatus = createUiCoreStatus();
-    coreStatus.error = err.message;
+    coreStatus.error = `${summary}. See the atopile output channel for details.`;
     proxy.setBootstrapState("coreStatus", coreStatus);
   }
   return pm;
