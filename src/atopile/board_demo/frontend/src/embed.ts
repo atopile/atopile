@@ -1,5 +1,6 @@
 import Handlebars from "handlebars";
 
+import { mountCodePreview } from "./code-preview";
 import { mountLayout } from "./layout";
 import { mountModel3D } from "./model3d";
 import type { DemoManifest, MountOptions } from "./shared";
@@ -104,11 +105,13 @@ export async function mount(target: HTMLElement | string, options: MountOptions 
     root.replaceChildren();
     root.classList.add("atopile-demo-root");
     if (!showHero) root.classList.add("atopile-demo-root--no-hero");
+    if (!manifest.codePath) root.classList.add("atopile-demo-root--no-code");
     root.innerHTML = renderTemplate({
         title: manifest.title ?? "Interactive PCB Demo",
         subtitle: manifest.subtitle ?? "Read-only layout plus a polished 3D board model.",
     });
 
+    const codeSurface = root.querySelector<HTMLElement>(".atopile-demo-code-surface");
     const layoutShell = root.querySelector<HTMLElement>(".atopile-demo-layout-shell");
     const layoutSurface = root.querySelector<HTMLElement>("#editor-canvas");
     const layoutInitialLoading = root.querySelector<HTMLElement>("#initial-loading");
@@ -122,6 +125,15 @@ export async function mount(target: HTMLElement | string, options: MountOptions 
     let disposeModelViewer: (() => void) | null = null;
 
     try {
+        // Mount code preview (non-blocking)
+        if (codeSurface && manifest.codePath) {
+            const codeUrl = new URL(manifest.codePath, `${assetBase}/`).toString();
+            const filename = manifest.codePath;
+            mountCodePreview(codeSurface, codeUrl, filename).catch(err => {
+                console.warn("Code preview failed:", err);
+            });
+        }
+
         disposeLayoutViewer = await mountLayout(
             layoutShell,
             layoutSurface,

@@ -3,6 +3,7 @@ export interface DemoManifest {
     subtitle?: string;
     layoutModelPath: string;
     modelPath: string;
+    codePath?: string;
     posterPath?: string;
     hiddenLayoutLayers?: string[];
     showStats?: boolean;

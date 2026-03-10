@@ -73,6 +73,9 @@ class DemoBundleBuilder:
         # Export the read-only layout render model consumed by the frontend.
         _export_layout_render_model(self.paths.pcb_path, self.paths.render_model_path)
 
+        # Copy the build entry .ato source file into the demo output.
+        _copy_entry_source(self.paths)
+
         # Build the optimized 3D board model used by the demo viewer.
         log.info(
             "Building demo 3D model for %s",
@@ -170,6 +173,17 @@ def _ensure_layout_derived_artifacts(
                 ) from exc
 
 
+def _copy_entry_source(paths: DemoPaths) -> None:
+    """Copy the build entry .ato source file into the demo output."""
+    entry_path = config.build.entry_file_path
+    if entry_path.exists():
+        dest = paths.output_dir / "code.ato"
+        shutil.copy2(entry_path, dest)
+        log.info("Copied entry source %s → %s", entry_path.name, dest.name)
+    else:
+        log.warning("Entry source file not found: %s", entry_path)
+
+
 def _export_layout_render_model(pcb_path: Path, output_path: Path) -> None:
     from atopile.layout_server.pcb_manager import PcbManager
 
@@ -213,6 +227,7 @@ def _write_manifest(
         for layer in render_model.get("layers", [])
         if not layer.get("default_visible", True)
     ]
+    code_path = paths.output_dir / "code.ato"
     manifest: dict[str, Any] = {
         "buildName": paths.build_name,
         "title": f"{paths.build_name} PCB",
@@ -224,6 +239,8 @@ def _write_manifest(
         "showStats": show_stats,
         "summary": summary,
     }
+    if code_path.exists():
+        manifest["codePath"] = code_path.name
     if poster_path:
         manifest["posterPath"] = poster_path
     paths.manifest_path.write_text(

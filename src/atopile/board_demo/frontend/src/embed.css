@@ -60,9 +60,14 @@
       }
       .atopile-demo-content {
         display: grid;
-        grid-template-rows: minmax(320px, 0.95fr) minmax(420px, 1.05fr);
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
         gap: 1px;
         background: rgba(255, 103, 31, 0.12);
+      }
+      .atopile-demo-pane--code {
+        grid-column: 1;
+        grid-row: 1 / -1;
       }
       .atopile-demo-pane {
         position: relative;
@@ -502,15 +507,89 @@
       }
       .atopile-demo-root--no-hero .atopile-demo-content {
         flex: 1;
-        grid-template-rows: 1fr 1fr;
       }
       .atopile-demo-root--no-hero .atopile-demo-pane {
         min-height: 0;
       }
 
+      /* Code preview pane */
+      .atopile-demo-code-surface {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        background: rgba(8, 13, 21, 0.92);
+      }
+      .atopile-code-header {
+        display: flex;
+        align-items: center;
+        padding: 8px 14px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        background: rgba(255, 255, 255, 0.02);
+        flex-shrink: 0;
+      }
+      .atopile-code-filename {
+        font: 600 0.72rem/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        color: #8899aa;
+        letter-spacing: 0.03em;
+      }
+      .atopile-code-scroller {
+        flex: 1;
+        overflow: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+      }
+      .atopile-code-pre {
+        margin: 0;
+        padding: 8px 0;
+        font: 0.72rem/1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        tab-size: 4;
+      }
+      .atopile-code-line {
+        display: flex;
+        padding: 0 14px 0 0;
+        min-height: 1.65em;
+      }
+      .atopile-code-line:hover {
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .atopile-code-linenum {
+        display: inline-block;
+        flex-shrink: 0;
+        text-align: right;
+        padding-right: 1ch;
+        margin-right: 1ch;
+        color: rgba(255, 255, 255, 0.15);
+        user-select: none;
+        border-right: 1px solid rgba(255, 255, 255, 0.04);
+        white-space: pre;
+      }
+      .atopile-code-content {
+        flex: 1;
+        white-space: pre;
+      }
+
+      /* Hide code pane when no codePath is set */
+      .atopile-demo-root--no-code .atopile-demo-pane--code {
+        display: none;
+      }
+      .atopile-demo-root--no-code .atopile-demo-content {
+        grid-template-columns: 1fr;
+      }
+
       @media (max-width: 920px) {
         .atopile-demo-pane {
           min-height: 360px;
+        }
+        .atopile-demo-content {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto;
+        }
+        .atopile-demo-pane--code {
+          grid-column: 1;
+          grid-row: auto;
+          min-height: 300px;
+          max-height: 400px;
         }
         .atopile-demo-layout-shell .layout-viewport {
           inset: 0 170px 0 0;
