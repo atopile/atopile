@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import { getBuildTarget, openKicadForBuild } from "./kicad";
 import { ExtensionLogger } from "./logger";
 
@@ -92,6 +93,23 @@ export class ExtensionRequestHandler {
         };
       }
 
+      case "vscode.revealInOs": {
+        const filePath = this._requireString(message.path, "path");
+        await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(filePath));
+        return { ok: true };
+      }
+
+      case "vscode.openInTerminal": {
+        const filePath = this._requireString(message.path, "path");
+        const cwd = await this._terminalCwd(vscode.Uri.file(filePath));
+        const terminal = vscode.window.createTerminal({
+          cwd,
+          name: `Terminal: ${path.basename(cwd.fsPath) || cwd.fsPath}`,
+        });
+        terminal.show();
+        return { ok: true };
+      }
+
       case "vscode.openKicad": {
         const projectRoot = this._requireString(message.projectRoot, "projectRoot");
         const target = this._requireString(message.target, "target");
@@ -158,4 +176,16 @@ export class ExtensionRequestHandler {
       return false;
     }
   }
+  private async _terminalCwd(uri: vscode.Uri): Promise<vscode.Uri> {
+    const stat = await vscode.workspace.fs.stat(uri);
+    if (this._isDirectory(stat.type)) {
+      return uri;
+    }
+    return vscode.Uri.file(path.dirname(uri.fsPath));
+  }
+
+  private _isDirectory(fileType: vscode.FileType): boolean {
+    return (fileType & vscode.FileType.Directory) !== 0;
+  }
+
 }

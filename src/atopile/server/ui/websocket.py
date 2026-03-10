@@ -40,8 +40,10 @@ from atopile.dataclasses import (
 from atopile.model import (
     artifacts,
     builds,
+    file_ops,
     migrations,
     packages,
+    parts,
     parts_search,
     projects,
     stdlib,
@@ -64,6 +66,7 @@ log = logging.getLogger(__name__)
 
 STREAM_POLL_INTERVAL = 0.25  # seconds
 EXTENSION_SESSION_ID = "extension"
+_NO_ACTION_RESULT = object()
 
 
 class CoreSocket:
@@ -136,13 +139,10 @@ class CoreSocket:
         keys = {str(key) for key in msg.get("keys", [])}
         self._subscriptions.setdefault(ws, {})[session_id] = keys
         for key in keys:
-            try:
-                field_name = self._store.require_field_name(key)
-                await self._send_state(
-                    ws, session_id, field_name, self._store.dump(field_name)
-                )
-            except KeyError:
-                log.warning("Client subscribed to unknown state key: %s", key)
+            field_name = self._store.require_field_name(key)
+            await self._send_state(
+                ws, session_id, field_name, self._store.dump(field_name)
+            )
 
     def _sidebar_details_state(self) -> UiSidebarDetails:
         return cast(UiSidebarDetails, self._store.get("sidebar_details"))
@@ -258,122 +258,63 @@ class CoreSocket:
             await self._vscode_bridge.forward_request(ws, session_id, msg)
             return
 
-        match msg.get("action"):
+        result: Any = _NO_ACTION_RESULT
+        error: str | None = None
+
+        match action:
             case "getRemoteAsset":
-                try:
-                    result = await remote_assets.proxy_remote_asset(
-                        str(msg.get("url", "")),
-                        str(msg.get("filename")) if msg.get("filename") else None,
-                    )
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result=result,
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                result = await remote_assets.proxy_remote_asset(
+                    str(msg.get("url", "")),
+                    str(msg.get("filename")) if msg.get("filename") else None,
+                )
 
             case "getPartDetails":
-                try:
-                    lcsc_id = str(msg.get("lcsc", ""))
-                    result = await asyncio.to_thread(
-                        parts_search.handle_get_part_details,
-                        lcsc_id,
-                        project_root=(
-                            str(msg.get("projectRoot"))
-                            if isinstance(msg.get("projectRoot"), str)
-                            and msg.get("projectRoot")
-                            else None
-                        ),
-                        identifier=(
-                            str(msg.get("identifier"))
-                            if isinstance(msg.get("identifier"), str)
-                            and msg.get("identifier")
-                            else None
-                        ),
-                        installed=bool(msg.get("installed")),
-                    )
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result={
-                            "part": None
-                            if result is None
-                            else result.model_dump(mode="json", by_alias=True)
-                        },
-                        error=None if result else f"Part not found: {lcsc_id}",
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                lcsc_id = str(msg.get("lcsc", ""))
+                part = await asyncio.to_thread(
+                    parts_search.handle_get_part_details,
+                    lcsc_id,
+                    project_root=(
+                        str(msg.get("projectRoot"))
+                        if isinstance(msg.get("projectRoot"), str)
+                        and msg.get("projectRoot")
+                        else None
+                    ),
+                    identifier=(
+                        str(msg.get("identifier"))
+                        if isinstance(msg.get("identifier"), str)
+                        and msg.get("identifier")
+                        else None
+                    ),
+                    installed=bool(msg.get("installed")),
+                )
+                result = {
+                    "part": None
+                    if part is None
+                    else part.model_dump(mode="json", by_alias=True)
+                }
+                if part is None:
+                    error = f"Part not found: {lcsc_id}"
 
             case "getMigrationSteps":
-                try:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result={
-                            "steps": [
-                                step.to_dict() for step in migrations.get_all_steps()
-                            ],
-                            "topics": migrations.get_topics(),
-                        },
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                result = {
+                    "steps": [step.to_dict() for step in migrations.get_all_steps()],
+                    "topics": migrations.get_topics(),
+                }
 
             case "getPartModelData":
-                try:
-                    lcsc_id = str(msg.get("lcsc", ""))
-                    result = await asyncio.to_thread(
-                        parts_search.handle_get_part_model,
-                        lcsc_id,
-                    )
-                    if not result:
-                        raise ValueError(f"3D model not found: {lcsc_id}")
-                    data, name = result
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result={
-                            "contentType": "model/step",
-                            "filename": name,
-                            "data": base64.b64encode(data).decode("ascii"),
-                        },
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                lcsc_id = str(msg.get("lcsc", ""))
+                model = await asyncio.to_thread(
+                    parts_search.handle_get_part_model,
+                    lcsc_id,
+                )
+                if not model:
+                    raise ValueError(f"3D model not found: {lcsc_id}")
+                data, name = model
+                result = {
+                    "contentType": "model/step",
+                    "filename": name,
+                    "data": base64.b64encode(data).decode("ascii"),
+                }
 
             case "selectProject":
                 project_root = msg.get("projectRoot") or None
@@ -388,6 +329,7 @@ class CoreSocket:
                     await self._project_files.watch([Path(project_root)])
                 else:
                     self._store.set("project_files", [])
+                return
 
             case "selectTarget":
                 self._store.merge(
@@ -396,6 +338,7 @@ class CoreSocket:
                         "selectedTarget": msg.get("target") or None,
                     },
                 )
+                return
 
             case "setLogViewCurrentId":
                 self._store.merge(
@@ -405,6 +348,7 @@ class CoreSocket:
                         "logViewStage": msg.get("stage") or None,
                     },
                 )
+                return
 
             case "resolverInfo":
                 self._store.merge(
@@ -418,9 +362,11 @@ class CoreSocket:
                         "error": None,
                     },
                 )
+                return
 
             case "coreStartupError":
                 self._store.merge("core_status", {"error": msg.get("message")})
+                return
 
             case "extensionSettings":
                 self._store.merge(
@@ -430,11 +376,13 @@ class CoreSocket:
                         "autoInstall": msg.get("autoInstall", True),
                     },
                 )
+                return
 
             case "updateExtensionSetting":
                 key = msg.get("key")
                 if isinstance(key, str):
                     self._store.merge("extension_settings", {key: msg.get("value")})
+                return
 
             case "setActiveFile":
                 self._store.merge(
@@ -443,172 +391,107 @@ class CoreSocket:
                         "activeFilePath": msg.get("filePath"),
                     },
                 )
+                return
 
             case "discoverProjects":
                 self._discovery_paths = [Path(p) for p in msg.get("paths", []) if p]
-                result = projects.handle_get_projects(self._discovery_paths)
-                self._store.set("projects", result.projects)
+                projects_result = projects.handle_get_projects(self._discovery_paths)
+                self._store.set("projects", projects_result.projects)
+                return
 
             case "createProject":
-                try:
-                    request = CreateProjectRequest(
-                        parent_directory=str(msg.get("parentDirectory") or ""),
-                        name=(
-                            str(msg.get("name"))
-                            if isinstance(msg.get("name"), str) and msg.get("name")
-                            else None
-                        ),
-                    )
-                    result = await asyncio.to_thread(
-                        projects.handle_create_project, request
-                    )
-                    await self._refresh_projects()
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result=result.model_dump(by_alias=True),
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                request = CreateProjectRequest(
+                    parent_directory=str(msg.get("parentDirectory") or ""),
+                    name=(
+                        str(msg.get("name"))
+                        if isinstance(msg.get("name"), str) and msg.get("name")
+                        else None
+                    ),
+                )
+                create_result = await asyncio.to_thread(
+                    projects.handle_create_project, request
+                )
+                await self._refresh_projects()
+                result = create_result.model_dump(by_alias=True)
 
             case "addBuildTarget":
-                try:
-                    request = AddBuildTargetRequest(
-                        project_root=str(msg.get("projectRoot") or ""),
-                        name=str(msg.get("name") or ""),
-                        entry=str(msg.get("entry") or ""),
+                request = AddBuildTargetRequest(
+                    project_root=str(msg.get("projectRoot") or ""),
+                    name=str(msg.get("name") or ""),
+                    entry=str(msg.get("entry") or ""),
+                )
+                add_result = await asyncio.to_thread(
+                    projects.handle_add_build_target, request
+                )
+                await self._refresh_project_entry(request.project_root)
+                self._store.merge(
+                    "project_state",
+                    {
+                        "selectedProject": request.project_root,
+                        "selectedTarget": add_result.target,
+                    },
+                )
+                result = add_result.model_dump(by_alias=True)
+
+            case "updateBuildTarget":
+                request = UpdateBuildTargetRequest(
+                    project_root=str(msg.get("projectRoot") or ""),
+                    old_name=str(msg.get("oldName") or ""),
+                    new_name=(
+                        str(msg.get("newName"))
+                        if isinstance(msg.get("newName"), str) and msg.get("newName")
+                        else None
+                    ),
+                    new_entry=(
+                        str(msg.get("newEntry"))
+                        if isinstance(msg.get("newEntry"), str)
+                        else None
+                    ),
+                )
+                update_result = await asyncio.to_thread(
+                    projects.handle_update_build_target, request
+                )
+                await self._refresh_project_entry(request.project_root)
+                project_state = cast(dict[str, Any], self._store.dump("project_state"))
+                if project_state.get("selectedProject") == request.project_root and (
+                    project_state.get("selectedTarget") == request.old_name
+                ):
+                    self._store.merge(
+                        "project_state",
+                        {"selectedTarget": update_result.target or request.old_name},
                     )
-                    result = await asyncio.to_thread(
-                        projects.handle_add_build_target, request
+                result = update_result.model_dump(by_alias=True)
+
+            case "deleteBuildTarget":
+                request = DeleteBuildTargetRequest(
+                    project_root=str(msg.get("projectRoot") or ""),
+                    name=str(msg.get("name") or ""),
+                )
+                delete_result = await asyncio.to_thread(
+                    projects.handle_delete_build_target, request
+                )
+                await self._refresh_project_entry(request.project_root)
+                project_state = cast(dict[str, Any], self._store.dump("project_state"))
+                selected_project = project_state.get("selectedProject")
+                selected_target = project_state.get("selectedTarget")
+                if (
+                    selected_project == request.project_root
+                    and selected_target == request.name
+                ):
+                    project = projects.find_project(
+                        self._projects_state(), request.project_root
                     )
-                    await self._refresh_project_entry(request.project_root)
                     self._store.merge(
                         "project_state",
                         {
-                            "selectedProject": request.project_root,
-                            "selectedTarget": result.target,
+                            "selectedTarget": (
+                                project.targets[0].name
+                                if project and project.targets
+                                else None
+                            ),
                         },
                     )
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result=result.model_dump(by_alias=True),
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
-
-            case "updateBuildTarget":
-                try:
-                    request = UpdateBuildTargetRequest(
-                        project_root=str(msg.get("projectRoot") or ""),
-                        old_name=str(msg.get("oldName") or ""),
-                        new_name=(
-                            str(msg.get("newName"))
-                            if isinstance(msg.get("newName"), str)
-                            and msg.get("newName")
-                            else None
-                        ),
-                        new_entry=(
-                            str(msg.get("newEntry"))
-                            if isinstance(msg.get("newEntry"), str)
-                            else None
-                        ),
-                    )
-                    result = await asyncio.to_thread(
-                        projects.handle_update_build_target, request
-                    )
-                    await self._refresh_project_entry(request.project_root)
-                    project_state = cast(
-                        dict[str, Any], self._store.dump("project_state")
-                    )
-                    if project_state.get(
-                        "selectedProject"
-                    ) == request.project_root and (
-                        project_state.get("selectedTarget") == request.old_name
-                    ):
-                        self._store.merge(
-                            "project_state",
-                            {"selectedTarget": result.target or request.old_name},
-                        )
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result=result.model_dump(by_alias=True),
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
-
-            case "deleteBuildTarget":
-                try:
-                    request = DeleteBuildTargetRequest(
-                        project_root=str(msg.get("projectRoot") or ""),
-                        name=str(msg.get("name") or ""),
-                    )
-                    result = await asyncio.to_thread(
-                        projects.handle_delete_build_target, request
-                    )
-                    await self._refresh_project_entry(request.project_root)
-                    project_state = cast(
-                        dict[str, Any], self._store.dump("project_state")
-                    )
-                    selected_project = project_state.get("selectedProject")
-                    selected_target = project_state.get("selectedTarget")
-                    if (
-                        selected_project == request.project_root
-                        and selected_target == request.name
-                    ):
-                        project = projects.find_project(
-                            self._projects_state(), request.project_root
-                        )
-                        self._store.merge(
-                            "project_state",
-                            {
-                                "selectedTarget": (
-                                    project.targets[0].name
-                                    if project and project.targets
-                                    else None
-                                ),
-                            },
-                        )
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result=result.model_dump(by_alias=True),
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                result = delete_result.model_dump(by_alias=True)
 
             case "checkEntry":
                 project_root = str(msg.get("projectRoot") or "")
@@ -620,13 +503,6 @@ class CoreSocket:
                     entry,
                     project.targets if project else None,
                 )
-                await self._send_action_result(
-                    ws,
-                    session_id,
-                    action,
-                    request_id,
-                    result=result,
-                )
 
             case "listFiles":
                 project_root = msg.get("projectRoot", "")
@@ -634,6 +510,60 @@ class CoreSocket:
                     await self._project_files.watch([Path(project_root)])
                 else:
                     self._store.set("project_files", [])
+                return
+
+            case "createFile":
+                requested_path = str(msg.get("path") or "")
+                log.info("Files action createFile path=%s", requested_path)
+                created_path = await asyncio.to_thread(
+                    file_ops.create_file,
+                    requested_path,
+                )
+                log.info("Files action createFile success path=%s", created_path)
+                result = {"path": created_path}
+
+            case "createFolder":
+                requested_path = str(msg.get("path") or "")
+                log.info("Files action createFolder path=%s", requested_path)
+                created_path = await asyncio.to_thread(
+                    file_ops.create_folder,
+                    requested_path,
+                )
+                log.info("Files action createFolder success path=%s", created_path)
+                result = {"path": created_path}
+
+            case "renamePath":
+                requested_path = str(msg.get("path") or "")
+                new_path = str(msg.get("newPath") or "")
+                log.info(
+                    "Files action renamePath from=%s to=%s",
+                    requested_path,
+                    new_path,
+                )
+                renamed_path = await asyncio.to_thread(
+                    file_ops.rename_path,
+                    requested_path,
+                    new_path,
+                )
+                log.info("Files action renamePath success path=%s", renamed_path)
+                result = {"path": renamed_path}
+
+            case "deletePath":
+                requested_path = str(msg.get("path") or "")
+                log.info("Files action deletePath path=%s", requested_path)
+                await asyncio.to_thread(file_ops.delete_path, requested_path)
+                log.info("Files action deletePath success path=%s", requested_path)
+                result = {"success": True}
+
+            case "duplicatePath":
+                requested_path = str(msg.get("path") or "")
+                log.info("Files action duplicatePath path=%s", requested_path)
+                duplicated_path = await asyncio.to_thread(
+                    file_ops.duplicate_path,
+                    requested_path,
+                )
+                log.info("Files action duplicatePath success path=%s", duplicated_path)
+                result = {"path": duplicated_path}
 
             case "startBuild":
                 request = BuildRequest(
@@ -642,77 +572,54 @@ class CoreSocket:
                     include_targets=msg.get("includeTargets", []),
                     exclude_targets=msg.get("excludeTargets", []),
                 )
-                try:
-                    handle_start_build(request)
-                except ValueError as e:
-                    log.warning("startBuild failed: %s", e)
+                handle_start_build(request)
+                return
 
             case "cancelBuild":
                 build_id = str(msg.get("buildId") or "")
                 result = await asyncio.to_thread(builds.handle_cancel_build, build_id)
-                await self._send_action_result(
-                    ws,
-                    session_id,
-                    action,
-                    request_id,
-                    result=result,
-                    error=None if result.get("success") else result.get("message"),
-                )
+                if not result.get("success"):
+                    error = result.get("message")
 
             case "openLayout":
-                try:
-                    request = OpenLayoutRequest.model_validate(msg)
-                    layout_path = await self._open_layout(request)
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result={"path": str(layout_path)},
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                request = OpenLayoutRequest.model_validate(msg)
+                layout_path = await self._open_layout(request)
+                result = {"path": str(layout_path)}
 
             case "getPackagesSummary":
                 project_root = msg.get("projectRoot", "")
                 root = Path(project_root) if project_root else None
-                result = await asyncio.to_thread(packages.handle_packages_summary, root)
-                self._store.set("packages_summary", result)
+                packages_result = await asyncio.to_thread(
+                    packages.handle_packages_summary, root
+                )
+                self._store.set("packages_summary", packages_result)
+                return
 
             case "showPackageDetails":
                 await self._show_package_details(
                     msg.get("projectRoot") or None,
                     str(msg.get("packageId", "")),
                 )
+                return
 
             case "closeSidebarDetails":
                 self._store.set("sidebar_details", sidebar.clear())
+                return
 
             case "installPackage":
                 project_root = Path(msg.get("projectRoot", ""))
                 pkg_id = msg.get("packageId", "")
                 version = msg.get("version")
-                action_error = None
-                try:
-                    await asyncio.to_thread(
-                        packages.install_package_to_project,
-                        project_root,
-                        pkg_id,
-                        version,
-                    )
-                except Exception as e:
-                    log.warning("installPackage failed: %s", e)
-                    action_error = str(e)
-                result = await asyncio.to_thread(
+                await asyncio.to_thread(
+                    packages.install_package_to_project,
+                    project_root,
+                    pkg_id,
+                    version,
+                )
+                packages_result = await asyncio.to_thread(
                     packages.handle_packages_summary, project_root
                 )
-                self._store.set("packages_summary", result)
+                self._store.set("packages_summary", packages_result)
                 current = self._sidebar_details_state()
                 package_state = current.package
                 if (
@@ -723,26 +630,21 @@ class CoreSocket:
                     await self._show_package_details(
                         str(project_root),
                         str(pkg_id),
-                        action_error=action_error,
                     )
+                return
 
             case "removePackage":
                 project_root = Path(msg.get("projectRoot", ""))
                 pkg_id = msg.get("packageId", "")
-                action_error = None
-                try:
-                    await asyncio.to_thread(
-                        packages.remove_package_from_project,
-                        project_root,
-                        pkg_id,
-                    )
-                except Exception as e:
-                    log.warning("removePackage failed: %s", e)
-                    action_error = str(e)
-                result = await asyncio.to_thread(
+                await asyncio.to_thread(
+                    packages.remove_package_from_project,
+                    project_root,
+                    pkg_id,
+                )
+                packages_result = await asyncio.to_thread(
                     packages.handle_packages_summary, project_root
                 )
-                self._store.set("packages_summary", result)
+                self._store.set("packages_summary", packages_result)
                 current = self._sidebar_details_state()
                 package_state = current.package
                 if (
@@ -753,16 +655,17 @@ class CoreSocket:
                     await self._show_package_details(
                         str(project_root),
                         str(pkg_id),
-                        action_error=action_error,
                     )
+                return
 
             case "getStdlib":
                 type_filter = msg.get("typeFilter")
                 search = msg.get("search")
-                result = await asyncio.to_thread(
+                stdlib_result = await asyncio.to_thread(
                     stdlib.handle_get_stdlib, type_filter, search
                 )
-                self._store.set("stdlib_data", result)
+                self._store.set("stdlib_data", stdlib_result)
+                return
 
             case "getStructure":
                 project_root = msg.get("projectRoot", "")
@@ -773,15 +676,12 @@ class CoreSocket:
                 if modules_result:
                     enriched = []
                     for mod in modules_result.modules:
-                        try:
-                            enriched_mod = await asyncio.to_thread(
-                                introspect_module_definition,
-                                Path(project_root),
-                                mod,
-                            )
-                            enriched.append(enriched_mod)
-                        except Exception:
-                            enriched.append(mod)
+                        enriched_mod = await asyncio.to_thread(
+                            introspect_module_definition,
+                            Path(project_root),
+                            mod,
+                        )
+                        enriched.append(enriched_mod)
                     data = {
                         "modules": [m.model_dump() for m in enriched],
                         "total": len(enriched),
@@ -789,24 +689,29 @@ class CoreSocket:
                 else:
                     data = {"modules": [], "total": 0}
                 self._store.set("structure_data", data)
+                return
 
             case "searchParts":
                 query = msg.get("query", "")
                 limit = msg.get("limit", 50)
-                parts, error = await asyncio.to_thread(
+                parts_result, search_error = await asyncio.to_thread(
                     parts_search.handle_search_parts,
                     query,
                     limit=limit,
                 )
-                self._store.set("parts_search", {"parts": parts, "error": error})
+                self._store.set(
+                    "parts_search", {"parts": parts_result, "error": search_error}
+                )
+                return
 
             case "getInstalledParts":
                 project_root = msg.get("projectRoot", "")
-                parts = await asyncio.to_thread(
+                installed_parts = await asyncio.to_thread(
                     parts_search.handle_list_installed_parts,
                     project_root,
                 )
-                self._store.set("installed_parts", {"parts": parts})
+                self._store.set("installed_parts", {"parts": installed_parts})
+                return
 
             case "showPartDetails":
                 await self._show_part_details(
@@ -815,25 +720,21 @@ class CoreSocket:
                     lcsc=msg.get("lcsc"),
                     installed=bool(msg.get("installed")),
                 )
+                return
 
             case "installPart":
                 project_root = msg.get("projectRoot", "")
                 lcsc = msg.get("lcsc", "")
-                action_error = None
-                try:
-                    await asyncio.to_thread(
-                        parts_search.handle_install_part,
-                        lcsc,
-                        project_root,
-                    )
-                except Exception as e:
-                    log.warning("installPart failed: %s", e)
-                    action_error = str(e)
-                parts = await asyncio.to_thread(
+                await asyncio.to_thread(
+                    parts_search.handle_install_part,
+                    lcsc,
+                    project_root,
+                )
+                installed_parts = await asyncio.to_thread(
                     parts_search.handle_list_installed_parts,
                     project_root,
                 )
-                self._store.set("installed_parts", {"parts": parts})
+                self._store.set("installed_parts", {"parts": installed_parts})
                 current = self._sidebar_details_state()
                 part_state = current.part
                 if (
@@ -850,35 +751,22 @@ class CoreSocket:
                         seed=part.model_copy(update={"installed": True})
                         if part
                         else None,
-                        action_error=action_error,
                     )
-                await self._send_action_result(
-                    ws,
-                    session_id,
-                    action,
-                    request_id,
-                    result={"success": action_error is None},
-                    error=action_error,
-                )
+                result = {"success": True}
 
             case "uninstallPart":
                 project_root = msg.get("projectRoot", "")
                 lcsc = msg.get("lcsc", "")
-                action_error = None
-                try:
-                    await asyncio.to_thread(
-                        parts_search.handle_uninstall_part,
-                        lcsc,
-                        project_root,
-                    )
-                except Exception as e:
-                    log.warning("uninstallPart failed: %s", e)
-                    action_error = str(e)
-                parts = await asyncio.to_thread(
+                await asyncio.to_thread(
+                    parts_search.handle_uninstall_part,
+                    lcsc,
+                    project_root,
+                )
+                installed_parts = await asyncio.to_thread(
                     parts_search.handle_list_installed_parts,
                     project_root,
                 )
-                self._store.set("installed_parts", {"parts": parts})
+                self._store.set("installed_parts", {"parts": installed_parts})
                 current = self._sidebar_details_state()
                 part_state = current.part
                 if (
@@ -895,21 +783,14 @@ class CoreSocket:
                         seed=part.model_copy(update={"installed": False})
                         if part
                         else None,
-                        action_error=action_error,
                     )
-                await self._send_action_result(
-                    ws,
-                    session_id,
-                    action,
-                    request_id,
-                    result={"success": action_error is None},
-                    error=action_error,
-                )
+                result = {"success": True}
 
             case "showMigrationDetails":
                 project_root = str(msg.get("projectRoot", ""))
                 if project_root:
                     await self._show_migration_details(project_root)
+                return
 
             case "runMigration" | "migrateProjectSteps":
                 project_root = str(msg.get("projectRoot", ""))
@@ -924,18 +805,13 @@ class CoreSocket:
                     ),
                 )
                 for step_id in selected_steps:
-                    try:
-                        await migrations.get_step(step_id).run(Path(project_root))
-                        error = None
-                    except Exception as exc:
-                        error = str(exc)
-
+                    await migrations.get_step(step_id).run(Path(project_root))
                     self._store.set(
                         "sidebar_details",
                         sidebar.finish_migration_step(
                             self._sidebar_details_state(),
                             step_id,
-                            error=error,
+                            error=None,
                         ),
                     )
                     await ws.send(
@@ -944,8 +820,8 @@ class CoreSocket:
                                 "type": "migration_step_result",
                                 "project_root": project_root,
                                 "step": step_id,
-                                "success": error is None,
-                                "error": error,
+                                "success": True,
+                                "error": None,
                             }
                         )
                     )
@@ -971,106 +847,52 @@ class CoreSocket:
                         }
                     )
                 )
-                await self._send_action_result(
-                    ws,
-                    session_id,
-                    action,
-                    request_id,
-                    result={"success": success},
-                    error=None if success else "Some migration steps failed.",
-                )
+                result = {"success": success}
 
             case "getVariables":
                 project_root = msg.get("projectRoot", "")
                 target = msg.get("target", "default")
-                data = await asyncio.to_thread(
+                variables = await asyncio.to_thread(
                     artifacts.handle_get_variables,
                     project_root,
                     target,
                 )
-                self._store.set("variables_data", data or {"nodes": []})
+                self._store.set("variables_data", variables or {"nodes": []})
+                return
 
             case "getBom":
-                try:
-                    project_root = msg.get("projectRoot", "")
-                    target = msg.get("target", "default")
-                    data = await asyncio.to_thread(
-                        artifacts.handle_get_bom,
-                        project_root,
-                        target,
-                    )
-                    result = data or {
-                        "components": [],
-                        "totalQuantity": 0,
-                        "uniqueParts": 0,
-                        "estimatedCost": None,
-                        "outOfStock": 0,
-                    }
-                    self._store.set("bom_data", result)
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result=result,
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                project_root = msg.get("projectRoot", "")
+                target = msg.get("target", "default")
+                bom = await asyncio.to_thread(
+                    artifacts.handle_get_bom,
+                    project_root,
+                    target,
+                )
+                result = bom or {
+                    "components": [],
+                    "totalQuantity": 0,
+                    "uniqueParts": 0,
+                    "estimatedCost": None,
+                    "outOfStock": 0,
+                }
+                self._store.set("bom_data", result)
 
             case "getBuildsByProject":
-                try:
-                    result = await asyncio.to_thread(
-                        builds.handle_get_builds_by_project,
-                        msg.get("projectRoot") or None,
-                        msg.get("target") or None,
-                        int(msg.get("limit", 50)),
-                    )
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result=result,
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                result = await asyncio.to_thread(
+                    builds.handle_get_builds_by_project,
+                    msg.get("projectRoot") or None,
+                    msg.get("target") or None,
+                    int(msg.get("limit", 50)),
+                )
 
             case "fetchLcscParts":
-                try:
-                    lcsc_ids = [str(value) for value in msg.get("lcscIds", []) if value]
-                    result = await asyncio.to_thread(
-                        parts.handle_get_lcsc_parts,
-                        lcsc_ids,
-                        project_root=msg.get("projectRoot") or None,
-                        target=msg.get("target") or None,
-                    )
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        result=result,
-                    )
-                except Exception as exc:
-                    await self._send_action_result(
-                        ws,
-                        session_id,
-                        action,
-                        request_id,
-                        error=str(exc),
-                    )
+                lcsc_ids = [str(value) for value in msg.get("lcscIds", []) if value]
+                result = await asyncio.to_thread(
+                    parts.handle_get_lcsc_parts,
+                    lcsc_ids,
+                    project_root=msg.get("projectRoot") or None,
+                    target=msg.get("target") or None,
+                )
 
             case "subscribeLogs":
                 request = UiBuildLogRequest.model_validate(msg)
@@ -1096,27 +918,28 @@ class CoreSocket:
                 task = asyncio.create_task(self._log_stream_loop(ws, query))
                 self._log_tasks.setdefault(ws, {})[session_id] = task
                 log.debug("Log client subscribed to build %s", build_id)
+                return
 
             case "unsubscribeLogs":
                 old_task = self._log_tasks.setdefault(ws, {}).pop(session_id, None)
                 if old_task:
                     old_task.cancel()
                 log.debug("Log client unsubscribed")
+                return
 
-            case action:
-                await ws.send(
-                    json.dumps(
-                        {
-                            "type": "action_result",
-                            "sessionId": session_id,
-                            "action": action,
-                            "result": {
-                                "success": False,
-                                "message": f"Unknown action: {action}",
-                            },
-                        }
-                    )
-                )
+            case _:
+                raise ValueError(f"Unknown action: {action}")
+
+        if result is _NO_ACTION_RESULT:
+            return
+        await self._send_action_result(
+            ws,
+            session_id,
+            action,
+            request_id,
+            result=result,
+            error=error,
+        )
 
     # -- Log streaming -----------------------------------------------------
 
@@ -1133,8 +956,6 @@ class CoreSocket:
             pass
         except websockets.ConnectionClosed:
             pass
-        except Exception:
-            log.exception("Log stream error")
 
     async def _push_log_stream(
         self, ws: ServerConnection, query: dict, after_id: int
@@ -1251,12 +1072,13 @@ class CoreSocket:
         wire_key = self._store.wire_key(field_name)
         dead: list[ServerConnection] = []
         for ws, sessions in list(self._subscriptions.items()):
-            try:
-                for session_id, keys in sessions.items():
+            for session_id, keys in sessions.items():
+                try:
                     if wire_key in keys:
                         await self._send_state(ws, session_id, field_name, data)
-            except Exception:
-                dead.append(ws)
+                except websockets.ConnectionClosed:
+                    dead.append(ws)
+                    break
         for ws in dead:
             self._clients.discard(ws)
             self._subscriptions.pop(ws, None)

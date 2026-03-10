@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   Files,
   ChevronRight,
@@ -18,10 +18,13 @@ import {
   Terminal,
   GitBranch,
 } from "lucide-react";
-import { EmptyState, CenteredSpinner } from "../shared/components";
+import { EmptyState, Button, Input } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
+import { createWebviewLogger } from "../shared/logger";
 import type { FileNode } from "../../shared/generated-types";
 import "./FilesPanel.css";
+
+const logger = createWebviewLogger("FilesPanel");
 
 function fileStyle(name: string): { icon: typeof File; className: string } {
   const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() : "";
@@ -86,25 +89,156 @@ function fileStyle(name: string): { icon: typeof File; className: string } {
   }
 }
 
+type ExplorerAction =
+  | "open"
+  | "new-file"
+  | "new-folder"
+  | "rename"
+  | "duplicate"
+  | "delete"
+  | "reveal"
+  | "terminal";
+
+interface ContextMenuTarget {
+  fullPath: string;
+  relativePath: string;
+  isFolder: boolean;
+  isRoot: boolean;
+  directoryPath: string;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  target: ContextMenuTarget;
+}
+
+interface FileDialogState {
+  kind: "text" | "confirm";
+  action: "new-file" | "new-folder" | "rename" | "delete";
+  title: string;
+  message: string;
+  confirmLabel: string;
+  target: ContextMenuTarget;
+  value: string;
+  error: string | null;
+}
+
 interface TreeNodeProps {
   node: FileNode;
   path: string;
+  projectRoot: string;
   depth: number;
   expandedDirs: Set<string>;
+  activePath: string | null;
   onToggleDir: (path: string) => void;
   onOpenFile: (path: string) => void;
+  onOpenContextMenu: (event: ReactMouseEvent, target: ContextMenuTarget) => void;
+}
+
+function normalizePath(value: string): string {
+  const normalized = value.replace(/\\/g, "/");
+  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+}
+
+function joinPath(base: string, relativePath: string): string {
+  return `${base.replace(/[\\/]+$/, "")}/${relativePath}`;
+}
+
+function relativeToProject(projectRoot: string, fullPath: string): string | null {
+  const root = normalizePath(projectRoot);
+  const absolute = normalizePath(fullPath);
+  if (absolute === root) {
+    return "";
+  }
+  if (!absolute.startsWith(`${root}/`)) {
+    return null;
+  }
+  return absolute.slice(root.length + 1);
+}
+
+function parentRelativePath(relativePath: string): string {
+  const index = relativePath.lastIndexOf("/");
+  return index === -1 ? "" : relativePath.slice(0, index);
+}
+
+function basename(filePath: string): string {
+  const normalized = normalizePath(filePath);
+  const index = normalized.lastIndexOf("/");
+  return index === -1 ? normalized : normalized.slice(index + 1);
+}
+
+function joinChildPath(directoryPath: string, name: string): string {
+  return joinPath(directoryPath, name.trim());
+}
+
+function validateName(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "Name cannot be empty.";
+  }
+  if (trimmed.includes("/") || trimmed.includes("\\")) {
+    return "Name cannot contain path separators.";
+  }
+  return null;
+}
+
+function ancestorPaths(relativePath: string): string[] {
+  const segments = relativePath.split("/").filter(Boolean);
+  return segments.slice(0, -1).map((_, index) => segments.slice(0, index + 1).join("/"));
+}
+
+function contextMenuItems(target: ContextMenuTarget): { action: ExplorerAction; label: string }[] {
+  if (target.isRoot) {
+    return [
+      { action: "new-file", label: "New File" },
+      { action: "new-folder", label: "New Folder" },
+      { action: "reveal", label: "Reveal in Finder/Explorer" },
+      { action: "terminal", label: "Open in Terminal" },
+    ];
+  }
+  if (target.isFolder) {
+    return [
+      { action: "new-file", label: "New File" },
+      { action: "new-folder", label: "New Folder" },
+      { action: "rename", label: "Rename" },
+      { action: "duplicate", label: "Duplicate" },
+      { action: "delete", label: "Delete" },
+      { action: "reveal", label: "Reveal in Finder/Explorer" },
+      { action: "terminal", label: "Open in Terminal" },
+    ];
+  }
+  return [
+    { action: "open", label: "Open" },
+    { action: "rename", label: "Rename" },
+    { action: "duplicate", label: "Duplicate" },
+    { action: "delete", label: "Delete" },
+    { action: "reveal", label: "Reveal in Finder/Explorer" },
+    { action: "terminal", label: "Open in Terminal" },
+  ];
 }
 
 function TreeNode({
   node,
   path,
+  projectRoot,
   depth,
   expandedDirs,
+  activePath,
   onToggleDir,
   onOpenFile,
+  onOpenContextMenu,
 }: TreeNodeProps) {
   const isFolder = node.children != null;
   const isExpanded = expandedDirs.has(path);
+  const fullPath = joinPath(projectRoot, path);
+  const rowTarget: ContextMenuTarget = {
+    fullPath,
+    relativePath: path,
+    isFolder,
+    isRoot: false,
+    directoryPath: isFolder ? fullPath : joinPath(projectRoot, parentRelativePath(path)),
+  };
 
   const handleClick = () => {
     if (isFolder) {
@@ -120,12 +254,23 @@ function TreeNode({
   }
 
   const { icon: Icon, className: iconClass } = isFolder
-    ? { icon: isExpanded ? FolderOpen : Folder, className: `folder-icon${isExpanded ? " expanded" : ""}` }
+    ? {
+        icon: isExpanded ? FolderOpen : Folder,
+        className: `folder-icon${isExpanded ? " expanded" : ""}`,
+      }
     : fileStyle(node.name);
 
   return (
     <div className="tree-node">
-      <div className="tree-row" onClick={handleClick}>
+      <div
+        className={`tree-row${activePath === path ? " active" : ""}`}
+        onClick={handleClick}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenContextMenu(event, rowTarget);
+        }}
+      >
         {indents}
         {isFolder ? (
           <span className={`tree-row-chevron${isExpanded ? " expanded" : ""}`}>
@@ -148,10 +293,13 @@ function TreeNode({
                 key={childPath}
                 node={child}
                 path={childPath}
+                projectRoot={projectRoot}
                 depth={depth + 1}
                 expandedDirs={expandedDirs}
+                activePath={activePath}
                 onToggleDir={onToggleDir}
                 onOpenFile={onOpenFile}
+                onOpenContextMenu={onOpenContextMenu}
               />
             );
           })}
@@ -162,14 +310,63 @@ function TreeNode({
 }
 
 export function FilesPanel() {
-  const { selectedProject: projectRoot } = WebviewRpcClient.useSubscribe("projectState");
+  const projectState = WebviewRpcClient.useSubscribe("projectState");
+  const { selectedProject: projectRoot, activeFilePath } = projectState;
   const projectFiles = WebviewRpcClient.useSubscribe("projectFiles");
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [dialog, setDialog] = useState<FileDialogState | null>(null);
+
+  const activeRelativePath =
+    projectRoot && activeFilePath ? relativeToProject(projectRoot, activeFilePath) : null;
+
+  useEffect(() => {
+    if (!activeRelativePath) {
+      return;
+    }
+    setExpandedDirs((previous) => {
+      const next = new Set(previous);
+      let changed = false;
+      for (const ancestor of ancestorPaths(activeRelativePath)) {
+        if (!next.has(ancestor)) {
+          next.add(ancestor);
+          changed = true;
+        }
+      }
+      return changed ? next : previous;
+    });
+  }, [activeRelativePath]);
+
+  useEffect(() => {
+    if (!contextMenu && !dialog) {
+      return;
+    }
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".file-tree-context-menu") || target?.closest(".file-tree-dialog")) {
+        return;
+      }
+      setContextMenu(null);
+      setDialog(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setContextMenu(null);
+        setDialog(null);
+      }
+    };
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [contextMenu, dialog]);
 
   const handleToggleDir = useCallback((path: string) => {
-    setExpandedDirs((prev) => {
-      const next = new Set(prev);
+    setExpandedDirs((previous) => {
+      const next = new Set(previous);
       if (next.has(path)) {
         next.delete(path);
       } else {
@@ -181,12 +378,223 @@ export function FilesPanel() {
 
   const handleOpenFile = useCallback(
     (relativePath: string) => {
-      if (!projectRoot) return;
-      const fullPath = `${projectRoot}/${relativePath}`;
-      void rpcClient?.requestAction("vscode.openFile", { path: fullPath });
+      if (!projectRoot) {
+        return;
+      }
+      logger.info(`openFile path=${relativePath}`);
+      void rpcClient?.requestAction("vscode.openFile", { path: joinPath(projectRoot, relativePath) });
     },
     [projectRoot],
   );
+
+  const revealPath = useCallback(
+    (fullPath: string | null, includeSelf = false) => {
+      if (!projectRoot || !fullPath) {
+        return;
+      }
+      const relativePath = relativeToProject(projectRoot, fullPath);
+      if (relativePath == null) {
+        return;
+      }
+      setExpandedDirs((previous) => {
+        const next = new Set(previous);
+        for (const ancestor of ancestorPaths(relativePath)) {
+          next.add(ancestor);
+        }
+        if (includeSelf && relativePath) {
+          next.add(relativePath);
+        }
+        return next;
+      });
+    },
+    [projectRoot],
+  );
+
+  const openContextMenu = useCallback(
+    (event: ReactMouseEvent, target: ContextMenuTarget) => {
+      const width = 210;
+      const height = 260;
+      setDialog(null);
+      setContextMenu({
+        x: Math.max(8, Math.min(event.clientX, window.innerWidth - width)),
+        y: Math.max(8, Math.min(event.clientY, window.innerHeight - height)),
+        target,
+      });
+    },
+    [],
+  );
+
+  const executeAction = useCallback(
+    async (action: ExplorerAction, target: ContextMenuTarget, value?: string) => {
+      logger.info(
+        `action=${action} target=${target.fullPath} folder=${target.isFolder} root=${target.isRoot}`,
+      );
+      switch (action) {
+        case "open":
+          if (!target.isFolder && target.relativePath) {
+            handleOpenFile(target.relativePath);
+          }
+          return;
+
+        case "new-file": {
+          const result = await rpcClient?.requestAction<{ path: string | null }>("createFile", {
+            path: joinChildPath(target.directoryPath, value ?? ""),
+          });
+          logger.info(`createFile result=${result?.path ?? "null"}`);
+          revealPath(result?.path ?? null);
+          if (result?.path) {
+            const relativePath = relativeToProject(projectRoot, result.path);
+            if (relativePath) {
+              handleOpenFile(relativePath);
+            }
+          }
+          return;
+        }
+
+        case "new-folder": {
+          const result = await rpcClient?.requestAction<{ path: string | null }>("createFolder", {
+            path: joinChildPath(target.directoryPath, value ?? ""),
+          });
+          logger.info(`createFolder result=${result?.path ?? "null"}`);
+          revealPath(result?.path ?? null, true);
+          return;
+        }
+
+        case "rename": {
+          const newPath = joinChildPath(target.directoryPath, value ?? "");
+          if (normalizePath(newPath) === normalizePath(target.fullPath)) {
+            return;
+          }
+          const result = await rpcClient?.requestAction<{ path: string | null }>("renamePath", {
+            path: target.fullPath,
+            newPath,
+          });
+          logger.info(`renamePath result=${result?.path ?? "null"}`);
+          revealPath(result?.path ?? null, target.isFolder);
+          return;
+        }
+
+        case "duplicate": {
+          const result = await rpcClient?.requestAction<{ path: string | null }>("duplicatePath", {
+            path: target.fullPath,
+          });
+          logger.info(`duplicatePath result=${result?.path ?? "null"}`);
+          revealPath(result?.path ?? null, target.isFolder);
+          return;
+        }
+
+        case "delete":
+          await rpcClient?.requestAction("deletePath", { path: target.fullPath });
+          logger.info(`deletePath completed target=${target.fullPath}`);
+          return;
+
+        case "reveal":
+          await rpcClient?.requestAction("vscode.revealInOs", { path: target.fullPath });
+          logger.info(`revealInOs completed target=${target.fullPath}`);
+          return;
+
+        case "terminal":
+          await rpcClient?.requestAction("vscode.openInTerminal", { path: target.fullPath });
+          logger.info(`openInTerminal completed target=${target.fullPath}`);
+          return;
+      }
+    },
+    [handleOpenFile, projectRoot, revealPath],
+  );
+
+  const handleContextAction = useCallback(
+    async (action: ExplorerAction, target: ContextMenuTarget) => {
+      try {
+        setContextMenu(null);
+        switch (action) {
+          case "new-file":
+            setDialog({
+              kind: "text",
+              action,
+              title: "New File",
+              message: "Enter the file name.",
+              confirmLabel: "Create",
+              target,
+              value: "",
+              error: null,
+            });
+            return;
+
+          case "new-folder":
+            setDialog({
+              kind: "text",
+              action,
+              title: "New Folder",
+              message: "Enter the folder name.",
+              confirmLabel: "Create",
+              target,
+              value: "",
+              error: null,
+            });
+            return;
+
+          case "rename":
+            setDialog({
+              kind: "text",
+              action,
+              title: `Rename ${target.isFolder ? "Folder" : "File"}`,
+              message: target.fullPath,
+              confirmLabel: "Rename",
+              target,
+              value: basename(target.fullPath),
+              error: null,
+            });
+            return;
+
+          case "delete":
+            setDialog({
+              kind: "confirm",
+              action,
+              title: `Delete ${target.isFolder ? "Folder" : "File"}`,
+              message: `Delete "${basename(target.fullPath)}"?`,
+              confirmLabel: "Delete",
+              target,
+              value: "",
+              error: null,
+            });
+            return;
+
+          default:
+            await executeAction(action, target);
+        }
+      } catch (error) {
+        logger.error(
+          `action=${action} target=${target.fullPath} failed error=${error instanceof Error ? error.message : String(error)}`,
+        );
+        window.alert(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [executeAction],
+  );
+
+  const submitDialog = useCallback(async () => {
+    if (!dialog) {
+      return;
+    }
+    if (dialog.kind === "text") {
+      const error = validateName(dialog.value);
+      if (error) {
+        setDialog({ ...dialog, error });
+        return;
+      }
+    }
+
+    try {
+      await executeAction(dialog.action, dialog.target, dialog.value);
+      setDialog(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(
+        `action=${dialog.action} target=${dialog.target.fullPath} failed error=${message}`,
+      );
+      setDialog({ ...dialog, error: message });
+    }
+  }, [dialog, executeAction]);
 
   if (!projectRoot) {
     return (
@@ -198,23 +606,114 @@ export function FilesPanel() {
     );
   }
 
-  if (!projectFiles || projectFiles.length === 0) {
-    return <CenteredSpinner />;
+  const rootTarget: ContextMenuTarget = {
+    fullPath: projectRoot,
+    relativePath: "",
+    isFolder: true,
+    isRoot: true,
+    directoryPath: projectRoot,
+  };
+
+  if (projectFiles.length === 0) {
+    return (
+      <div className="file-tree-empty">
+        <EmptyState
+          icon={<Files size={24} />}
+          title="No files yet"
+          description="Create a file or folder in the selected project"
+        />
+        <div className="file-tree-empty-actions">
+          <Button size="sm" variant="outline" onClick={() => void handleContextAction("new-file", rootTarget)}>
+            New File
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => void handleContextAction("new-folder", rootTarget)}>
+            New Folder
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="file-tree">
+    <div
+      className="file-tree"
+      onContextMenu={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest(".tree-row")) {
+          return;
+        }
+        event.preventDefault();
+        openContextMenu(event, rootTarget);
+      }}
+    >
       {projectFiles.map((node) => (
         <TreeNode
           key={node.name}
           node={node}
           path={node.name}
+          projectRoot={projectRoot}
           depth={0}
           expandedDirs={expandedDirs}
+          activePath={activeRelativePath}
           onToggleDir={handleToggleDir}
           onOpenFile={handleOpenFile}
+          onOpenContextMenu={openContextMenu}
         />
       ))}
+      {contextMenu ? (
+        <div
+          className="file-tree-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {contextMenuItems(contextMenu.target).map((item) => (
+            <button
+              key={item.action}
+              type="button"
+              className="file-tree-context-item"
+              onClick={() => void handleContextAction(item.action, contextMenu.target)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {dialog ? (
+        <div className="file-tree-dialog-backdrop">
+          <div className="file-tree-dialog" role="dialog" aria-modal="true">
+            <div className="file-tree-dialog-title">{dialog.title}</div>
+            <div className="file-tree-dialog-message">{dialog.message}</div>
+            {dialog.kind === "text" ? (
+              <Input
+                autoFocus
+                value={dialog.value}
+                onChange={(event) =>
+                  setDialog((current) =>
+                    current ? { ...current, value: event.target.value, error: null } : current,
+                  )
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void submitDialog();
+                  }
+                }}
+              />
+            ) : null}
+            {dialog.error ? <div className="file-tree-dialog-error">{dialog.error}</div> : null}
+            <div className="file-tree-dialog-actions">
+              <Button variant="outline" onClick={() => setDialog(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant={dialog.action === "delete" ? "destructive" : "default"}
+                onClick={() => void submitDialog()}
+              >
+                {dialog.confirmLabel}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

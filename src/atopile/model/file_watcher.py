@@ -63,7 +63,6 @@ _IGNORED_FILE_NAMES = frozenset(
     }
 )
 
-# Directories whose creation/deletion we DO want to track (but not their contents)
 _TRACK_DIR_EVENTS = frozenset(
     {
         ".ato",
@@ -217,13 +216,10 @@ class _EventDispatcher(PatternMatchingEventHandler):
         """Check if we should process this event.
 
         For files: always process (filtering done by patterns)
-        For directories: only process if it's a tracked directory like .ato or .git
+        For directories: process create/delete/move so tree watchers can update
+        structure.
         """
-        if not event.is_directory:
-            return True
-        # For directories, only track creation/deletion of specific ones
-        dir_name = Path(self._path_str(event.src_path)).name
-        return dir_name in _TRACK_DIR_EVENTS
+        return True
 
     def on_created(self, event: FileSystemEvent) -> None:
         if self._should_process_event(event):
@@ -530,6 +526,13 @@ class FileWatcher:
             return False
 
         changed = False
+        if result.created or result.deleted:
+            log.info(
+                "File watcher '%s' tree update created=%s deleted=%s",
+                self._name,
+                [str(path) for path in result.created[:5]],
+                [str(path) for path in result.deleted[:5]],
+            )
         for path in result.deleted:
             parts = self._tree_parts(path)
             if parts:
@@ -639,6 +642,11 @@ class FileWatcher:
             raise RuntimeError(
                 "_emit_tree() is only supported for tree-mode FileWatcher"
             )
+        log.info(
+            "File watcher '%s' emitting tree root_entries=%d",
+            self._name,
+            len(self._tree or []),
+        )
         response = self._on_change(
             FileChangeResult(tree=FileWatcher._serialize_tree(self._tree or []))
         )
