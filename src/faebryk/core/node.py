@@ -1059,9 +1059,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     source_chunk_node=source_chunk_node,
                 )
         elif isinstance(field, _EdgeField):
-            # Ensure any type references in edge paths are registered in the
-            # TypeGraph before resolution — analogous to how decode_symbol
-            # ensures unit types are registered when referenced from ato code.
+            # Ensure any type references in edge paths are registered in tg
             for path in [field.lhs, field.rhs]:
                 for segment in path:
                     if isinstance(segment, type) and issubclass(segment, Node):

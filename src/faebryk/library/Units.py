@@ -308,6 +308,9 @@ class is_base_unit(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
+_IDENTITY = (1.0, 0.0)
+
+
 class is_unit(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
@@ -668,7 +671,7 @@ class is_unit(fabll.Node):
     ) -> tuple[float, float]:
         # Same node — identity conversion, skip basis vector extraction
         if self is not None and target is not None and self.is_same(target):
-            return (1.0, 0.0)
+            return _IDENTITY
 
         if not is_unit.is_commensurable_with(self, target):
             raise UnitsNotCommensurableError(
