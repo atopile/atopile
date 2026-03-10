@@ -38,7 +38,13 @@ class DemoPaths:
 
 
 class DemoBundleBuilder:
-    def __init__(self, *, output_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        output_dir: Path | None = None,
+        validate: bool = False,
+        show_stats: bool = False,
+    ) -> None:
         _ensure_tool("bun")
         self.frontend_dir = Path(__file__).parent / "frontend"
         self.paths = self._make_paths(output_dir=output_dir)
@@ -48,6 +54,8 @@ class DemoBundleBuilder:
             summary_path=self.paths.summary_path,
             glb_path=self.paths.glb_path,
         )
+        self.validate = validate
+        self.show_stats = show_stats
 
     def build(self) -> DemoPaths:
         # Start from a clean output directory for the generated demo bundle.
@@ -78,12 +86,15 @@ class DemoBundleBuilder:
         _build_embed_bundle(self.paths, frontend_dir=self.frontend_dir)
 
         # Write the demo manifest and static HTML entrypoint.
-        _write_manifest(self.paths)
+        _write_manifest(self.paths, show_stats=self.show_stats)
         _write_index_html(self.paths)
 
         # Render screenshots, then rewrite the manifest with the generated poster.
-        _validate_with_puppeteer(self.paths, frontend_dir=self.frontend_dir)
-        _write_manifest(self.paths, poster_path="poster.png")
+        if self.validate:
+            _validate_with_puppeteer(self.paths, frontend_dir=self.frontend_dir)
+        _write_manifest(
+            self.paths, poster_path="poster.png", show_stats=self.show_stats
+        )
         return self.paths
 
     def _make_paths(self, *, output_dir: Path | None) -> DemoPaths:
@@ -105,10 +116,6 @@ class DemoBundleBuilder:
             manifest_path=demo_dir / "demo-manifest.json",
             index_path=demo_dir / "index.html",
         )
-
-
-def build_demo_bundle(*, output_dir: Path | None = None) -> DemoPaths:
-    return DemoBundleBuilder(output_dir=output_dir).build()
 
 
 def _ensure_tool(name: str) -> str:
@@ -193,7 +200,12 @@ def _ensure_bun_install(bundle_dir: Path) -> None:
     subprocess.run(["bun", "install"], cwd=str(bundle_dir), check=True)
 
 
-def _write_manifest(paths: DemoPaths, *, poster_path: str | None = None) -> None:
+def _write_manifest(
+    paths: DemoPaths,
+    *,
+    poster_path: str | None = None,
+    show_stats: bool = False,
+) -> None:
     summary = json.loads(paths.summary_path.read_text(encoding="utf-8"))
     render_model = json.loads(paths.render_model_path.read_text(encoding="utf-8"))
     hidden_layout_layers = [
@@ -209,6 +221,7 @@ def _write_manifest(paths: DemoPaths, *, poster_path: str | None = None) -> None
         "modelPath": paths.glb_path.name,
         "hiddenLayoutLayers": hidden_layout_layers,
         "screenshotsDir": paths.screenshot_dir.name,
+        "showStats": show_stats,
         "summary": summary,
     }
     if poster_path:

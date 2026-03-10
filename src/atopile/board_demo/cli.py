@@ -17,11 +17,25 @@ def demo(
             help="Output directory for the generated demo bundle",
         ),
     ] = None,
+    no_validate: Annotated[
+        bool,
+        typer.Option(
+            "--no-validate",
+            help="Validate the demo bundle with Puppeteer",
+        ),
+    ] = False,
+    stats: Annotated[
+        bool,
+        typer.Option(
+            "--stats",
+            help="Show FPS and renderer stats overlay in the 3D viewer",
+        ),
+    ] = False,
 ) -> None:
     """
     Generate a static demo bundle for a single build target.
     """
-    from atopile.board_demo.artifacts import build_demo_bundle
+    from atopile.board_demo.artifacts import DemoBundleBuilder
     from atopile.config import config
 
     config.apply_options(
@@ -37,4 +51,7 @@ def demo(
 
     build_name = build_names[0]
     with config.select_build(build_name):
-        build_demo_bundle(output_dir=output)
+        builder = DemoBundleBuilder(
+            output_dir=output, validate=not no_validate, show_stats=stats
+        )
+        builder.build()
