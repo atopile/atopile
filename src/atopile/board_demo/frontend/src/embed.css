@@ -125,8 +125,9 @@
       }
       .atopile-demo-layout-shell .layout-viewport {
         position: absolute;
-        inset: 0 180px 32px 0;
+        inset: 0 180px 0 0;
         overflow: hidden;
+        transition: inset 0.2s ease;
       }
       .atopile-demo-layout-shell #editor-canvas {
         position: absolute;
@@ -264,7 +265,7 @@
         position: absolute;
         top: 0;
         right: 0;
-        bottom: 32px;
+        bottom: 0;
         width: 180px;
         background: var(--surface);
         backdrop-filter: blur(16px);
@@ -281,6 +282,9 @@
       }
       .atopile-demo-layout-shell #layer-panel.collapsed {
         transform: translateX(100%);
+      }
+      .atopile-demo-layout-shell:has(#layer-panel.collapsed) .layout-viewport {
+        inset: 0 0 0 0;
       }
       .layer-panel-header {
         display: flex;
@@ -488,12 +492,28 @@
       @keyframes status-busy-spin {
         to { transform: rotate(360deg); }
       }
+      /* No-hero variant: hide title bar and fill container */
+      .atopile-demo-root--no-hero {
+        display: flex;
+        flex-direction: column;
+      }
+      .atopile-demo-root--no-hero .atopile-demo-hero {
+        display: none;
+      }
+      .atopile-demo-root--no-hero .atopile-demo-content {
+        flex: 1;
+        grid-template-rows: 1fr 1fr;
+      }
+      .atopile-demo-root--no-hero .atopile-demo-pane {
+        min-height: 0;
+      }
+
       @media (max-width: 920px) {
         .atopile-demo-pane {
           min-height: 360px;
         }
         .atopile-demo-layout-shell .layout-viewport {
-          inset: 0 170px 32px 0;
+          inset: 0 170px 0 0;
         }
         .atopile-demo-layout-shell #layer-panel {
           width: 170px;

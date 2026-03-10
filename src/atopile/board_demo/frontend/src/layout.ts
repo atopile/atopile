@@ -29,7 +29,7 @@ const OBJECT_TYPE_IDS = [
     ...TEXT_SHAPES_FILTER_IDS,
 ];
 
-let panelCollapsed = false;
+let panelCollapsed = window.matchMedia("(max-width: 700px)").matches;
 const collapsedGroups = new Set<string>();
 let objectTypesExpanded = false;
 let textShapesExpanded = false;

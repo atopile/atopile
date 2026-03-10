@@ -99,8 +99,11 @@ export async function mount(target: HTMLElement | string, options: MountOptions 
     const assetBase = normalizeAssetBase(options.assetBase);
     const manifest = await loadManifest(assetBase, options.manifest);
 
+    const showHero = options.showHero ?? true;
+
     root.replaceChildren();
     root.classList.add("atopile-demo-root");
+    if (!showHero) root.classList.add("atopile-demo-root--no-hero");
     root.innerHTML = renderTemplate({
         title: manifest.title ?? "Interactive PCB Demo",
         subtitle: manifest.subtitle ?? "Read-only layout plus a polished 3D board model.",

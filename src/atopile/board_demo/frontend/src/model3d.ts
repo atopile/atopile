@@ -215,8 +215,8 @@ const STUDIO_PRESET: ScenePreset = {
         minMinorDivisions: 28,
         minorColor: 0xf95015,
         majorColor: 0xf95015,
-        minorOpacity: 0.18,
-        majorOpacity: 0.42,
+        minorOpacity: 0.04,
+        majorOpacity: 0.1,
     },
     materials: {
         silkscreenColor: "#f4f3ea",

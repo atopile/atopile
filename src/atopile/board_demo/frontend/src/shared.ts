@@ -11,4 +11,6 @@ export interface DemoManifest {
 export interface MountOptions {
     assetBase?: string;
     manifest?: string | DemoManifest;
+    /** Show the title bar with build name and badge. Defaults to true. */
+    showHero?: boolean;
 }
