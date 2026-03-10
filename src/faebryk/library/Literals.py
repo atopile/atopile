@@ -4184,13 +4184,11 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_sin(g=g, tg=tg)
         # Result is dimensionless
-        from faebryk.library.Units import Dimensionless
 
-        dimensionless_type = Dimensionless.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
-            unit=dimensionless_type.is_unit.get(),
+            unit=None,
         )
 
     def op_cos(
@@ -4330,14 +4328,8 @@ class Numbers(fabll.Node):
 
             if max_val == 0:
                 # Avoid division by zero - both are zero, so relative deviation is 0
-                from faebryk.library.Units import Dimensionless
-
-                dimensionless_type = Dimensionless.bind_typegraph(tg=tg).as_type_node()
                 result = Numbers.create_instance(g=g, tg=tg)
-                dimensionless_is_unit = dimensionless_type.is_unit.get()
-                return result.setup_from_min_max(
-                    min=0.0, max=0.0, unit=dimensionless_is_unit
-                )
+                return result.setup_from_min_max(min=0.0, max=0.0, unit=None)
 
             # Create divisor quantity set
             divisor = Numbers.create_instance(g=g, tg=tg)
@@ -5404,18 +5396,15 @@ class TestNumbers:
 
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import BasisVector, Dimensionless, Meter
+        from faebryk.library.Units import BasisVector, Meter
 
         meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
-        dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.0, max=3.0, unit=meter_instance.is_unit.get()
         )
         exponent = Numbers.create_instance(g=g, tg=tg)
-        exponent.setup_from_min_max(
-            min=2.0, max=2.0, unit=dimensionless_instance.is_unit.get()
-        )
+        exponent.setup_from_min_max(min=2.0, max=2.0, unit=None)
         result = quantity_set.op_pow_intervals(exponent, g=g, tg=tg)
         # [2, 3]^2 = [4, 9]
         assert result.get_numeric_set().get_min_value() == 4.0
@@ -5532,13 +5521,9 @@ class TestNumbers:
         """Test natural log of a quantity set."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import Dimensionless
 
-        dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
-        quantity_set.setup_from_min_max(
-            min=1.0, max=math.e, unit=dimensionless_instance.is_unit.get()
-        )
+        quantity_set.setup_from_min_max(min=1.0, max=math.e, unit=None)
         result = quantity_set.op_log(g=g, tg=tg)
         # log([1, e]) = [0, 1]
         assert abs(result.get_numeric_set().get_min_value() - 0.0) < 1e-10
@@ -6042,25 +6027,23 @@ class TestNumbers:
         """Test bit set operation."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import Dimensionless
 
-        dimensionless = Dimensionless.bind_typegraph(tg=tg).as_type_node()
         # Value 5 = 0b101 (bits 0 and 2 are set)
         value = Numbers.create_instance(g=g, tg=tg)
-        value.setup_from_min_max(min=5.0, max=5.0, unit=dimensionless.is_unit.get())
+        value.setup_from_min_max(min=5.0, max=5.0, unit=None)
         # Check bit 0
         bit0 = Numbers.create_instance(g=g, tg=tg)
-        bit0.setup_from_min_max(min=0.0, max=0.0, unit=dimensionless.is_unit.get())
+        bit0.setup_from_min_max(min=0.0, max=0.0, unit=None)
         result0 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit0)
         assert True in result0.get_boolean_values()  # bit 0 is set
         # Check bit 1
         bit1 = Numbers.create_instance(g=g, tg=tg)
-        bit1.setup_from_min_max(min=1.0, max=1.0, unit=dimensionless.is_unit.get())
+        bit1.setup_from_min_max(min=1.0, max=1.0, unit=None)
         result1 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit1)
         assert False in result1.get_boolean_values()  # bit 1 is not set
         # Check bit 2
         bit2 = Numbers.create_instance(g=g, tg=tg)
-        bit2.setup_from_min_max(min=2.0, max=2.0, unit=dimensionless.is_unit.get())
+        bit2.setup_from_min_max(min=2.0, max=2.0, unit=None)
         result2 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit2)
         assert True in result2.get_boolean_values()  # bit 2 is set
 
@@ -7984,18 +7967,11 @@ def make_singleton(
         )
     match value:
         case float() | int():
-            from faebryk.library.Units import Dimensionless
-
             value = float(value)
             return (
                 Numbers.bind_typegraph(tg=tg)
                 .create_instance(g=g)
-                .setup_from_singleton(
-                    value=value,
-                    unit=Dimensionless.bind_typegraph(tg=tg)
-                    .as_type_node()
-                    .is_unit.get(),
-                )
+                .setup_from_singleton(value=value, unit=None)
             )
         case Enum():
             return AbstractEnums.bind_typegraph(tg=tg).create_instance(
