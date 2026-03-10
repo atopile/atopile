@@ -3517,7 +3517,7 @@ class TestRetypeOperator:
         """Retype only allows replacing module-typed fields."""
         with pytest.raises(
             DslRichException,
-            match=r"Cannot retype `sig`: existing type `Electrical` is not a module",
+            match=r"Cannot retype `sig`: type `Electrical` is not a module",
         ):
             build_type(
                 """
@@ -3532,9 +3532,7 @@ class TestRetypeOperator:
 
     def test_retype_non_module_target_errors(self):
         """Retype replacement must also be a module."""
-        match_str = (
-            r"Cannot retype `part`: replacement type `Electrical` is not a module"
-        )
+        match_str = r"Cannot retype `part`: type `Electrical` is not a module"
         with pytest.raises(DslRichException, match=match_str):
             build_type(
                 """
