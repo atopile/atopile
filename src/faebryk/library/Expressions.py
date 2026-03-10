@@ -1422,6 +1422,12 @@ class Power(fabll.Node):
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(base, exponent, g=g, tg=tg))
 
+    def is_reciprocal(self) -> bool:
+        _, exponent = self.is_expression.get().get_operands()
+        exponent_lit = exponent.as_literal.force_get()
+        exponent_num = fabll.Traits(exponent_lit).get_obj_raw().cast(F.Literals.Numbers)
+        return exponent_num.is_singleton() and exponent_num.get_single() == -1
+
 
 class Log(fabll.Node):
     can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())

@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import NamedTuple, cast
+from typing import Callable, cast
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -15,7 +15,7 @@ from faebryk.core.solver.utils import (
     Contradiction,
     MutatorUtils,
 )
-from faebryk.libs.util import OrderedSet, not_none
+from faebryk.libs.util import OrderedSet
 
 Add = F.Expressions.Add
 Multiply = F.Expressions.Multiply
@@ -177,21 +177,27 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
 
     for target_po in mutator.get_parameter_operatables():
         target = target_po.as_operand.get()
-        target_is_predicate = (
-            target_po.try_get_sibling_trait(F.Expressions.is_predicate) is not None
+        rhs_candidates = OrderedSet(
+            AliasClass.of(target).expressions(
+                excluded_traits=(F.Expressions.is_setic,),
+                exclude_operand=target_po,
+            )
+        )
+        if (expr := target_po.as_expression.try_get()) and expr.try_get_sibling_trait(
+            F.Expressions.is_predicate
+        ) is not None:
+            rhs_candidates.add(expr)
+
+        target_is_predicate = any(
+            rhs.try_get_sibling_trait(F.Expressions.is_predicate) is not None
+            for rhs in rhs_candidates
         )
 
-        for rhs in AliasClass.of(target).expressions(
-            excluded_traits=(
-                (F.Expressions.is_setic,)
-                if target_is_predicate
-                else (F.Expressions.is_predicate, F.Expressions.is_setic)
-            ),
-            exclude_operand=target_po,
-        ):
-            if (
-                target_is_predicate
-                and rhs.try_get_sibling_trait(F.Expressions.is_predicate) is None
+        for rhs in rhs_candidates:
+            if rhs.try_get_sibling_trait(F.Expressions.is_setic) is not None:
+                continue
+            if target_is_predicate != (
+                rhs.try_get_sibling_trait(F.Expressions.is_predicate) is not None
             ):
                 continue
             operands, _ = mutator.utils.map_operands_extracted_supersets(
@@ -229,255 +235,287 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
             )
 
 
-class _UncertaintySummary(NamedTuple):
-    """
-    Robust `ss!` summary of one numeric expression.
+_Bounds = tuple[float, float]
 
-    ```
-    outer      := ordinary image of the expression
-    robust_min := lower endpoint valid for all values of the single uncertainty source
-    robust_max := upper endpoint valid for all values of the single uncertainty source
-    uncertain  := the expression depends on that source
-    ```
 
-    If `uncertain` is false, `robust_min..robust_max` is just `outer`.
-    """
+class _GuaranteedIntervalEvaluation:
+    @staticmethod
+    def eval_with_uncertainty(
+        mutator: Mutator, expr: F.Expressions.is_expression, allow_alias: bool
+    ) -> tuple[F.Literals.Numbers, _Bounds, bool] | None:
+        parts = [
+            _summarize_with_uncertainty(mutator, operand, allow_alias=allow_alias)
+            for operand in expr.get_operands()
+        ]
 
-    outer: F.Literals.Numbers
-    robust_min: float
-    robust_max: float
-    uncertain: bool
+        if any(part is None for part in parts):
+            return None
 
-    @classmethod
-    def from_outer(
-        cls, outer: F.Literals.Numbers, uncertain: bool = False
-    ) -> "_UncertaintySummary":
-        lo, hi = outer.get_min_value(), outer.get_max_value()
-        return cls(outer, hi if uncertain else lo, lo if uncertain else hi, uncertain)
+        parts = cast(list[tuple[F.Literals.Numbers, _Bounds, bool]], parts)
 
-    @classmethod
-    def _from_nary(
-        cls,
+        if expr.expr_isinstance(Power) and expr.expr_cast(Power).is_reciprocal():
+            return _GuaranteedIntervalEvaluation.eval_reciprocal_with_uncertainty(
+                mutator, parts
+            )
+        elif expr.expr_isinstance(Add):
+            return _GuaranteedIntervalEvaluation.eval_add_with_uncertainty(
+                mutator, parts
+            )
+        elif expr.expr_isinstance(Multiply):
+            return _GuaranteedIntervalEvaluation.eval_multiply_with_uncertainty(
+                mutator, parts
+            )
+
+    @staticmethod
+    def fold_nary_image_enclosures(
         mutator: Mutator,
         expr_t: type[Add] | type[Multiply],
-        parts: list["_UncertaintySummary"],
-    ) -> (
-        tuple[
-            F.Literals.Numbers, "_UncertaintySummary | None", F.Literals.Numbers | None
+        image_enclosures: list[F.Literals.Numbers],
+    ) -> F.Literals.Numbers | None:
+        operands = [
+            image_enclosure.is_literal.get().as_operand.get()
+            for image_enclosure in image_enclosures
         ]
-        | None
+        out = exec_pure_literal_operands(
+            mutator.G_transient, mutator.tg_in, expr_t, operands
+        )
+        return MutatorUtils.is_numeric_literal(out)
+
+    @staticmethod
+    def partition_uncertainty_parts(
+        parts: list[tuple[F.Literals.Numbers, _Bounds, bool]],
+    ) -> (
+        tuple[list[F.Literals.Numbers], list[F.Literals.Numbers], _Bounds | None] | None
     ):
-        def _fold_outers(outers: list[F.Literals.Numbers]) -> F.Literals.Numbers | None:
-            operands = [outer.is_literal.get().as_operand.get() for outer in outers]
-            out = exec_pure_literal_operands(
-                mutator.G_transient, mutator.tg_in, expr_t, operands
+        image_enclosures = []
+        fixed_enclosures = []
+        guaranteed_enclosure = None
+
+        for (
+            part_image_enclosure,
+            part_guaranteed_enclosure,
+            part_depends_on_uncertainty,
+        ) in parts:
+            if not part_image_enclosure.is_finite():
+                return None
+            image_enclosures.append(part_image_enclosure)
+            if part_depends_on_uncertainty:
+                if guaranteed_enclosure is not None:
+                    return None
+                guaranteed_enclosure = part_guaranteed_enclosure
+            else:
+                fixed_enclosures.append(part_image_enclosure)
+
+        return image_enclosures, fixed_enclosures, guaranteed_enclosure
+
+    @staticmethod
+    def eval_reciprocal_with_uncertainty(
+        mutator: Mutator,
+        parts: list[tuple[F.Literals.Numbers, _Bounds, bool]],
+    ) -> tuple[F.Literals.Numbers, _Bounds, bool] | None:
+        base, _ = parts
+        (
+            base_image_enclosure,
+            base_guaranteed_enclosure,
+            base_depends_on_uncertainty,
+        ) = base
+        if (
+            not base_image_enclosure.is_finite()
+            or base_image_enclosure.get_min_value() <= 0
+        ):
+            return None
+
+        image_enclosure = base_image_enclosure.op_invert(
+            g=mutator.G_transient, tg=mutator.tg_in
+        )
+        guaranteed_enclosure = (
+            (
+                1 / base_guaranteed_enclosure[1],
+                1 / base_guaranteed_enclosure[0],
             )
-            return MutatorUtils.is_numeric_literal(out)
-
-        if (
-            any(not part.outer.is_finite() for part in parts)
-            or sum(part.uncertain for part in parts) > 1
-        ):
-            return None
-        outer = _fold_outers([part.outer for part in parts])
-        if outer is None:
-            return None
-        moving = next((part for part in parts if part.uncertain), None)
-        if moving is None:
-            return outer, None, None
-        fixed_outer = _fold_outers([part.outer for part in parts if not part.uncertain])
-        assert fixed_outer is not None, (
-            f"Unary {expr_t.__name__} should be eliminated before uncertainty pass"
+            if base_depends_on_uncertainty
+            else (
+                image_enclosure.get_min_value(),
+                image_enclosure.get_max_value(),
+            )
         )
-        return outer, moving, fixed_outer
+        depends_on_uncertainty = base_depends_on_uncertainty
+        return image_enclosure, guaranteed_enclosure, depends_on_uncertainty
 
-    @classmethod
-    def from_reciprocal(
-        cls,
+    @staticmethod
+    def eval_nary_with_uncertainty(
         mutator: Mutator,
-        expr: F.Expressions.is_expression,
-        parts: list["_UncertaintySummary"],
-    ) -> "_UncertaintySummary | None":
-        """
-        ```
-        A is! B^-1
-        B ss! [l, h], 0 < l <= h
-        -> A ss! [1/h, 1/l]
-        ```
-        """
-        exponent = (
-            MutatorUtils.is_numeric_literal(expr.get_operands()[1])
-            if len(parts) == 2
-            else None
-        )
-        base = (
-            parts[0]
-            if exponent and exponent.is_singleton() and exponent.get_single() == -1
-            else None
-        )
-        if (
-            base is None
-            or not base.outer.is_finite()
-            or base.outer.get_min_value() <= 0
-        ):
+        expr_t: type[Add] | type[Multiply],
+        parts: list[tuple[F.Literals.Numbers, _Bounds, bool]],
+        unary_assertion: str,
+        combine_guaranteed_enclosure: Callable[
+            [F.Literals.Numbers, _Bounds], _Bounds | None
+        ],
+    ) -> tuple[F.Literals.Numbers, _Bounds, bool] | None:
+        partitioned = _GuaranteedIntervalEvaluation.partition_uncertainty_parts(parts)
+        if partitioned is None:
             return None
-        return cls.from_outer(
-            base.outer.op_invert(g=mutator.G_transient, tg=mutator.tg_in),
-            uncertain=base.uncertain,
-        )
 
-    @classmethod
-    def from_add(
-        cls,
+        image_enclosures, fixed_enclosures, guaranteed_enclosure = partitioned
+        image_enclosure = _GuaranteedIntervalEvaluation.fold_nary_image_enclosures(
+            mutator, expr_t, image_enclosures
+        )
+        if image_enclosure is None:
+            return None
+        if guaranteed_enclosure is None:
+            return (
+                image_enclosure,
+                (image_enclosure.get_min_value(), image_enclosure.get_max_value()),
+                False,
+            )
+
+        fixed_image_enclosure = (
+            _GuaranteedIntervalEvaluation.fold_nary_image_enclosures(
+                mutator, expr_t, fixed_enclosures
+            )
+        )
+        assert fixed_image_enclosure is not None, unary_assertion
+
+        guaranteed_enclosure = combine_guaranteed_enclosure(
+            fixed_image_enclosure, guaranteed_enclosure
+        )
+        if guaranteed_enclosure is None:
+            return None
+        return image_enclosure, guaranteed_enclosure, True
+
+    @staticmethod
+    def eval_add_with_uncertainty(
         mutator: Mutator,
-        expr: F.Expressions.is_expression,
-        parts: list["_UncertaintySummary"],
-    ) -> "_UncertaintySummary | None":
-        """
-        ```
-        A is! B + C + ...
-        B ss! X, C ss! Y, ...
-        at most one of B, C, ... uncertain
-        -> A ss! X + Y + ...
-        ```
-        """
-        prepared = cls._from_nary(mutator, Add, parts)
-        if prepared is None:
-            return None
-        outer, moving, fixed_outer = prepared
-        if moving is None:
-            return cls.from_outer(outer)
-        assert fixed_outer is not None
-        return cls(
-            outer=outer,
-            robust_min=moving.robust_min + fixed_outer.get_min_value(),
-            robust_max=moving.robust_max + fixed_outer.get_max_value(),
-            uncertain=True,
+        parts: list[tuple[F.Literals.Numbers, _Bounds, bool]],
+    ) -> tuple[F.Literals.Numbers, _Bounds, bool] | None:
+        return _GuaranteedIntervalEvaluation.eval_nary_with_uncertainty(
+            mutator,
+            Add,
+            parts,
+            "Unary Add should be eliminated before uncertainty pass",
+            lambda fixed_image_enclosure, guaranteed_enclosure: (
+                guaranteed_enclosure[0] + fixed_image_enclosure.get_min_value(),
+                guaranteed_enclosure[1] + fixed_image_enclosure.get_max_value(),
+            ),
         )
 
-    @classmethod
-    def from_multiply(
-        cls,
-        mutator: Mutator,
-        expr: F.Expressions.is_expression,
-        parts: list["_UncertaintySummary"],
-    ) -> "_UncertaintySummary | None":
-        """
-        ```
-        A is! B * C * ...
-        B ss! X, C ss! Y, ...
-        at most one of B, C, ... uncertain
-        fixed factors in (0, +inf)
-        -> A ss! X * Y * ...
-        ```
-        """
-        prepared = cls._from_nary(mutator, Multiply, parts)
-        if prepared is None:
-            return None
-        outer, moving, fixed_outer = prepared
-        if moving is None:
-            return cls.from_outer(outer)
-        assert fixed_outer is not None
-        if fixed_outer.get_min_value() <= 0:
-            return None
-        return cls(
-            outer=outer,
-            robust_min=moving.robust_min * fixed_outer.get_min_value(),
-            robust_max=moving.robust_max * fixed_outer.get_max_value(),
-            uncertain=True,
+    @staticmethod
+    def eval_multiply_with_uncertainty(
+        mutator: Mutator, parts: list[tuple[F.Literals.Numbers, _Bounds, bool]]
+    ) -> tuple[F.Literals.Numbers, tuple[float, float], bool] | None:
+        def combine_guaranteed_enclosure(
+            fixed_image_enclosure: F.Literals.Numbers,
+            guaranteed_enclosure: _Bounds,
+        ) -> _Bounds | None:
+            if fixed_image_enclosure.get_min_value() <= 0:
+                return None
+            return (
+                guaranteed_enclosure[0] * fixed_image_enclosure.get_min_value(),
+                guaranteed_enclosure[1] * fixed_image_enclosure.get_max_value(),
+            )
+
+        return _GuaranteedIntervalEvaluation.eval_nary_with_uncertainty(
+            mutator,
+            Multiply,
+            parts,
+            "Unary Multiply should be eliminated before uncertainty pass",
+            combine_guaranteed_enclosure,
         )
-
-
-def _summarize_operand_uncertainty(
-    mutator: Mutator, operand: F.Parameters.can_be_operand, allow_alias: bool
-) -> _UncertaintySummary | None:
-    """
-    Summarize one operand for single-source robust estimation.
-
-    lit            -> exact summary
-    L ss! A        -> uncertainty summary
-    A ss! U        -> ordinary summary
-    A is! f(...)   -> one alias-class hop, then summarize f(...)
-    """
-    # Literals are exact and do not introduce uncertainty by themselves.
-    if literal := MutatorUtils.is_numeric_literal(operand):
-        return _UncertaintySummary.from_outer(literal)
-
-    if (po := operand.as_parameter_operatable.try_get()) is None:
-        return None
-
-    # A lower subset is the single uncertainty source this pass quantifies over.
-    if subset := MutatorUtils.is_numeric_literal(mutator.utils.try_extract_subset(po)):
-        return _UncertaintySummary.from_outer(subset, uncertain=True)
-
-    outer = MutatorUtils.is_numeric_literal(
-        mutator.utils.try_extract_superset(po, domain_default=True)
-    )
-
-    # Finite outers are exact support bounds for the robust combination above them.
-    if outer and (outer.is_finite() or not allow_alias):
-        return _UncertaintySummary.from_outer(outer)
-
-    # One alias-class hop lets this pass see through a single flat representative,
-    # while still leaving longer propagation to the outer solver loop.
-    for inner in AliasClass.of(operand).expressions(
-        excluded_traits=(F.Expressions.is_predicate, F.Expressions.is_setic),
-        exclude_operand=po,
-    ):
-        if summary := _summarize_with_uncertainty(mutator, inner, allow_alias=False):
-            return summary
-
-    return _UncertaintySummary.from_outer(not_none(outer))
 
 
 def _summarize_with_uncertainty(
-    mutator: Mutator, expr: F.Expressions.is_expression, allow_alias: bool = True
-) -> _UncertaintySummary | None:
+    mutator: Mutator, op: F.Parameters.can_be_operand, allow_alias: bool = True
+) -> tuple[F.Literals.Numbers, _Bounds, bool] | None:
     """
-    Summarize a numeric expression under a single uncertainty source.
+    Summarize one numeric operand under a single uncertainty source.
 
-    X is lit       -> exact summary
-    L ss! A        -> one uncertainty source
-    A ss! U        -> ordinary summary
+    X              -> exact summary                     if X is a literal
+    L ss! A        -> uncertainty summary               if A has a lower subset
+    A ss! U        -> ordinary summary                  if A has only an upper bound
     B is! f(A, C)  -> summary(B) from summary(A), summary(C)
+    A is! f(...)   -> one alias-class hop, then summarize f(...)
 
-    The result carries both the ordinary image and the interval guaranteed for all
+    The result carries both the image enclosure and the guaranteed enclosure for all
     values of the single uncertainty source.
     """
 
-    if expr.expr_isinstance(Power):
-        # TODO: check exponent
-        func = _UncertaintySummary.from_reciprocal
-    elif expr.expr_isinstance(Add):
-        func = _UncertaintySummary.from_add
-    elif expr.expr_isinstance(Multiply):
-        func = _UncertaintySummary.from_multiply
-    else:
-        return None
+    lit = MutatorUtils.is_numeric_literal(op)
+    expr = op.try_get_sibling_trait(F.Expressions.is_expression)
 
-    parts = [
-        _summarize_operand_uncertainty(mutator, operand, allow_alias=allow_alias)
-        for operand in expr.get_operands()
-    ]
-    if None in parts:
-        return None
-    parts = cast(list[_UncertaintySummary], parts)
+    if lit is not None:
+        # Literals are exact and do not introduce uncertainty by themselves.
+        return lit, (lit.get_min_value(), lit.get_max_value()), False
 
-    return func(mutator, expr, parts)
+    po = op.as_parameter_operatable.force_get()
+
+    if (lower_bound := mutator.utils.try_extract_numeric_subset(po)) is not None:
+        # A lower subset is the single uncertainty source this pass quantifies over.
+        return (
+            lower_bound,
+            (lower_bound.get_max_value(), lower_bound.get_min_value()),
+            True,
+        )
+
+    elif (
+        not allow_alias
+        and (upper_bound := mutator.utils.try_extract_numeric_superset(po)) is not None
+    ):
+        # Finite image enclosures are exact support bounds for the guaranteed
+        # enclosure above.
+        return (
+            upper_bound,
+            (upper_bound.get_min_value(), upper_bound.get_max_value()),
+            False,
+        )
+
+    elif expr is not None:
+        return _GuaranteedIntervalEvaluation.eval_with_uncertainty(
+            mutator, expr, allow_alias
+        )
+
+    elif allow_alias:
+        # TODO: can we avoid this?
+        # One alias-class hop lets this pass see through a single flat
+        # representative, while still leaving longer propagation to the
+        # outer solver loop.
+        for inner in AliasClass.of(op).expressions(
+            excluded_traits=(F.Expressions.is_predicate, F.Expressions.is_setic),
+            exclude_operand=po,
+        ):
+            if summary := _summarize_with_uncertainty(
+                mutator, inner.as_operand.get(), allow_alias=False
+            ):
+                return summary
+
+        if (
+            image_enclosure := MutatorUtils.is_numeric_literal(
+                mutator.utils.try_extract_superset(po, domain_default=True)
+            )
+        ) is None:
+            return None
+
+        return (
+            image_enclosure,
+            (
+                image_enclosure.get_min_value(),
+                image_enclosure.get_max_value(),
+            ),
+            False,
+        )
 
 
 @algorithm("Uncertainty estimation", terminal=False)
 def uncertainty_estimation_single_source(mutator: Mutator):
     """
-    Robustly tighten representative parameters from a single uncertainty source.
+    Contract parameter upper bounds from a single uncertainty source.
 
     A is! f(B, C, ...)
     L ss! B
     f depends on exactly one such lower-bounded operand
     -> A ss! Y
 
-    where Y is the interval guaranteed for all values of B in L, restricted to certain
-    monotone expression cases
+    where Y is the guaranteed enclosure for all values of B in L, restricted to
+    certain monotone expression cases
     """
     for target_po in mutator.get_parameter_operatables_of_type(
         F.Parameters.NumericParameter
@@ -486,33 +524,34 @@ def uncertainty_estimation_single_source(mutator: Mutator):
         if target_po.try_extract_subset() is not None:
             continue
 
-        target = target_po.as_operand.get()
-        for other in AliasClass.of(target).expressions(
+        target_op = target_po.as_operand.get()
+        for expr in AliasClass.of(target_op).expressions(
             excluded_traits=(F.Expressions.is_predicate, F.Expressions.is_setic),
             exclude_operand=target_po,
         ):
-            candidate = _summarize_with_uncertainty(mutator, other)
+            if (
+                candidate := _summarize_with_uncertainty(mutator, expr.as_operand.get())
+            ) is None:
+                continue
+
+            _, guaranteed_enclosure, depends_on_uncertainty = candidate
 
             # Only add bounds that depend on a lower subset
-            if not candidate or not candidate.uncertain:
+            if not depends_on_uncertainty:
                 continue
 
             # No interval survives all values of the uncertainty source
-            if candidate.robust_min > candidate.robust_max:
+            if guaranteed_enclosure[0] > guaranteed_enclosure[1]:
                 continue
 
-            lit_op = (
-                mutator.utils.make_number_literal_from_range(
-                    candidate.robust_min, candidate.robust_max
-                )
-                .is_literal.get()
-                .as_operand.get()
+            lit = mutator.utils.make_number_literal_from_range(
+                guaranteed_enclosure[0], guaranteed_enclosure[1]
             )
 
             mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
-                target,
-                lit_op,
+                target_op,
+                lit.is_literal.get().as_operand.get(),
                 from_ops=[target_po],
                 assert_=True,
             )
