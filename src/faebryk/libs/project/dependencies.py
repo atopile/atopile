@@ -28,24 +28,47 @@ from faebryk.libs.util import (
 
 logger = logging.getLogger(__name__)
 
-
-def _log_add_package(identifier: str, version: str):
-    logger.info(
-        f"[green]+[/] {identifier}@{version}",
-        extra={"markup": True},
-    )
-
-
-def _log_pin_package(identifier: str, version: str):
-    logger.info(
-        f"📌 {identifier}@{version}",
-        extra={"markup": True},
-    )
+# Error categories for user-friendly messages
+_NETWORK_HELP = (
+    "\n\nPossible causes:"
+    "\n - No internet connection"
+    "\n - Package registry is temporarily unavailable"
+    "\n - Firewall blocking outbound HTTPS"
+)
 
 
-def _log_remove_package(identifier: str, version: str | None):
-    dep_str = f"{identifier}@{version}" if version else identifier
-    logger.info(f"[red]-[/] {dep_str}", extra={"markup": True})
+class _ChangeAction:
+    ADDED = "added"
+    REMOVED = "removed"
+    UPDATED = "updated"
+    PINNED = "pinned"
+
+
+_CHANGE_FMT = {
+    _ChangeAction.ADDED: " [green]+[/]",
+    _ChangeAction.REMOVED: " [red]-[/]",
+    _ChangeAction.UPDATED: " [yellow]~[/]",
+    _ChangeAction.PINNED: " [cyan]📌[/]",
+}
+
+
+def _log_changes(
+    changes: list[tuple[str, str, str | None]],
+) -> None:
+    """Print a summary of package changes."""
+    if not changes:
+        return
+
+    for action, identifier, ver in changes:
+        prefix = _CHANGE_FMT.get(action, " ")
+        ver_str = f"  {ver}" if ver else ""
+        logger.info(
+            "%s %s%s",
+            prefix,
+            identifier,
+            ver_str,
+            extra={"markup": True},
+        )
 
 
 def _select_compatible_registry_release(
@@ -317,6 +340,7 @@ class ProjectDependencies:
                 pcfg = self.gcfg.project
 
         self.pcfg = pcfg
+        self._changes: list[tuple[str, str, str | None]] = []
 
         self.direct_deps = {
             ProjectDependency(spec, pcfg=pcfg) for spec in pcfg.dependencies or []
@@ -347,6 +371,8 @@ class ProjectDependencies:
         if pin_versions:
             self.pin_versions()
 
+        _log_changes(self._changes)
+
     @property
     def all_deps(self) -> set[ProjectDependency]:
         return self.dag.values
@@ -363,10 +389,51 @@ class ProjectDependencies:
         return {dep for dep in self.all_deps if not dep.cfg}
 
     def install_missing_dependencies(self):
-        for dep in self.not_installed_dependencies:
-            assert dep.dist is not None
-            _log_add_package(dep.identifier, dep.dist.version)
-            dep.dist.install(dep.target_path, source=dep.get_package_source())
+        missing = self.not_installed_dependencies
+        if not missing:
+            return
+
+        from rich.progress import (
+            Progress,
+            SpinnerColumn,
+            TextColumn,
+        )
+
+        from atopile.logging_utils import (
+            ShortTimeElapsedColumn,
+            error_console,
+        )
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn(
+                "Installing"
+                "  {task.completed}/{task.total}"
+                "  [dim]{task.fields[current]}[/dim]"
+            ),
+            ShortTimeElapsedColumn(),
+            console=error_console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("", total=len(missing), current="")
+            for dep in missing:
+                assert dep.dist is not None
+                progress.update(
+                    task,
+                    current=f"{dep.identifier}@{dep.dist.version}",
+                )
+                dep.dist.install(
+                    dep.target_path,
+                    source=dep.get_package_source(),
+                )
+                self._changes.append(
+                    (
+                        _ChangeAction.ADDED,
+                        dep.identifier,
+                        dep.dist.version,
+                    )
+                )
+                progress.advance(task)
 
     def clean_unmanaged_directories(self):
         module_dir = self.pcfg.paths.modules
@@ -393,10 +460,22 @@ class ProjectDependencies:
 
         for unmanaged_dir in unmanaged_dirs:
             dep_cfg = config.ProjectConfig.from_path(module_dir / unmanaged_dir)
-            if dep_cfg is None or dep_cfg.package is None:
-                logger.warning(f"Removing unmanaged module directory: {unmanaged_dir}")
+            if dep_cfg is not None and dep_cfg.package is not None:
+                self._changes.append(
+                    (
+                        _ChangeAction.REMOVED,
+                        dep_cfg.package.identifier,
+                        dep_cfg.package.version,
+                    )
+                )
             else:
-                _log_remove_package(dep_cfg.package.identifier, dep_cfg.package.version)
+                self._changes.append(
+                    (
+                        _ChangeAction.REMOVED,
+                        str(unmanaged_dir),
+                        None,
+                    )
+                )
 
             robustly_rm_dir(module_dir / unmanaged_dir)
 
@@ -425,6 +504,33 @@ class ProjectDependencies:
         chain.append(leaf)
         return " → ".join(chain)
 
+    @staticmethod
+    def _format_dep_error(identifier: str, error: Exception) -> str:
+        """Format a dependency error with actionable context."""
+        from httpx import ReadTimeout as HttpxReadTimeout
+
+        if isinstance(error, ApiErrors.PackagesApiTimeoutError):
+            return (
+                f"Could not reach the package registry while "
+                f"fetching {identifier}{_NETWORK_HELP}"
+            )
+        if isinstance(error, HttpxReadTimeout):
+            return f"Connection timed out while fetching {identifier}{_NETWORK_HELP}"
+        if isinstance(error, ApiErrors.PackageNotFoundError):
+            return (
+                f"Package not found: {identifier}. "
+                f"Check the package name at "
+                f"https://packages.atopile.io"
+            )
+        if isinstance(error, ApiErrors.ReleaseNotFoundError):
+            return f"Version not found for {identifier}: {error.detail}"
+        if isinstance(error, ApiErrors.PackagesApiHTTPError):
+            return (
+                f"Registry error for {identifier}: HTTP {error.code} - {error.detail}"
+            )
+        # Generic fallback — include exception type for clarity
+        return f"{identifier}: {type(error).__name__}: {error}"
+
     def resolve_dependencies(self):
         dag = DAG[ProjectDependency]()
         # TODO: can be replaced with dag.values
@@ -439,56 +545,112 @@ class ProjectDependencies:
         ]
 
         acc_errors: list[BrokenDependencyError] = []
-        while deps_to_process:
-            to_add: list[tuple[ProjectDependency, ProjectDependency]] = []
-            for parent, dep in deps_to_process:
-                try:
-                    # Record parent for chain reporting (first parent wins)
-                    if parent is not None and dep.identifier not in parent_map:
-                        parent_map[dep.identifier] = parent
+        resolved_count = 0
 
-                    dups = all_deps.intersection({dep})
-                    assert len(dups) <= 1
-                    dup = dups.pop() if dups else None
-                    if dup:
-                        if dup.spec != dep.spec:
-                            # TODO better error
-                            raise errors.UserException(
-                                f"Incompatible dependency specs in tree: {dep.spec}"
-                            )
-                        assert parent is not None, "Can't have duplicates in root"
-                        dag.add_edge(parent, dup)
-                        continue
+        from rich.progress import (
+            Progress,
+            SpinnerColumn,
+            TextColumn,
+        )
 
-                    dep.try_load()
-                    if dep.cfg is None:
-                        dep.load_dist()
-                    to_add.extend((dep, child) for child in dep.direct_dependencies)
-                    all_deps.add(dep)
-                    if parent is not None:
-                        dag.add_edge(parent, dep)
-                    else:
-                        dag.add_or_get(dep)
-                except Exception as e:
-                    release = (
-                        dep.spec.release
-                        if isinstance(dep.spec, config.RegistryDependencySpec)
-                        else None
-                    )
-                    acc_errors.append(
-                        BrokenDependencyError(
-                            dep.identifier, e, parent=parent, release=release
+        from atopile.logging_utils import (
+            ShortTimeElapsedColumn,
+            error_console,
+        )
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn(
+                "Resolving dependencies"
+                "  {task.completed}/{task.total}"
+                "  [dim]{task.fields[current]}[/dim]"
+            ),
+            ShortTimeElapsedColumn(),
+            console=error_console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(
+                "",
+                total=len(deps_to_process),
+                current="",
+            )
+
+            while deps_to_process:
+                to_add: list[tuple[ProjectDependency, ProjectDependency]] = []
+                for parent, dep in deps_to_process:
+                    progress.update(task, current=dep.identifier)
+                    try:
+                        if parent is not None and dep.identifier not in parent_map:
+                            parent_map[dep.identifier] = parent
+
+                        dups = all_deps.intersection({dep})
+                        assert len(dups) <= 1
+                        dup = dups.pop() if dups else None
+                        if dup:
+                            if dup.spec != dep.spec:
+                                raise errors.UserException(
+                                    f"Incompatible dependency specs in tree: {dep.spec}"
+                                )
+                            assert parent is not None, "Can't have duplicates in root"
+                            dag.add_edge(parent, dup)
+                            continue
+
+                        dep.try_load()
+                        if dep.cfg is None:
+                            dep.load_dist()
+                        resolved_count += 1
+                        children = dep.direct_dependencies
+                        to_add.extend((dep, child) for child in children)
+                        # Grow total as we discover transitive deps
+                        progress.update(
+                            task,
+                            advance=1,
+                            total=progress.tasks[task].total + len(children),
                         )
-                    )
+                        all_deps.add(dep)
+                        if parent is not None:
+                            dag.add_edge(parent, dep)
+                        else:
+                            dag.add_or_get(dep)
+                    except Exception as e:
+                        release = (
+                            dep.spec.release
+                            if isinstance(
+                                dep.spec,
+                                config.RegistryDependencySpec,
+                            )
+                            else None
+                        )
+                        progress.update(task, advance=1)
+                        acc_errors.append(
+                            BrokenDependencyError(
+                                dep.identifier,
+                                e,
+                                parent=parent,
+                                release=release,
+                            )
+                        )
 
-            deps_to_process.clear()
-            deps_to_process.extend(to_add)
+                deps_to_process.clear()
+                deps_to_process.extend(to_add)
+
+        if resolved_count:
+            logger.info(
+                "Resolved %d %s",
+                resolved_count,
+                "dependency" if resolved_count == 1 else "dependencies",
+            )
         if acc_errors:
             error_list = []
             for e in acc_errors:
                 chain = self._build_dep_chain(e.identifier, parent_map, e.release)
-                error_list.append(f"{chain}: {e.error}")
-            raise errors.UserException(f"Broken dependencies:\n {md_list(error_list)}")
+                friendly_msg = self._format_dep_error(e.identifier, e.error)
+                error_list.append(f"{chain}: {friendly_msg}")
+            raise errors.UserException(
+                f"Failed to resolve {len(acc_errors)} "
+                f"{'dependency' if len(acc_errors) == 1 else 'dependencies'}:"
+                f"\n {md_list(error_list)}"
+            )
 
         if dag.contains_cycles:
             # TODO better error
@@ -572,7 +734,13 @@ class ProjectDependencies:
 
         dep.dist.install(target_path, source=dep.get_package_source())
         dep.add_to_manifest()
-        _log_add_package(dep.identifier, dep.dist.version)
+        self._changes.append(
+            (
+                _ChangeAction.ADDED,
+                dep.identifier,
+                dep.dist.version,
+            )
+        )
 
     def add_dependencies(self, *specs: config.DependencySpec, upgrade: bool = False):
         # Load specs and fetch dists if needed
@@ -647,7 +815,13 @@ class ProjectDependencies:
 
         for dep in to_remove_deps:
             dep.remove_from_manifest()
-            _log_remove_package(dep.identifier, dep.dist.version if dep.dist else None)
+            self._changes.append(
+                (
+                    _ChangeAction.REMOVED,
+                    dep.identifier,
+                    dep.dist.version if dep.dist else None,
+                )
+            )
 
         for dep in uninstall:
             if dep.target_path.exists():
@@ -679,11 +853,26 @@ class ProjectDependencies:
 
             target_path = dep.target_path
             if target_path.exists():
-                _log_remove_package(dep.identifier, installed_version)
                 robustly_rm_dir(target_path)
 
-            _log_add_package(dep.identifier, dep.dist.version)
             dep.dist.install(target_path, source=dep.get_package_source())
+
+            if installed_version in ("<not installed>", "<unknown>"):
+                self._changes.append(
+                    (
+                        _ChangeAction.ADDED,
+                        dep.identifier,
+                        dep.dist.version,
+                    )
+                )
+            else:
+                self._changes.append(
+                    (
+                        _ChangeAction.UPDATED,
+                        dep.identifier,
+                        f"{installed_version} -> {dep.dist.version}",
+                    )
+                )
             return True
 
         dirty = False
@@ -702,10 +891,6 @@ class ProjectDependencies:
 
                     match state:
                         case PackageState.NOT_INSTALLED:
-                            logger.info(
-                                f"Installing missing dependency: "
-                                f"{dep.identifier}@{desired_version}"
-                            )
                             dirty |= _sync_dep(dep, "<not installed>")
 
                         case PackageState.INSTALLED_FRESH:
@@ -714,23 +899,17 @@ class ProjectDependencies:
 
                         case PackageState.INSTALLED_WRONG_VERSION:
                             installed_version = meta.version if meta else "<unknown>"
-                            logger.info(
-                                f"Syncing {dep.identifier}: "
-                                f"{installed_version} -> {desired_version}"
-                            )
                             dirty |= _sync_dep(dep, installed_version)
 
                         case PackageState.INSTALLED_MODIFIED:
                             if force:
-                                logger.warning(
-                                    f"Force overwriting modified package: "
-                                    f"{dep.identifier}"
-                                )
                                 installed_version = (
                                     meta.version if meta else "<unknown>"
                                 )
                                 dirty |= _sync_dep(
-                                    dep, installed_version, force_reinstall=True
+                                    dep,
+                                    installed_version,
+                                    force_reinstall=True,
                                 )
                             else:
                                 raise PackageModifiedError(
@@ -740,27 +919,21 @@ class ProjectDependencies:
                                 )
 
                         case PackageState.INSTALLED_NO_META:
-                            # Legacy package without metadata - reinstall to add
-                            # tracking
+                            # Legacy package without metadata - reinstall
                             if dep.cfg is None or dep.cfg.package is None:
                                 installed_version = "<unknown>"
                             else:
                                 installed_version = dep.cfg.package.version
 
                             if installed_version != desired_version:
-                                logger.info(
-                                    f"Syncing {dep.identifier}: "
-                                    f"{installed_version} -> {desired_version}"
-                                )
                                 dirty |= _sync_dep(dep, installed_version)
                             else:
-                                logger.info(
-                                    f"Upgrading {dep.identifier} to tracked format"
-                                )
                                 # Force reinstall to add metadata even though
                                 # version matches
                                 dirty |= _sync_dep(
-                                    dep, installed_version, force_reinstall=True
+                                    dep,
+                                    installed_version,
+                                    force_reinstall=True,
                                 )
 
                 case "file" | "git":
@@ -790,7 +963,13 @@ class ProjectDependencies:
             ):
                 dep.spec.release = dep.cfg.package.version
                 dep.add_to_manifest()
-                _log_pin_package(dep.identifier, dep.cfg.package.version)
+                self._changes.append(
+                    (
+                        _ChangeAction.PINNED,
+                        dep.identifier,
+                        dep.cfg.package.version,
+                    )
+                )
 
     def _clear_all_installed_packages(self) -> None:
         """

@@ -434,9 +434,12 @@ def build(
                 for dep in deps.not_installed_dependencies:
                     try:  # protect against parallel worker race condition
                         assert dep.dist is not None
-                        from faebryk.libs.project.dependencies import _log_add_package
-
-                        _log_add_package(dep.identifier, dep.dist.version)
+                        logger.info(
+                            " [green]+[/] %s@%s",
+                            dep.identifier,
+                            dep.dist.version,
+                            extra={"markup": True},
+                        )
                         dep.dist.install(dep.target_path)
                     except FileExistsError:
                         logger.debug(

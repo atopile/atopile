@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
+import httpx
 from dataclasses_json import config as dataclasses_json_config
 from dataclasses_json.api import dataclass_json
 from httpx import ReadTimeout
@@ -321,9 +322,12 @@ class Errors:
 
     class PackagesApiTimeoutError(PackagesApiError):
         def __init__(self, error: ReadTimeout, detail: str):
-            super().__init__()
+            super().__init__(detail)
             self.error = error
             self.detail = detail
+
+        def __str__(self) -> str:
+            return self.detail
 
     class PackagesApiHTTPError(Exception):
         def __init__(self, error: HTTPStatusError, detail: str):
@@ -413,10 +417,49 @@ class Errors:
     class ReleaseAlreadyExistsError(PackagesApiHTTPError): ...
 
 
+_RETRYABLE_STATUS_CODES = {502, 503, 504}
+_MAX_RETRIES = 3
+_RETRY_BACKOFF_BASE = 1.0  # seconds: 1s, 2s, 4s
+
+
 class PackagesAPIClient:
     @dataclass
     class ApiConfig:
         api_url: str = config.project.services.packages.url
+
+    def __init__(self) -> None:
+        self._client: httpx.Client | None = None
+
+    def _ensure_client(
+        self, extra_headers: dict[str, str] | None = None
+    ) -> httpx.Client:
+        """Get or create the persistent HTTP client."""
+        if self._client is None:
+            import ssl
+
+            import truststore
+
+            verify: (
+                bool | ssl.SSLContext
+            ) = not config.project.dangerously_skip_ssl_verification
+            if verify is True:
+                verify = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+            self._client = httpx.Client(
+                headers=self._base_headers | (extra_headers or {}),
+                verify=verify,
+                timeout=httpx.Timeout(10.0, connect=5.0),
+            )
+        return self._client
+
+    def close(self) -> None:
+        """Close the persistent HTTP client."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __del__(self) -> None:
+        self.close()
 
     @property
     @once
@@ -452,27 +495,56 @@ class PackagesAPIClient:
         url: str,
         timeout: float = 10,
     ) -> Response:
-        with http_client(
-            self._base_headers,
-            verify=not config.project.dangerously_skip_ssl_verification,
-        ) as client:
+        client = self._ensure_client()
+        last_error: Exception | None = None
+
+        for attempt in range(_MAX_RETRIES + 1):
             try:
                 response = client.get(f"{self._cfg.api_url}{url}", timeout=timeout)
+                response.raise_for_status()
+                return response
             except ReadTimeout as e:
+                last_error = e
+                if attempt < _MAX_RETRIES:
+                    delay = _RETRY_BACKOFF_BASE * (2**attempt)
+                    logger.debug(
+                        "Registry timeout on %s, retrying in %.0fs (%d/%d)",
+                        url,
+                        delay,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                    )
+                    time.sleep(delay)
+                    continue
                 raise Errors.PackagesApiTimeoutError(
                     e,
-                    f"Timeout ({timeout}s) while connecting to the package registry, "
-                    "maybe try again",
+                    f"Registry unreachable after {_MAX_RETRIES + 1} attempts "
+                    f"(timeout {timeout}s each). Check your internet connection.",
                 ) from e
-        try:
-            response.raise_for_status()
-        except HTTPStatusError as e:
-            try:
-                detail = response.json()["detail"]
-            except (JSONDecodeError, KeyError):
-                detail = response.text
-            raise Errors.PackagesApiHTTPError(e, detail) from e
-        return response
+            except HTTPStatusError as e:
+                if e.response.status_code in _RETRYABLE_STATUS_CODES:
+                    last_error = e
+                    if attempt < _MAX_RETRIES:
+                        delay = _RETRY_BACKOFF_BASE * (2**attempt)
+                        logger.debug(
+                            "Registry returned %d on %s, retrying in %.0fs (%d/%d)",
+                            e.response.status_code,
+                            url,
+                            delay,
+                            attempt + 1,
+                            _MAX_RETRIES,
+                        )
+                        time.sleep(delay)
+                        continue
+                try:
+                    detail = e.response.json()["detail"]
+                except (JSONDecodeError, KeyError):
+                    detail = e.response.text
+                raise Errors.PackagesApiHTTPError(e, detail) from e
+
+        # Should not reach here, but satisfy type checker
+        assert last_error is not None
+        raise last_error
 
     def _post(
         self,
@@ -653,18 +725,40 @@ class PackagesAPIClient:
         url = release.info.download_url
         filepath = output_path / release.info.filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        # download the file to output_path
-        with http_client(
-            self._base_headers,
-            verify=not config.project.dangerously_skip_ssl_verification,
-        ) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            with filepath.open("wb") as f:
-                for chunk in response.iter_bytes(chunk_size=8192):
-                    f.write(chunk)
+        # download the file with retry on timeout
+        client = self._ensure_client()
+        last_error: ReadTimeout | None = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                response = client.get(url, timeout=30.0)
+                response.raise_for_status()
+                with filepath.open("wb") as f:
+                    for chunk in response.iter_bytes(chunk_size=8192):
+                        f.write(chunk)
+                return Dist(filepath)
+            except ReadTimeout as e:
+                last_error = e
+                if attempt < _MAX_RETRIES:
+                    delay = _RETRY_BACKOFF_BASE * (2**attempt)
+                    logger.debug(
+                        "Download timeout for %s, retrying in %.0fs (%d/%d)",
+                        identifier,
+                        delay,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                    )
+                    time.sleep(delay)
+                    continue
+                raise Errors.PackagesApiTimeoutError(
+                    e,
+                    f"Timed out downloading {identifier} after "
+                    f"{_MAX_RETRIES + 1} attempts. "
+                    f"Check your internet connection.",
+                ) from e
 
-        return Dist(filepath)
+        # Should not reach here, but satisfy type checker
+        assert last_error is not None
+        raise last_error
 
     def query_packages(self, query: str) -> _Endpoints.Packages.Response:
         r = self._get(_Endpoints.Packages.url(_Endpoints.Packages.Request(query)))
