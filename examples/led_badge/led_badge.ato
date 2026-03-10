@@ -10,6 +10,7 @@ import I2C
 import I2S
 import can_bridge_by_name
 
+# Package imports
 from "atopile/usb-connectors/usb-connectors.ato" import USBTypeCConnector_driver
 from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020_driver
 from "atopile/ti-bq25185/ti-bq25185.ato" import TI_BQ25185
