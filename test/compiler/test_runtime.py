@@ -1951,6 +1951,12 @@ def test_trait_template_enum():
     g = GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
+    # Register unit types since we're using stdlib types (Resistor) that
+    # reference units via type-level pointers (<<TypeName)
+    from faebryk.library.Units import register_all_unit_types
+
+    register_all_unit_types(tg)
+
     class _App(fabll.Node):
         r = F.Resistor.MakeChild()
         _trait = fabll.Traits.MakeEdge(

@@ -8,7 +8,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, not_none, once
+from faebryk.libs.util import KeyErrorAmbiguous, not_none
 
 if TYPE_CHECKING:
     import faebryk.library.Literals as Literals
@@ -913,25 +913,10 @@ class NumericParameter(fabll.Node):
         return out
 
     @staticmethod
-    @once
     def _make_1_0_unit(basis_vector: "F.Units.BasisVector") -> type[fabll.Node]:
-        from faebryk.library.Units import is_unit
+        from faebryk.library.Units import get_base_unit_type
 
-        is_unit_trait_child = is_unit.MakeChild(
-            symbols=(),
-            basis_vector=basis_vector,
-            multiplier=1.0,
-            offset=0.0,
-        )
-
-        class _BaseUnit(fabll.Node):
-            _override_type_identifier = f"BaseUnit<{basis_vector}>"
-            is_unit = fabll.Traits.MakeEdge(is_unit_trait_child).put_on_type()
-            can_be_operand_trait = fabll.Traits.MakeEdge(
-                can_be_operand.MakeChild()
-            ).put_on_type()
-
-        return _BaseUnit
+        return get_base_unit_type(basis_vector)
 
     @classmethod
     def MakeChild(  # type: ignore[invalid-method-override]

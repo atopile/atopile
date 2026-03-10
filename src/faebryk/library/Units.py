@@ -851,7 +851,12 @@ class has_unit(fabll.Node):
 
     @classmethod
     def MakeChild_FromType(cls, unit_type: type[fabll.Node]) -> fabll._ChildField[Self]:
-        """Create has_unit pointing to is_unit on the unit's type node."""
+        """Create has_unit pointing to type-level is_unit on the given unit type.
+
+        Uses a type reference (<<TypeName) to point directly to the unit type's
+        is_unit trait. The unit type must be registered in the TypeGraph before
+        instantiation (via register_all_unit_types or decode_symbol).
+        """
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Collections.Pointer.MakeEdge(
@@ -883,7 +888,12 @@ class has_display_unit(fabll.Node):
 
     @classmethod
     def MakeChild_FromType(cls, unit_type: type[fabll.Node]) -> fabll._ChildField[Self]:
-        """Create has_display_unit pointing to is_unit on the unit's type node."""
+        """Create has_display_unit pointing to type-level is_unit on the given unit type
+
+        Uses a type reference (<<TypeName) to point directly to the unit type's
+        is_unit trait. The unit type must be registered in the TypeGraph before
+        instantiation (via register_all_unit_types or decode_symbol).
+        """
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Collections.Pointer.MakeEdge(
@@ -1013,6 +1023,10 @@ def decode_symbol(
             unit_expression_t = UnitExpressionFactory(
                 (symbol,), ((fabll_unit_type, 1),), scale_factor, 0.0
             )
+
+            # Register the dynamically created type in the TypeGraph so it can
+            # be referenced via << type lookups by MakeChild_FromType
+            fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=unit_expression_t)
 
             return unit_expression_t
 
@@ -2531,9 +2545,54 @@ class AmpereHour(fabll.Node):
 AmpereSecond = UnitExpressionFactory(("As",), ((Ampere, 1), (Second, 1)))
 VoltsPerSecond = UnitExpressionFactory(("Vps",), ((Volt, 1), (Second, -1)))
 
+# Base unit lookup: BasisVector → static unit type (multiplier=1.0, offset=0.0)
+# Used to find the pre-registered base unit type for a given basis vector,
+# avoiding the need to create synthetic _BaseUnit types.
+_BASE_UNIT_BY_VECTOR: dict[BasisVector, type[fabll.Node]] = {}
+for _reg in _UNIT_SYMBOLS:
+    _unit_cls = globals()[_reg.name]
+    if (
+        isinstance(_unit_cls, type)
+        and issubclass(_unit_cls, fabll.Node)
+        and getattr(_unit_cls, "multiplier_arg", None) == 1.0
+        and getattr(_unit_cls, "offset_arg", None) == 0.0
+        and hasattr(_unit_cls, "unit_vector_arg")
+    ):
+        _vec = _unit_cls.unit_vector_arg
+        if _vec not in _BASE_UNIT_BY_VECTOR:
+            _BASE_UNIT_BY_VECTOR[_vec] = _unit_cls
+
+
+def get_base_unit_type(basis_vector: BasisVector) -> type[fabll.Node]:
+    """Get the static base unit type for a basis vector.
+
+    Returns the pre-registered unit type (e.g., Ohm, Volt, Meter) that has
+    multiplier=1.0 and offset=0.0 for the given basis vector.
+    These types are already registered in the TypeGraph by register_all_units.
+    """
+    if basis_vector in _BASE_UNIT_BY_VECTOR:
+        return _BASE_UNIT_BY_VECTOR[basis_vector]
+    # For derived/compound vectors not in the static registry,
+    # create an anonymous unit type
+    return AnonymousUnitFactory(
+        vector=basis_vector, multiplier=1.0, offset=0.0, symbols=()
+    )
+
 
 # Logarithmic units --------------------------------------------------------------------
 # TODO: logarithmic units
+
+
+def register_all_unit_types(tg: fbrk.TypeGraph) -> None:
+    """Eagerly register all unit type nodes in the typegraph.
+
+    This ensures unit types can be referenced by name (via << type references)
+    during type creation, without requiring lazy registration.
+    """
+    for registry in _UNIT_SYMBOLS:
+        unit_type = globals()[registry.name]
+        assert isinstance(unit_type, type) and issubclass(unit_type, fabll.Node)
+        fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=unit_type)
 
 
 @once
