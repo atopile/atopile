@@ -3481,6 +3481,38 @@ class TestRetypeOperator:
 
         assert resolved_name == "Capacitor"
 
+    def test_retype_applies_in_source_order(self):
+        """Later retypes overwrite earlier ones on the same field."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Electrical
+
+            module TypeA:
+                a = new Electrical
+
+            module TypeB:
+                b = new Electrical
+
+            module TypeC:
+                c = new Electrical
+
+            module App:
+                part = new TypeA
+                part -> TypeB
+                part -> TypeC
+            """,
+            link=True,
+        )
+
+        app_type = result.state.type_roots["App"]
+        type_ref = tg.get_make_child_type_reference_by_identifier(
+            type_node=app_type, identifier="part"
+        )
+        resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
+        resolved_name = fbrk.TypeGraph.get_type_name(type_node=resolved)
+
+        assert "TypeC" in resolved_name
+
     def test_retype_nonexistent_field_errors(self):
         """Retype on a field that doesn't exist raises an error."""
         with pytest.raises(DslException, match="does not exist"):
@@ -3509,6 +3541,34 @@ class TestRetypeOperator:
             )
 
         assert isinstance(e.value.original, DslUndefinedSymbolError)
+
+    def test_retype_error_is_attributed_to_statement(self):
+        """Retype failures should point back to the originating statement."""
+        with pytest.raises(
+            DslRichException,
+            match=r"Cannot retype `inner.missing`: path does not exist",
+        ) as e:
+            build_type(
+                """
+                import Electrical
+
+                module Replacement:
+                    x = new Electrical
+
+                module Inner:
+                    child = new Replacement
+
+                module App:
+                    inner = new Inner
+                    inner.missing -> Replacement
+                """,
+                link=True,
+            )
+
+        assert e.value.source_node is not None
+        source_chunk = ASTVisitor.get_source_chunk(e.value.source_node.instance)
+        assert source_chunk is not None
+        assert source_chunk.get_text().strip() == "inner.missing -> Replacement"
 
 
 class TestMakeChildDeduplication:

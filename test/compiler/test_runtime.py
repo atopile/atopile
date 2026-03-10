@@ -2517,6 +2517,113 @@ class TestRetypeRuntime:
             f"inner should be Specialized, got {inner_type}"
         )
 
+    def test_retype_indexed_child_instance(self):
+        """Retype can target a single indexed child."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module SlotA:
+                a = new Electrical
+
+            module SlotB:
+                b = new Electrical
+
+            module Holder:
+                slots = new SlotA[2]
+
+            module App:
+                holder = new Holder
+                holder.slots[1] -> SlotB
+            """,
+            "App",
+        )
+
+        holder = _get_child(app_instance, "holder")
+        slot0_type = _get_type_name(_get_child(holder, "slots[0]"))
+        slot1_type = _get_type_name(_get_child(holder, "slots[1]"))
+
+        assert "SlotA" in slot0_type, (
+            f"holder.slots[0] should remain SlotA, got {slot0_type}"
+        )
+        assert "SlotB" in slot1_type, (
+            f"holder.slots[1] should be SlotB, got {slot1_type}"
+        )
+
+    def test_retype_applies_in_source_order(self):
+        """Later retypes on the same field should win."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module TypeA:
+                a = new Electrical
+
+            module TypeB:
+                b = new Electrical
+
+            module TypeC:
+                c = new Electrical
+
+            module App:
+                part = new TypeA
+                part -> TypeB
+                part -> TypeC
+            """,
+            "App",
+        )
+
+        part_type = _get_type_name(_get_child(app_instance, "part"))
+        assert "TypeC" in part_type, (
+            f"part should be TypeC after the later retype, got {part_type}"
+        )
+
+    def test_later_ancestor_retype_overrides_earlier_nested_retype(self):
+        """
+        Source order should let a later ancestor retype replace an earlier nested one.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module LeafA:
+                a = new Electrical
+
+            module LeafB:
+                b = new Electrical
+
+            module LeafC:
+                c = new Electrical
+
+            module InnerA:
+                leaf = new LeafA
+
+            module InnerB:
+                leaf = new LeafB
+
+            module Outer:
+                inner = new InnerA
+
+            module App:
+                item = new Outer
+                item.inner.leaf -> LeafC
+                item.inner -> InnerB
+            """,
+            "App",
+        )
+
+        item = _get_child(app_instance, "item")
+        inner_type = _get_type_name(_get_child(item, "inner"))
+        leaf_type = _get_type_name(_get_child(_get_child(item, "inner"), "leaf"))
+
+        assert "InnerB" in inner_type, (
+            f"item.inner should be InnerB after the later retype, got {inner_type}"
+        )
+        assert "LeafB" in leaf_type, (
+            "item.inner.leaf should come from InnerB after the later ancestor retype, "
+            f"got {leaf_type}"
+        )
+
 
 class TestRetypeInstanceIsolation:
     """Tests that retype on one instance does NOT affect sibling instances.
@@ -2611,6 +2718,46 @@ class TestRetypeInstanceIsolation:
         )
         assert "TypeA" in c3_child_type, (
             f"c3.child should remain TypeA, got {c3_child_type}"
+        )
+
+    def test_retype_two_level_nested_path_is_isolated(self):
+        """Deep nested retypes should only affect the targeted instance branch."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module LeafA:
+                a = new Electrical
+
+            module LeafB:
+                b = new Electrical
+
+            module Mid:
+                leaf = new LeafA
+
+            module Assembly:
+                mid = new Mid
+
+            module App:
+                inst1 = new Assembly
+                inst2 = new Assembly
+                inst2.mid.leaf -> LeafB
+            """,
+            "App",
+        )
+
+        inst1_leaf_type = _get_type_name(
+            _get_child(_get_child(_get_child(app_instance, "inst1"), "mid"), "leaf")
+        )
+        inst2_leaf_type = _get_type_name(
+            _get_child(_get_child(_get_child(app_instance, "inst2"), "mid"), "leaf")
+        )
+
+        assert "LeafA" in inst1_leaf_type, (
+            f"inst1.mid.leaf should remain LeafA, got {inst1_leaf_type}"
+        )
+        assert "LeafB" in inst2_leaf_type, (
+            f"inst2.mid.leaf should be LeafB, got {inst2_leaf_type}"
         )
 
     def test_retype_isolation_across_linked_modules(self):
