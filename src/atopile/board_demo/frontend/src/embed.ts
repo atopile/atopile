@@ -131,6 +131,7 @@ export async function mount(target: HTMLElement | string, options: MountOptions 
         disposeModelViewer = await mountModel3D(
             modelSurface,
             new URL(manifest.modelPath, `${assetBase}/`).toString(),
+            { showStats: manifest.showStats },
         );
         modelLoading.remove();
         setDemoState({ modelLoaded: true });

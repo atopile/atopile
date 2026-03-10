@@ -5,6 +5,7 @@ export interface DemoManifest {
     modelPath: string;
     posterPath?: string;
     hiddenLayoutLayers?: string[];
+    showStats?: boolean;
 }
 
 export interface MountOptions {

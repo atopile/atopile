@@ -171,10 +171,10 @@ const STUDIO_PRESET: ScenePreset = {
         maxPixelRatio: 2,
     },
     camera: {
-        fov: 46,
-        initialPosition: [0, 45, 120],
-        perspectiveDirection: [1.15, 0.62, 0.9],
-        perspectiveDistanceScale: 1.95,
+        fov: 30,
+        initialPosition: [0, 45, 50],
+        perspectiveDirection: [0.95, 1.2, 0.8],
+        perspectiveDistanceScale: 2.6,
         topDownDistanceScale: 2.35,
     },
     controls: {
@@ -741,16 +741,25 @@ async function createLightShaft(color: number, radius: number, height: number, i
     return group;
 }
 
-export async function mountModel3D(surface: HTMLElement, modelUrl: string): Promise<() => void> {
+export interface Model3DOptions {
+    showStats?: boolean;
+}
+
+export async function mountModel3D(surface: HTMLElement, modelUrl: string, options: Model3DOptions = {}): Promise<() => void> {
     const canvas = document.createElement("canvas");
     canvas.style.width = "100%";
     canvas.style.height = "100%";
     canvas.style.display = "block";
     surface.appendChild(canvas);
 
+    const showStats = options.showStats ?? false;
     const stats = document.createElement("div");
     stats.className = "atopile-demo-model-stats";
-    stats.textContent = "fps --\ncalls --\ntris --\nmem --";
+    if (showStats) {
+        stats.textContent = "fps --\ncalls --\ntris --\nmem --";
+    } else {
+        stats.style.display = "none";
+    }
     surface.appendChild(stats);
 
     const renderer = new THREE.WebGLRenderer({
@@ -820,7 +829,7 @@ export async function mountModel3D(surface: HTMLElement, modelUrl: string): Prom
     scene.add(underglow);
 
     // Top orange glow with godrays
-    const topglow = await createLightShaft(0xff5500, boardMaxSpan, boardMaxSpan * 1.5, 0.05);
+    const topglow = await createLightShaft(0xff5500, boardMaxSpan, boardMaxSpan * 1.5, 0.01);
     topglow.position.set(0, centeredBounds.max.y + boardMaxSpan * 1.0, 0);
     scene.add(topglow);
 
@@ -876,53 +885,84 @@ export async function mountModel3D(surface: HTMLElement, modelUrl: string): Prom
     resizeObserver.observe(surface);
 
     let disposed = false;
-    let animationFrameId: number | null = null;
+    let demandFrameId: number | null = null;
+    let continuousFrameId: number | null = null;
     let framesSinceSample = 0;
     let sampleStart = performance.now();
+    let lastFrameTime = performance.now();
+    let smoothFps = 0;
 
-    const updateStats = (now: number) => {
-        framesSinceSample += 1;
-        const elapsed = now - sampleStart;
-        if (elapsed < 300) return;
+    const renderStats = (fps: string | number) => {
         const { render, memory } = renderer.info;
-        const fps = Math.round((framesSinceSample * 1000) / elapsed);
         stats.textContent = [
             `fps ${fps}`,
             `calls ${render.calls} tris ${render.triangles} lines ${render.lines}`,
             `pts ${render.points} geoms ${memory.geometries}`,
             `tex ${memory.textures} autoRotate ${STUDIO_PRESET.controls.autoRotate ? "on" : "off"}`,
         ].join("\n");
+    };
+
+    const updateStats = (now: number) => {
+        framesSinceSample += 1;
+        const elapsed = now - sampleStart;
+        if (elapsed < 500) return;
+        const rawFps = (framesSinceSample * 1000) / elapsed;
+        smoothFps = smoothFps === 0 ? rawFps : smoothFps * 0.8 + rawFps * 0.2;
+        renderStats(Math.round(smoothFps));
         framesSinceSample = 0;
         sampleStart = now;
     };
 
     const renderFrame = (now: number) => {
-        animationFrameId = null;
+        const deltaSeconds = Math.max((now - lastFrameTime) / 1000, 1 / 240);
+        lastFrameTime = now;
+        return controls.update(deltaSeconds);
+    };
+
+    const renderOnce = (now: number) => {
+        demandFrameId = null;
         if (disposed) return;
-        const changed = controls.update();
+        const changed = renderFrame(now);
         renderer.render(scene, camera);
         updateStats(now);
-        if (changed) {
+        if (!STUDIO_PRESET.controls.autoRotate && changed) {
             requestRender?.();
         }
     };
 
+    const renderLoop = (now: number) => {
+        if (disposed) return;
+        renderFrame(now);
+        renderer.render(scene, camera);
+        updateStats(now);
+        continuousFrameId = window.requestAnimationFrame(renderLoop);
+    };
+
     requestRender = () => {
-        if (disposed || animationFrameId !== null) return;
-        animationFrameId = window.requestAnimationFrame(renderFrame);
+        if (disposed || STUDIO_PRESET.controls.autoRotate || demandFrameId !== null) return;
+        demandFrameId = window.requestAnimationFrame(renderOnce);
     };
 
     controls.addEventListener("change", () => {
         requestRender?.();
     });
-    requestRender();
+    if (STUDIO_PRESET.controls.autoRotate) {
+        renderer.render(scene, camera);
+        updateStats(performance.now());
+        continuousFrameId = window.requestAnimationFrame(renderLoop);
+    } else {
+        requestRender();
+    }
 
     return () => {
         disposed = true;
         window.__ATOPILE_DEMO_SET_TOP_DOWN__ = null;
         resizeObserver.disconnect();
-        if (animationFrameId !== null) {
-            window.cancelAnimationFrame(animationFrameId);
+        if (demandFrameId !== null) {
+            window.cancelAnimationFrame(demandFrameId);
+        }
+        if (continuousFrameId !== null) {
+            window.cancelAnimationFrame(continuousFrameId);
         }
         controls.dispose();
         envMap.dispose();
