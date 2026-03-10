@@ -615,28 +615,10 @@ def _no_inconsistent_bounds(
         return
 
     if param_op := ops.get(0):
-        # Builder is IsSubset(param, S) — upper bound being inserted.
-        # Check for existing lower bound IsSubset(L, param).
         superset_lit = builder.operands[1].try_get_sibling_trait(F.Literals.is_literal)
-        if superset_lit is None:
+        lower_lit = None if superset_lit is None else param_op.try_extract_subset()
+        if lower_lit is None:
             return
-
-        lower_bounds = [
-            lit
-            for ss in _Query._get_operations(
-                param_op, types=IsSubset, predicates_only=True
-            )
-            if (
-                lit := ss.get_subset_operand().try_get_sibling_trait(
-                    F.Literals.is_literal
-                )
-            )
-        ]
-        if not lower_bounds:
-            return
-        lower_lit = F.Literals.is_literal.op_setic_union(
-            *lower_bounds, g=mutator.G_transient, tg=mutator.tg_in
-        )
 
         if not lower_lit.op_setic_is_subset_of(
             superset_lit, g=mutator.G_transient, tg=mutator.tg_in
@@ -650,26 +632,10 @@ def _no_inconsistent_bounds(
             )
 
     elif param_op := ops.get(1):
-        # Builder is IsSubset(L, param) — lower bound being inserted.
-        # Check for existing upper bound IsSubset(param, S).
         subset_lit = builder.operands[0].try_get_sibling_trait(F.Literals.is_literal)
-        if subset_lit is None:
+        upper_lit = None if subset_lit is None else param_op.try_extract_superset()
+        if upper_lit is None:
             return
-
-        upper_bounds = [
-            lit
-            for ss in _Query._get_operations(
-                param_op, types=IsSubset, predicates_only=True
-            )
-            if (
-                lit := ss.get_superset_operand().try_get_sibling_trait(
-                    F.Literals.is_literal
-                )
-            )
-        ]
-        if not upper_bounds:
-            return
-        upper_lit = upper_bounds[0]
 
         if not subset_lit.op_setic_is_subset_of(
             upper_lit, g=mutator.G_transient, tg=mutator.tg_in

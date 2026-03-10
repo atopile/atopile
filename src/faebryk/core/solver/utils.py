@@ -473,8 +473,8 @@ class MutatorUtils:
             all_root_operands = F.Parameters.can_be_operand.get_root_operands(
                 *leaves, predicates_only=True
             )
-            # Non-constraining predicates are not themselves relevant, but they also
-            # must not block traversal through the connected constraining component.
+            # Non-constraining predicates are not themselves relevant, but they must
+            # not block traversal through the transitive constraining component.
             new_constraining_roots = (
                 OrderedSet(
                     e.get_sibling_trait(F.Expressions.is_predicate)
