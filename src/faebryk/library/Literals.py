@@ -3648,21 +3648,13 @@ class Numbers(fabll.Node):
         self_unit = self.get_is_unit()
         other_unit = other.get_is_unit()
 
-        # Same unit — skip conversion entirely
-        if (
-            self_unit is not None
-            and other_unit is not None
-            and self_unit.is_same(other_unit)
-        ):
-            other_numeric = other.get_numeric_set()
-        else:
-            if not is_unit.is_commensurable_with(self_unit, other_unit):
-                raise UnitsNotCommensurableError(
-                    "Cannot intersect quantity sets: units are not commensurable",
-                    incommensurable_items=[self_unit, other_unit],
-                )
-            other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
-            other_numeric = other_converted.get_numeric_set()
+        if not is_unit.is_commensurable_with(self_unit, other_unit):
+            raise UnitsNotCommensurableError(
+                "Cannot intersect quantity sets: units are not commensurable",
+                incommensurable_items=[self_unit, other_unit],
+            )
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+        other_numeric = other_converted.get_numeric_set()
 
         out_numeric_set = self.get_numeric_set().op_intersect_intervals(
             g=g, tg=tg, other=other_numeric

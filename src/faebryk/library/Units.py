@@ -857,8 +857,8 @@ class has_unit(fabll.Node):
         """Create has_unit pointing to type-level is_unit on the given unit type.
 
         Uses a type reference (<<TypeName) to point directly to the unit type's
-        is_unit trait. The unit type must be registered in the TypeGraph before
-        instantiation (via register_all_unit_types or decode_symbol).
+        is_unit trait. The unit type is lazily registered in the TypeGraph
+        when the edge path is resolved.
         """
         out = fabll._ChildField(cls)
         out.add_dependant(
@@ -894,8 +894,8 @@ class has_display_unit(fabll.Node):
         """Create has_display_unit pointing to type-level is_unit on the given unit type
 
         Uses a type reference (<<TypeName) to point directly to the unit type's
-        is_unit trait. The unit type must be registered in the TypeGraph before
-        instantiation (via register_all_unit_types or decode_symbol).
+        is_unit trait. The unit type is lazily registered in the TypeGraph
+        when the edge path is resolved.
         """
         out = fabll._ChildField(cls)
         out.add_dependant(
@@ -2549,7 +2549,7 @@ AmpereSecond = UnitExpressionFactory(("As",), ((Ampere, 1), (Second, 1)))
 VoltsPerSecond = UnitExpressionFactory(("Vps",), ((Volt, 1), (Second, -1)))
 
 # Base unit lookup: BasisVector → static unit type (multiplier=1.0, offset=0.0)
-# Used to find the pre-registered base unit type for a given basis vector,
+# Used to find the known base unit type for a given basis vector,
 # avoiding the need to create synthetic _BaseUnit types.
 _BASE_UNIT_BY_VECTOR: dict[BasisVector, type[fabll.Node]] = {}
 for _reg in _UNIT_SYMBOLS:
@@ -2569,9 +2569,9 @@ for _reg in _UNIT_SYMBOLS:
 def get_base_unit_type(basis_vector: BasisVector) -> type[fabll.Node]:
     """Get the static base unit type for a basis vector.
 
-    Returns the pre-registered unit type (e.g., Ohm, Volt, Meter) that has
+    Returns the unit type (e.g., Ohm, Volt, Meter) that has
     multiplier=1.0 and offset=0.0 for the given basis vector.
-    These types are already registered in the TypeGraph by register_all_units.
+    Unit types are lazily registered in the TypeGraph when first referenced.
     """
     if basis_vector in _BASE_UNIT_BY_VECTOR:
         return _BASE_UNIT_BY_VECTOR[basis_vector]
