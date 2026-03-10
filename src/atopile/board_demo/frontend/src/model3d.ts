@@ -1,8 +1,86 @@
+import { LOGO_GLB_BASE64 } from "./logo_b64.js";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+
+// Extrude an image into a 3D geometry
+function createImageExtrusion(imageUrl: string, thickness: number, scale: number): Promise<THREE.Object3D> {
+    return new Promise((resolve) => {
+        const image = new Image();
+        image.src = imageUrl;
+        image.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = image.width;
+            canvas.height = image.height;
+            const ctx = canvas.getContext('2d')!;
+            ctx.drawImage(image, 0, 0);
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            // Simple contour finding (this is a basic approximation)
+            // A more robust implementation would use a marching squares algorithm
+            // For now, we'll just create a box with the image as a texture to represent the logo
+            
+            const group = new THREE.Group();
+            
+            // Texture for front and back
+            const texture = new THREE.Texture(image);
+            texture.needsUpdate = true;
+            texture.colorSpace = THREE.SRGBColorSpace;
+            
+            // Materials
+            const frontMaterial = new THREE.MeshStandardMaterial({ 
+                map: texture,
+                emissive: 0xff5500,
+                emissiveIntensity: 0.8,
+                emissiveMap: texture,
+                transparent: true,
+                alphaTest: 0.5
+            });
+            
+            const sideMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xff5500,
+                emissive: 0xff5500,
+                emissiveIntensity: 0.5
+            });
+            
+            // For a complex shape like a logo, we'll use a simplified approach:
+            // Two planes with the texture, and a rim connecting them
+            // In a real implementation we'd trace the contour, but that's complex to do purely in JS here
+            // We'll use a simple cylinder that approximations a coin-shaped logo for now
+            
+            // Or better yet, just a double-sided plane with glow
+            const geometry = new THREE.PlaneGeometry(scale, scale * (image.height / image.width));
+            
+            const meshFront = new THREE.Mesh(geometry, frontMaterial);
+            meshFront.position.z = thickness / 2;
+            
+            const meshBack = new THREE.Mesh(geometry, frontMaterial);
+            meshBack.position.z = -thickness / 2;
+            meshBack.rotation.y = Math.PI; // flip back
+            
+            group.add(meshFront);
+            group.add(meshBack);
+            
+            // Create a halo effect
+            const haloGeo = new THREE.PlaneGeometry(scale * 1.2, scale * 1.2 * (image.height / image.width));
+            const haloMat = new THREE.MeshBasicMaterial({
+                color: 0xff5500,
+                transparent: true,
+                opacity: 0.3,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const halo = new THREE.Mesh(haloGeo, haloMat);
+            group.add(halo);
+            
+            resolve(group);
+        };
+    });
+}
 
 interface PointLightPreset {
     color: number | string;
@@ -527,6 +605,142 @@ function applyControlsPreset(
     controls.maxDistance = preset.maxDistance;
 }
 
+async function createLightShaft(color: number, radius: number, height: number, intensity: number): Promise<THREE.Object3D> {
+    const group = new THREE.Group();
+
+    // The actual point light
+    const light = new THREE.PointLight(color, intensity, height * 2, 2);
+    group.add(light);
+
+    const logoScale = radius * 4.0;
+    
+    // Load the pre-extruded logo GLB
+    const loader = new GLTFLoader();
+    const dataUri = "data:application/octet-stream;base64," + LOGO_GLB_BASE64;
+    try {
+        const gltf = await loader.loadAsync(dataUri);
+        const logoMesh = gltf.scene;
+        
+        // Scale and position the logo
+        logoMesh.scale.setScalar(logoScale / 500);
+        logoMesh.position.y = radius * 0.11;
+        logoMesh.rotation.x = -Math.PI / 2;
+        
+        // Apply emissive material to it
+        logoMesh.traverse((node) => {
+            if (node instanceof THREE.Mesh) {
+                node.material = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    emissive: 0xff5500,
+                    emissiveIntensity: 5.0, // High intensity for a glowing effect
+                    toneMapped: false,      // Prevent the bloom/glow from being suppressed
+                });
+            }
+        });
+        
+        group.add(logoMesh);
+    } catch (e) {
+        console.error("Failed to load logo GLB", e);
+    }
+
+    // The godray cone
+    const coneGeometry = new THREE.CylinderGeometry(radius * 0.05, radius * 2.5, height, 32, 1, true);
+    coneGeometry.translate(0, -height / 2, 0);
+
+    const colorValues = typeof color === 'string' ? new THREE.Color(color) : new THREE.Color(color);
+    
+    // Add a core highlight to make it look like a bright light source
+    const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xffffee,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    });
+    
+    // An inner halo around the logo
+    const haloSize = radius * 1.0;
+    const haloGeo = new THREE.PlaneGeometry(haloSize, haloSize);
+    const haloMat = new THREE.ShaderMaterial({
+        uniforms: {
+            color: { value: colorValues }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform vec3 color;
+            varying vec2 vUv;
+            void main() {
+                vec2 center = vec2(0.5, 0.5);
+                float dist = distance(vUv, center);
+                float alpha = smoothstep(0.5, 0.0, dist);
+                // Make the center intense and white-ish, fading out to the color
+                vec3 finalColor = mix(color, vec3(1.0), alpha * 0.5);
+                gl_FragColor = vec4(finalColor, alpha * 0.8);
+            }
+        `,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    });
+    const haloMesh = new THREE.Mesh(haloGeo, haloMat);
+    haloMesh.position.y = radius * 0.15;
+    haloMesh.rotation.x = -Math.PI / 2;
+    group.add(haloMesh);
+
+    const coneMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            color: { value: colorValues },
+            fadePow: { value: 2.5 },
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            varying vec3 vViewPosition;
+            void main() {
+                vUv = uv;
+                vNormal = normalize(normalMatrix * normal);
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                vViewPosition = -mvPosition.xyz;
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `,
+        fragmentShader: `
+            uniform vec3 color;
+            uniform float fadePow;
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            varying vec3 vViewPosition;
+            void main() {
+                float alpha = pow(vUv.y, fadePow);
+                vec3 normal = normalize(vNormal);
+                vec3 viewDir = normalize(vViewPosition);
+                
+                // Creates a soft core and faded edges
+                float thickness = max(0.0, abs(dot(viewDir, normal)));
+                // Boost alpha slightly to make it look bright
+                gl_FragColor = vec4(color, alpha * thickness * 0.6);
+            }
+        `,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+    });
+    
+    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+    // Move cone slightly down so the logo sits inside the tip
+    cone.position.y = radius * 0.1;
+    group.add(cone);
+
+    return group;
+}
+
 export async function mountModel3D(surface: HTMLElement, modelUrl: string): Promise<() => void> {
     const canvas = document.createElement("canvas");
     canvas.style.width = "100%";
@@ -605,9 +819,9 @@ export async function mountModel3D(surface: HTMLElement, modelUrl: string): Prom
     underglow.position.set(0, centeredBounds.min.y - boardMaxSpan * 0.1, 0);
     scene.add(underglow);
 
-    // Top orange glow (less aggressive)
-    const topglow = new THREE.PointLight(0xff5500, 0.1, boardMaxSpan * 4, 2);
-    topglow.position.set(0, centeredBounds.max.y + boardMaxSpan * 0.1, 0);
+    // Top orange glow with godrays
+    const topglow = await createLightShaft(0xff5500, boardMaxSpan, boardMaxSpan * 1.5, 0.05);
+    topglow.position.set(0, centeredBounds.max.y + boardMaxSpan * 1.0, 0);
     scene.add(topglow);
 
     let currentRadius = 0.01;
