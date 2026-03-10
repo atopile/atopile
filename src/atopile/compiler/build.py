@@ -55,12 +55,6 @@ class StdlibRegistry:
 
         F.has_source_chunk.bind_typegraph(self._tg).get_or_create_type()
 
-        # Eagerly register all unit types so they can be referenced by name
-        # (via << type references) during type creation
-        from faebryk.library.Units import register_all_unit_types
-
-        register_all_unit_types(self._tg)
-
     def get(self, name: str) -> graph.BoundNode:
         if name not in self._cache:
             if name not in self._allowlist:

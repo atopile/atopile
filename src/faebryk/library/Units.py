@@ -2583,18 +2583,6 @@ def get_base_unit_type(basis_vector: BasisVector) -> type[fabll.Node]:
 # TODO: logarithmic units
 
 
-def register_all_unit_types(tg: fbrk.TypeGraph) -> None:
-    """Eagerly register all unit type nodes in the typegraph.
-
-    This ensures unit types can be referenced by name (via << type references)
-    during type creation, without requiring lazy registration.
-    """
-    for registry in _UNIT_SYMBOLS:
-        unit_type = globals()[registry.name]
-        assert isinstance(unit_type, type) and issubclass(unit_type, fabll.Node)
-        fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=unit_type)
-
-
 @once
 def register_all_units(
     g: graph.GraphView, tg: fbrk.TypeGraph

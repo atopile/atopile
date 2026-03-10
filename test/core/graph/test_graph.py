@@ -39,12 +39,6 @@ def test_component_instance_count(component_type: type, expected_count: int | No
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    # Register unit types since stdlib types reference units via type-level
-    # pointers (<<TypeName)
-    from faebryk.library.Units import register_all_unit_types
-
-    register_all_unit_types(tg)
-
     component_instance = component_type.bind_typegraph(tg).create_instance(g)
     count = len(
         component_instance.get_children(
