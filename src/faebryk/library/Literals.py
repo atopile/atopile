@@ -3649,7 +3649,11 @@ class Numbers(fabll.Node):
         other_unit = other.get_is_unit()
 
         # Same unit — skip conversion entirely
-        if self_unit is not None and self_unit.is_same(other_unit):
+        if (
+            self_unit is not None
+            and other_unit is not None
+            and self_unit.is_same(other_unit)
+        ):
             other_numeric = other.get_numeric_set()
         else:
             if not is_unit.is_commensurable_with(self_unit, other_unit):
@@ -7761,7 +7765,7 @@ class AbstractEnums(fabll.Node):
                 return v
             try:
                 return int(v)
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 return str(v)
 
         parsed_values = {k: _try_parse_int(v) for k, v in enum_values.items()}

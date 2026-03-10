@@ -1639,7 +1639,7 @@
 	(footprint "ALPSALPINE_SKRPACE010:KEY-SMD_4P-L4.2-W3.2-P2.20-LS4.6"
 		(layer "F.Cu")
 		(uuid "572bc870-16bd-49b5-9bb0-4e134642524b")
-		(at 140.978656 124.815054 90)
+		(at 141.478656 125.065054 90)
 		(property "Reference" "SW2"
 			(at 0 -5.07 90)
 			(layer "F.SilkS")
