@@ -560,6 +560,8 @@ export interface UiProjectState {
   selectedProject: string | null;
   selectedTarget: string | null;
   activeFilePath: string | null;
+  logViewBuildId: string | null;
+  logViewStage: string | null;
 }
 
 export interface UiSidebarDetails {
@@ -898,6 +900,8 @@ export function createUiPartsSearchData(): UiPartsSearchData {
 
 export const DEFAULT_UiProjectState: UiProjectState = {
   "activeFilePath": null,
+  "logViewBuildId": null,
+  "logViewStage": null,
   "selectedProject": null,
   "selectedTarget": null
 };
@@ -982,6 +986,8 @@ export const DEFAULT_UiStore: UiStore = {
   "projectFiles": [],
   "projectState": {
     "activeFilePath": null,
+    "logViewBuildId": null,
+    "logViewStage": null,
     "selectedProject": null,
     "selectedTarget": null
   },

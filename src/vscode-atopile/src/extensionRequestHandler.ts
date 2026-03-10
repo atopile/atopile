@@ -21,10 +21,16 @@ export type ExtensionRequestResult =
 
 export class ExtensionRequestHandler {
   private readonly _openPanel: (panelId: string) => void;
+  private readonly _showLogsView: () => Promise<void> | void;
   private readonly _logger: ExtensionLogger;
 
-  constructor(openPanel: (panelId: string) => void, logger: ExtensionLogger) {
+  constructor(
+    openPanel: (panelId: string) => void,
+    showLogsView: () => Promise<void> | void,
+    logger: ExtensionLogger,
+  ) {
     this._openPanel = openPanel;
+    this._showLogsView = showLogsView;
     this._logger = logger.scope("ExtensionRequest");
   }
 
@@ -35,6 +41,12 @@ export class ExtensionRequestHandler {
     switch (message.action) {
       case "vscode.openPanel": {
         const panelId = this._requireString(message.panelId, "panelId");
+        if (panelId === "panel-logs") {
+          return {
+            ok: false,
+            error: "panel-logs is not a panel; use vscode.showLogsView",
+          };
+        }
         this._logger.info(`openPanel requested panelId=${panelId}`);
         try {
           this._openPanel(panelId);
@@ -44,6 +56,11 @@ export class ExtensionRequestHandler {
           throw error;
         }
         this._logger.info(`openPanel completed panelId=${panelId}`);
+        return { ok: true };
+      }
+
+      case "vscode.showLogsView": {
+        await this._showLogsView();
         return { ok: true };
       }
 

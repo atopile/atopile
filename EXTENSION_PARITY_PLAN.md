@@ -27,26 +27,6 @@ model with the fewest necessary compatibility changes. The simplest path is:
 3. Remove temporary shims once the copied code is running cleanly on shared types and APIs.
 4. Only reimplement from scratch when the copied implementation is clearly unnecessary or blocks the architecture.
 
-## Current Staged Progress
-
-The current staged changes materially reduce the output-panel parity gap:
-
-- The backend UI transport/state boundary is now explicit: websocket/store/sidebar-style
-  UI helpers live under `src/atopile/server/ui`, while domain logic stays in
-  `src/atopile/model`.
-- The sidebar header now surfaces live connection/health state alongside version and settings access.
-- The sidebar project picker now includes an end-to-end create-project flow with folder browse support.
-- The sidebar build picker now supports new build-target creation with entry validation and module suggestions.
-- The primary action row now exposes Manufacture instead of Developer, with migration shown contextually.
-- `panel-layout` now opens the shared layout server for the selected project/target via
-  `openLayout`; it is no longer a placeholder panel.
-- The BOM panel is now copied from mainline and adapted to the rewrite RPC/store model,
-  including richer totals, LCSC stock/cost enrichment, grouped usage navigation, and build/source affordances.
-- The extension/webview panel host and RPC bridge are more robust and now emit structured logs.
-- The 3D panel got small reliability fixes (logging + resize/init cleanup).
-
-The plan below reflects that new baseline and focuses on the remaining user-visible gaps.
-
 ## Parity Matrix
 
 | Status | Area | Mainline (`~/git/atopile`) | Rewrite (`~/git/atopile_extension`) | Gap to Close |
@@ -55,7 +35,7 @@ The plan below reflects that new baseline and focuses on the remaining user-visi
 | 🟢 | Project selection | Searchable combobox + new-project flow | Searchable project picker + end-to-end create-project flow with folder browse | Good enough; polish only if bugs appear |
 | 🟢 | Target selection | Select target, add/edit/delete target, choose build command | Select target + create/edit/delete target with entry validation/suggestions | Good enough; keep the simpler rewrite target model unless product needs change |
 | 🟢 | Action row | Build, KiCad, 3D, Layout, Manufacture | Build, KiCad, 3D, Layout, Manufacture, with migrate shown when needed | Good enough; keep Developer out of the primary parity chrome unless product needs change |
-| 🟡 | Build queue | Resizable, collapsible, cancel actions, logs/problem affordances | Resizable only | Add collapse, cancel, and jump-to-diagnostics/logs |
+| 🟢 | Build queue | Resizable, collapsible, cancel actions, logs/problem affordances | Resizable, collapsible, cancel build, jump-to-logs with build/stage navigation, progress bar, completion animations | Good enough; polish only if bugs appear |
 | 🟡 | Connection UX | Disconnected/restart/help affordances integrated with status | Overlay exists and the chrome now shows live health; restart/help affordances are still thin | Add explicit recovery/help actions, not just status |
 | 🟡 | Files | Mature explorer with lazy loading, context menu, create/rename/delete/duplicate, reveal/open terminal | Read-only tree open-file view | Add file-management operations and explorer affordances |
 | 🟡 | Packages | Browse/install/remove plus detail panel and richer metadata flow | Detail panel is ported and integrated; package workflow exists | Polish behavior, validate copied flows, and close any metadata/action gaps |
@@ -64,7 +44,7 @@ The plan below reflects that new baseline and focuses on the remaining user-visi
 | 🟢 | Structure | Module tree from active file | Module tree from active file | Good enough; polish only if bugs appear |
 | 🟢 | Parameters | Variable/constraint browsing | Variable/constraint browsing | Good enough; polish only if bugs appear |
 | 🟢 | BOM | BOM browsing with enriched cost/stock data, build badge, grouped usages, and source links | Mainline BOM is ported onto the rewrite RPC/store architecture, including LCSC enrichment and source navigation | Validate behavior against real projects and keep follow-up polish small |
-| 🟡 | Logs | Dedicated logs panel with build-log workflows | Dedicated logs panel exists; structured extension/webview logging is wired | Add user-facing build/log jumps and any missing workflows |
+| 🟢 | Logs | Dedicated logs panel with build-log workflows | Dedicated logs panel with structured logging; sidebar build/stage clicks navigate directly via store-driven selection | Good enough; validate end-to-end and polish only if bugs appear |
 | 🟡 | 3D | Dedicated preview surface tied to builds | Dedicated preview surface exists | Mostly done; verify asset resolution, resize, and failure UX |
 | 🟡 | Layout | Real layout editor/preview | Shared layout server is embedded in `panel-layout` and opens the selected target PCB | Validate behavior end to end and restore related preview workflows on top of the shared viewer |
 | 🟡 | Migration | Dedicated migrate tab/workflow | Detail UI is ported and integrated into the sidebar | Finish workflow validation and any remaining action/polish gaps |
@@ -114,10 +94,6 @@ This is the largest sidebar parity gap.
   - stock/pricing
   - image / 3D views where available
   - restore footprint preview later via the shared layout viewer rather than a temporary custom embed
-- Add build queue actions:
-  - collapse/expand
-  - cancel build
-  - jump to logs
 
 ### 4. Harden the output panels
 

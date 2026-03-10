@@ -52,6 +52,7 @@ export class HostedWebviewViewProvider
   private readonly _extensionUri: vscode.Uri;
   private readonly _proxy: RpcProxy;
   private readonly _panelId: string;
+  private _view: vscode.WebviewView | undefined;
   private _sessionConnection: vscode.Disposable | undefined;
 
   constructor(extensionUri: vscode.Uri, proxy: RpcProxy, panelId: string) {
@@ -65,15 +66,22 @@ export class HostedWebviewViewProvider
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ): void {
+    this._view = webviewView;
     configureWebview(this._extensionUri, webviewView.webview, this._panelId);
     this._connectSession(webviewView.webview);
 
     webviewView.onDidDispose(() => {
+      this._view = undefined;
       this._disconnectSession();
     });
   }
 
+  reveal(preserveFocus = false): void {
+    this._view?.show?.(preserveFocus);
+  }
+
   dispose(): void {
+    this._view = undefined;
     this._disconnectSession();
   }
 
@@ -108,6 +116,9 @@ export class PanelHost implements vscode.Disposable {
   }
 
   openPanel(panelId: string): void {
+    if (panelId === "panel-logs") {
+      throw new Error("panel-logs must be shown in the bottom logs view, not opened as a panel");
+    }
     try {
       const existing = this._panels.get(panelId);
       this._logger.info(`openPanel panelId=${panelId} hasExisting=${Boolean(existing)}`);

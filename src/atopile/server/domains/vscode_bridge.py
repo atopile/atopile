@@ -8,16 +8,7 @@ from typing import Any
 
 from websockets.asyncio.server import ServerConnection
 
-VSCODE_ACTIONS = frozenset(
-    {
-        "vscode.openPanel",
-        "vscode.openFile",
-        "vscode.browseFolder",
-        "vscode.openKicad",
-        "vscode.resolveThreeDModel",
-        "vscode.log",
-    }
-)
+VSCODE_ACTION_PREFIX = "vscode."
 
 
 class VscodeBridge:
@@ -33,7 +24,7 @@ class VscodeBridge:
         self._pending_requests.pop(ws, None)
 
     def handles(self, action: str) -> bool:
-        return action in VSCODE_ACTIONS
+        return action.startswith(VSCODE_ACTION_PREFIX)
 
     async def forward_request(
         self, ws: ServerConnection, session_id: str, msg: dict[str, Any]

@@ -318,6 +318,20 @@ function LogViewer() {
     [projectBuilds],
   );
 
+  // Pick up explicit build/stage selection from the sidebar.
+  const prevLogViewRef = useRef({ buildId: projectState.logViewBuildId, stage: projectState.logViewStage });
+
+  useEffect(() => {
+    const prev = prevLogViewRef.current;
+    const newBuildId = projectState.logViewBuildId;
+    const newStage = projectState.logViewStage;
+    if (newBuildId && (newBuildId !== prev.buildId || newStage !== prev.stage)) {
+      setBuildId(newBuildId);
+      setStage(newStage ?? '');
+    }
+    prevLogViewRef.current = { buildId: newBuildId, stage: newStage };
+  }, [projectState.logViewBuildId, projectState.logViewStage]);
+
   // Auto-follow newly active builds; otherwise keep the visible selection.
   useEffect(() => {
     const selectedVisible = buildId && projectBuilds.some(b => b.buildId === buildId);

@@ -384,6 +384,15 @@ class CoreSocket:
                     },
                 )
 
+            case "setLogViewCurrentId":
+                self._store.merge(
+                    "project_state",
+                    {
+                        "logViewBuildId": msg.get("buildId") or None,
+                        "logViewStage": msg.get("stage") or None,
+                    },
+                )
+
             case "resolverInfo":
                 self._store.merge(
                     "core_status",
@@ -624,6 +633,18 @@ class CoreSocket:
                     handle_start_build(request)
                 except ValueError as e:
                     log.warning("startBuild failed: %s", e)
+
+            case "cancelBuild":
+                build_id = str(msg.get("buildId") or "")
+                result = await asyncio.to_thread(builds.handle_cancel_build, build_id)
+                await self._send_action_result(
+                    ws,
+                    session_id,
+                    action,
+                    request_id,
+                    result=result,
+                    error=None if result.get("success") else result.get("message"),
+                )
 
             case "openLayout":
                 try:

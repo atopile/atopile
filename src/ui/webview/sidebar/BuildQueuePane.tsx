@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useResizeHandle } from "../shared/components";
 import { BuildQueueItem } from "./BuildQueueItem";
 import type { Build, BuildStage } from "../../shared/generated-types";
@@ -7,35 +9,50 @@ interface BuildQueuePaneProps {
 }
 
 export function BuildQueuePane({ builds }: BuildQueuePaneProps) {
-  const resize = useResizeHandle(200, 60);
+  const [collapsed, setCollapsed] = useState(false);
+  const resize = useResizeHandle(120, 60);
 
   return (
-    <div className="sidebar-builds-pane">
-      <div
-        className="sidebar-resize-handle"
-        onPointerDown={resize.onPointerDown}
-        onPointerMove={resize.onPointerMove}
-        onPointerUp={resize.onPointerUp}
+    <div
+      className={`build-queue-panel-container${collapsed ? " collapsed" : ""}`}
+      style={collapsed ? undefined : { height: resize.height }}
+    >
+      {!collapsed && (
+        <div
+          className="build-queue-resize-handle"
+          onPointerDown={resize.onPointerDown}
+          onPointerMove={resize.onPointerMove}
+          onPointerUp={resize.onPointerUp}
+        />
+      )}
+      <button
+        type="button"
+        className="build-queue-panel-header"
+        onClick={() => setCollapsed((value) => !value)}
       >
-        <div className="sidebar-resize-grip" />
-      </div>
-      <div className="sidebar-builds-header">
-        <label className="sidebar-label">Build Queue</label>
-      </div>
-      <div
-        className="sidebar-builds-scroll"
-        style={{ height: resize.height }}
-      >
-        {builds.length === 0 ? (
-          <div className="sidebar-empty">No builds yet</div>
-        ) : (
-          <div className="bq-list">
-            {builds.map((b) => (
-              <BuildQueueItem key={b.buildId ?? b.name} build={b} />
-            ))}
-          </div>
+        <ChevronDown
+          size={12}
+          className={`build-queue-chevron${collapsed ? "" : " open"}`}
+        />
+        <span className="build-queue-panel-title">Build Queue</span>
+        {builds.length > 0 && (
+          <span className="build-queue-panel-badge">{builds.length}</span>
         )}
-      </div>
+      </button>
+      {!collapsed && (
+        <div className="build-queue-panel-content">
+          {builds.length === 0 ? (
+            <div className="build-queue-empty">No recent builds</div>
+          ) : (
+            builds.map((build) => (
+              <BuildQueueItem
+                key={build.buildId ?? `${build.projectRoot}:${build.name}`}
+                build={build}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

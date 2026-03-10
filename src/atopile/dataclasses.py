@@ -1060,6 +1060,8 @@ class UiProjectState(CamelModel):
     selected_project: str | None = None
     selected_target: str | None = None
     active_file_path: str | None = None
+    log_view_build_id: str | None = None
+    log_view_stage: str | None = None
 
 
 class UiPartSearchItem(CamelModel):

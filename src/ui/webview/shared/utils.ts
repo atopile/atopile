@@ -1,8 +1,24 @@
 import { useEffect, useState } from 'react';
 import AnsiToHtml from 'ansi-to-html';
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
 import type { Build, BuildStage } from "../../shared/generated-types";
 import { SOURCE_COLORS, type TimeMode } from "../../shared/types";
 import { rpcClient } from './rpcClient';
+
+/** Canonical mapping from status string → Lucide icon component. */
+export const STATUS_ICONS: Record<string, LucideIcon> = {
+  success: CheckCircle2,
+  failed: XCircle,
+  error: XCircle,
+  warning: AlertTriangle,
+  cancelled: AlertCircle,
+};
 
 // ANSI to HTML converter
 export const ansiConverter = new AnsiToHtml({
@@ -45,20 +61,41 @@ export function formatSource(file: string | null | undefined, line: number | nul
 
 /** Format seconds into a compact human-readable duration. */
 export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds.toFixed(2)}s`;
-  const m = Math.floor(seconds / 60);
-  const s = (seconds % 60).toFixed(2);
-  return `${m}m ${s}s`;
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  if (seconds < 1) return `${seconds.toFixed(2)}s`;
+  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+  const total = Math.floor(seconds);
+  if (total < 60) return `${total}s`;
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  if (mins < 60) return `${mins}m ${secs}s`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h ${mins % 60}m`;
 }
 
-/** Format a unix timestamp into a relative "time ago" string. */
-export function formatTimeAgo(unixSeconds: number): string {
-  const diff = Math.floor(Date.now() / 1000 - unixSeconds);
-  if (diff < 5) return "just now";
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+/** Format a unix epoch (seconds) into a relative "time ago" string. */
+export function formatRelativeSeconds(epochSeconds: number): string {
+  if (!Number.isFinite(epochSeconds) || epochSeconds <= 0) return "";
+  const diffMs = Date.now() - epochSeconds * 1000;
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSecs < 60) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return new Date(epochSeconds * 1000).toLocaleDateString();
+}
+
+/** Extract a display counter like "#3" from a build ID. */
+export function getBuildCounter(buildId: string | null): string | null {
+  if (!buildId) return null;
+  const match = buildId.match(/^build-(\d+)-/);
+  if (match) return `#${match[1]}`;
+  return `#${buildId}`;
 }
 
 /** Get the running stage, or the last completed one. */

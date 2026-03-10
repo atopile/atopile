@@ -27,6 +27,12 @@ const panels = [
 
 let coreClient: CoreClient | undefined;
 
+async function showLogsView(logsProvider: HostedWebviewViewProvider): Promise<void> {
+  await vscode.commands.executeCommand("workbench.view.extension.atopile-logs");
+  await vscode.commands.executeCommand(`${LOGS_VIEW_ID}.focus`);
+  logsProvider.reveal();
+}
+
 // -- Activate -----------------------------------------------------------------
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -50,8 +56,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (!resolved) return;
 
   let panelHost!: PanelHost;
+  let logsProvider!: HostedWebviewViewProvider;
   const requestHandler = new ExtensionRequestHandler(
     (panelId) => panelHost.openPanel(panelId),
+    () => showLogsView(logsProvider),
     logger,
   );
   const proxy = new RpcProxy(coreServerPort, logger, (webview, message) =>
@@ -59,7 +67,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   panelHost = new PanelHost(context.extensionUri, proxy, layoutServerPort, logger);
   const sidebarProvider = new HostedWebviewViewProvider(context.extensionUri, proxy, "sidebar");
-  const logsProvider = new HostedWebviewViewProvider(context.extensionUri, proxy, "panel-logs");
+  logsProvider = new HostedWebviewViewProvider(context.extensionUri, proxy, "panel-logs");
 
   registerWebviews(context, sidebarProvider, logsProvider);
   registerCommands(context, panelHost);

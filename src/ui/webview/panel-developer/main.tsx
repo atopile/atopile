@@ -1,32 +1,56 @@
+import { useMemo, useState } from "react";
 import { render } from "../shared/render";
-import { WebviewRpcClient } from "../shared/rpcClient";
-import { STORE_KEYS, type StoreState } from "../../shared/types";
-import { Separator, JsonView, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, GraphVisualizer2D } from "../shared/components";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
+import { STORE_KEYS } from "../../shared/types";
+import { Separator, JsonView, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, GraphVisualizer2D, SearchBar } from "../shared/components";
 import type { GraphNode, GraphEdge } from "../shared/components";
 import { ComponentShowcase } from "../shared/components/ComponentShowcase";
 
-function StoreRow({ storeKey }: { storeKey: keyof StoreState }) {
-  const value = WebviewRpcClient.useSubscribe(storeKey);
-  return (
-    <TableRow>
-      <TableCell><code>{storeKey}</code></TableCell>
-      <TableCell><JsonView value={value} defaultOpen={true} /></TableCell>
-    </TableRow>
-  );
+function useAllStoreEntries(): Array<{ key: string; value: unknown }> {
+  // Subscribe to all known keys so we re-render on any change.
+  for (const key of STORE_KEYS) {
+    WebviewRpcClient.useSubscribe(key);
+  }
+  // Read the full state object, which may contain keys beyond STORE_KEYS.
+  const state = (rpcClient as any)?._state ?? {};
+  return Object.keys(state)
+    .sort()
+    .map((key) => ({ key, value: state[key] }));
 }
 
 function StoreTable() {
+  const entries = useAllStoreEntries();
+  const [keyFilter, setKeyFilter] = useState("");
+  const [valueFilter, setValueFilter] = useState("");
+
+  const filtered = useMemo(() => {
+    const kf = keyFilter.toLowerCase();
+    const vf = valueFilter.toLowerCase();
+    return entries.filter(({ key, value }) => {
+      if (kf && !key.toLowerCase().includes(kf)) return false;
+      if (vf && !JSON.stringify(value).toLowerCase().includes(vf)) return false;
+      return true;
+    });
+  }, [entries, keyFilter, valueFilter]);
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead style={{ width: "1%", whiteSpace: "nowrap" }}>Key</TableHead>
-          <TableHead>Value</TableHead>
+          <TableHead style={{ width: "1%", whiteSpace: "nowrap" }}>
+            <SearchBar value={keyFilter} onChange={setKeyFilter} placeholder="Key" />
+          </TableHead>
+          <TableHead>
+            <SearchBar value={valueFilter} onChange={setValueFilter} placeholder="Value" />
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {STORE_KEYS.map((key) => (
-          <StoreRow key={key} storeKey={key} />
+        {filtered.map(({ key, value }) => (
+          <TableRow key={key}>
+            <TableCell><code>{key}</code></TableCell>
+            <TableCell><JsonView value={value} defaultOpen={false} /></TableCell>
+          </TableRow>
         ))}
       </TableBody>
     </Table>
