@@ -3513,6 +3513,59 @@ class TestRetypeOperator:
 
         assert "TypeC" in resolved_name
 
+    def test_retype_non_module_source_errors(self):
+        """Retype only allows replacing module-typed fields."""
+        with pytest.raises(
+            DslRichException,
+            match=r"Cannot retype `sig`: existing type `Electrical` is not a module",
+        ):
+            build_type(
+                """
+                import Electrical
+
+                module App:
+                    sig = new Electrical
+                    sig -> Electrical
+                """,
+                link=True,
+            )
+
+    def test_retype_non_module_target_errors(self):
+        """Retype replacement must also be a module."""
+        match_str = (
+            r"Cannot retype `part`: replacement type `Electrical` is not a module"
+        )
+        with pytest.raises(DslRichException, match=match_str):
+            build_type(
+                """
+                import Electrical
+                import Resistor
+
+                module App:
+                    part = new Resistor
+                    part -> Electrical
+                """,
+                link=True,
+            )
+
+    def test_retype_nested_non_module_parent_errors(self):
+        """Nested retypes cannot traverse through non-module parents."""
+        with pytest.raises(
+            DslRichException,
+            match=r"Cannot retype `sig.line`: path traverses a non-module type",
+        ):
+            build_type(
+                """
+                import Electrical
+                import ElectricSignal
+
+                module App:
+                    sig = new ElectricSignal
+                    sig.line -> Electrical
+                """,
+                link=True,
+            )
+
     def test_retype_nonexistent_field_errors(self):
         """Retype on a field that doesn't exist raises an error."""
         with pytest.raises(DslException, match="does not exist"):

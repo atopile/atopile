@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Protocol, Sequence
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 from atopile.compiler import DslException, DslRichException
 from atopile.compiler.ast_visitor import BuildState
 from atopile.compiler.gentypegraph import FieldPath, ImportRef
@@ -39,6 +40,11 @@ class FileImportLookup(Protocol):
     def resolve(
         self, path: str, name: str, base_file: Path | None
     ) -> graph.BoundNode | None: ...
+
+
+class RetypeException(DslException):
+    def __init__(self, target_path: FieldPath, detail: str) -> None:
+        super().__init__(f"Cannot retype `{target_path}`: {detail}")
 
 
 class DeferredExecutor:
@@ -175,9 +181,7 @@ class DeferredExecutor:
                     type_reference=type_ref
                 )
 
-                raise DslException(
-                    f"Cannot retype `{target_path}`: type `{type_id}` is not linked"
-                )
+                raise RetypeException(target_path, f"type `{type_id}` is not linked")
 
             return out
 
@@ -189,9 +193,7 @@ class DeferredExecutor:
                     type_node=owning_type, identifier=path[-1]
                 )
             ) is None:
-                raise DslException(
-                    f"Cannot retype `{target_path}`: path does not exist"
-                )
+                raise RetypeException(target_path, "path does not exist")
 
             return out
 
@@ -223,6 +225,16 @@ class DeferredExecutor:
                 source_type = _resolve_type_ref(
                     target_path=target_path, type_ref=type_ref
                 )
+
+                if not fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+                    source_type, fabll.is_module
+                ):
+                    raise RetypeException(
+                        target_path, "path traverses a non-module type"
+                    )
+
+                # Nested retypes must localize the traversed branch first — otherwise we
+                # would rewrite a shared type definition in place
                 localized_type = _clone_type(
                     source_type=source_type,
                     containing_type=containing_type,
@@ -246,9 +258,23 @@ class DeferredExecutor:
                     source_order=retype.source_order,
                 )
                 type_ref = _resolve_child(owning_type=owning_type, path=path_ids)
+                source_type = _resolve_type_ref(
+                    target_path=target_path, type_ref=type_ref
+                )
                 new_type = _resolve_type_ref(
                     target_path=target_path, type_ref=retype.new_type_ref
                 )
+
+                for type_ in [owning_type, source_type, new_type]:
+                    if not fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+                        type_, fabll.is_module
+                    ):
+                        type_name = self._tg.get_type_name(type_node=type_)
+                        raise RetypeException(
+                            target_path,
+                            f"type `{type_name}` is not a module",
+                        )
+
                 fbrk.Linker.update_type_reference(
                     g=self._g, type_reference=type_ref, target_type_node=new_type
                 )
