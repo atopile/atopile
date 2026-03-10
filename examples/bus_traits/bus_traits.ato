@@ -1,0 +1,33 @@
+#pragma experiment("TRAITS")
+#pragma experiment("INSTANCE_TRAITS")
+
+import Addressor
+import I2C
+import ElectricPower
+import has_databus_role
+import has_part_removed
+
+from "atopile/microchip-mcp9808/microchip-mcp9808.ato" import Microchip_MCP9808
+
+module FakeMCU:
+    i2c = new I2C
+    trait i2c has_databus_role<role = "CONTROLLER">
+    trait has_part_removed
+
+module App:
+    """
+    Automatic I2C address configuration example.
+
+    Package automatically configures I2C address pins for specified address.
+    """
+
+    mcu = new FakeMCU
+    temp_sensor = new Microchip_MCP9808 # base address 0x18 (A2=LOW, A1=LOW, A0=LOW)
+
+    # Reference interfaces
+    power = new ElectricPower
+    power ~ temp_sensor.power
+
+    mcu.i2c ~ temp_sensor.i2c
+    trait temp_sensor.i2c has_databus_role<role = "TARGET">
+    temp_sensor.i2c.address = 0x1A
