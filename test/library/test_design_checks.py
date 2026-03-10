@@ -76,11 +76,7 @@ def test_electric_signal_parallel_pull_resistance():
 
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    ohm = (
-        F.Units.Ohm.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .get_trait(F.Units.is_unit)
-    )
+    ohm = F.Units.Ohm.bind_typegraph(tg=tg).as_type_node().is_unit.get()
     r1_value = (
         F.Literals.Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
@@ -161,9 +157,7 @@ def test_electric_signal_single_pull_resistance():
         .setup_from_center_rel(
             center=10 * 1e3,
             rel=0.02,
-            unit=F.Units.Ohm.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .get_trait(F.Units.is_unit),
+            unit=F.Units.Ohm.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
         )
     )
 

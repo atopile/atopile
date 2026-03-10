@@ -579,7 +579,7 @@ class MutatorUtils:
                 .setup(
                     # units removed in canonicalization
                     is_unit=F.Units.Dimensionless.bind_typegraph(self.mutator.tg_out)
-                    .create_instance(self.mutator.G_out)
+                    .as_type_node()
                     .is_unit.get(),
                     domain=F.Parameters.NumericParameter.DOMAIN_SKIP,
                 )

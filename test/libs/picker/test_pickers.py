@@ -103,9 +103,7 @@ def test_type_pick():
         .setup_from_center_rel(
             center=100,
             rel=0.1,
-            unit=F.Units.Ohm.bind_typegraph(tg=module.tg)
-            .create_instance(g=module.g)
-            .is_unit.get(),
+            unit=F.Units.Ohm.bind_typegraph(tg=module.tg).as_type_node().is_unit.get(),
         )
         .is_literal.get()
         .as_operand.get(),

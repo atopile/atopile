@@ -268,9 +268,7 @@ class TestJLCBom:
             .setup_from_center_rel(
                 center=10 * 1e3,
                 rel=0.01,
-                unit=F.Units.Ohm.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .is_unit.get(),
+                unit=F.Units.Ohm.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
             )
         )
         r.resistance.get().set_superset(g=g, value=r1_value)
@@ -286,11 +284,11 @@ class TestJLCBom:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        # Instantiate units needed for deserializing picked part attributes
+        # Register units needed for deserializing picked part attributes
         # (C25804 is a resistor with resistance, power, and voltage attributes)
-        _ = F.Units.Ohm.bind_typegraph(tg).create_instance(g=g)
-        _ = F.Units.Watt.bind_typegraph(tg).create_instance(g=g)
-        _ = F.Units.Volt.bind_typegraph(tg).create_instance(g=g)
+        F.Units.Ohm.bind_typegraph(tg).as_type_node()
+        F.Units.Watt.bind_typegraph(tg).as_type_node()
+        F.Units.Volt.bind_typegraph(tg).as_type_node()
 
         class _TestComponent(fabll.Node):
             _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())

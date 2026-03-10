@@ -159,9 +159,9 @@
 	(footprint "logos:faebryk_logo"
 		(layer "B.Cu")
 		(uuid "04e4463d-03d1-4118-9f3d-bda21fc77efc")
-		(at 10 20 90)
+		(at 80 160)
 		(property "Reference" "G***"
-			(at 0 -0 270)
+			(at 0 -0 180)
 			(layer "B.SilkS")
 			(hide yes)
 			(uuid "13bc68c1-7d1e-4abb-88c2-bf2277ec8354")
@@ -174,7 +174,7 @@
 			)
 		)
 		(property "Value" "LOGO"
-			(at 0.75 -0 270)
+			(at 0.75 -0 180)
 			(layer "B.SilkS")
 			(hide yes)
 			(uuid "29329119-fca4-41d5-8ab4-8ea9bc2ad968")
@@ -187,7 +187,7 @@
 			)
 		)
 		(property "Footprint" "logos:faebryk_logo"
-			(at 0 -0 270)
+			(at 0 -0 180)
 			(layer "B.Fab")
 			(hide no)
 			(uuid "17374849-fed2-4a32-a7bf-154b6ae74f94")
@@ -200,7 +200,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 0 -0 270)
+			(at 0 -0 180)
 			(layer "B.Fab")
 			(hide yes)
 			(uuid "3ca96c89-dbce-4eab-80aa-e59740e71a55")
@@ -213,7 +213,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 0 -0 270)
+			(at 0 -0 180)
 			(layer "B.Fab")
 			(hide yes)
 			(uuid "59d7ee27-9dfc-416b-a056-2f6e0b9ffda7")

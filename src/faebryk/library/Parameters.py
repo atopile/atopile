@@ -1444,7 +1444,7 @@ def test_new_definitions():
     parameters = BoundParameterContext(tg, g)
 
     parameters.NumericParameter.setup(
-        is_unit=Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        is_unit=Ohm.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
     )
 
 
@@ -1616,9 +1616,7 @@ def test_expression_congruence():
 
     # Create literals context
     literals = BoundLiteralContext(tg=tg, g=g)
-    dimensionless = (
-        Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
-    )
+    dimensionless = Dimensionless.bind_typegraph(tg=tg).as_type_node().is_unit.get()
 
     # Test singleton literal hash equality
     zero_lit_1 = literals.create_numbers_from_singleton(value=0.0, unit=dimensionless)
@@ -1773,7 +1771,7 @@ def test_can_be_operand_pretty_print():
 
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    ohm_is_unit = Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+    ohm_is_unit = Ohm.bind_typegraph(tg=tg).as_type_node().is_unit.get()
 
     singleton = (
         F.Literals.Numbers.bind_typegraph(tg=tg)
@@ -1825,7 +1823,7 @@ def test_is_discrete_set():
     tg = fbrk.TypeGraph.create(g=g)
     from faebryk.library.Units import Dimensionless
 
-    dl_is_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+    dl_is_unit = Dimensionless.bind_typegraph(tg=tg).as_type_node().is_unit.get()
     discrete_set = (
         F.Literals.Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
@@ -1967,7 +1965,7 @@ def test_display_unit_normalization():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance to register it in the typegraph
-    _ = Volt.bind_typegraph(tg=tg).create_instance(g=g)
+    _ = Volt.bind_typegraph(tg=tg).as_type_node()
 
     # Get mV unit (millivolt) via decode_symbol_runtime
     mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")
@@ -2005,8 +2003,8 @@ def test_display_unit_compact_repr():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance
-    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
-    volt_unit = volt_instance.is_unit.get()
+    volt_type = Volt.bind_typegraph(tg=tg).as_type_node()
+    volt_unit = volt_type.is_unit.get()
 
     # Create a numeric parameter with V as display unit
     param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
@@ -2030,8 +2028,8 @@ def test_display_unit_literal_conversion():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance to register it
-    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
-    volt_unit = volt_instance.is_unit.get()
+    volt_type = Volt.bind_typegraph(tg=tg).as_type_node()
+    volt_unit = volt_type.is_unit.get()
 
     # Get mV unit
     mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")
@@ -2076,8 +2074,8 @@ def test_display_unit_fallback():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance
-    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
-    volt_unit = volt_instance.is_unit.get()
+    volt_type = Volt.bind_typegraph(tg=tg).as_type_node()
+    volt_unit = volt_type.is_unit.get()
 
     # Create a numeric parameter with base unit (V)
     # When using base unit, has_unit and has_display_unit should be the same
@@ -2125,8 +2123,8 @@ def test_display_unit_lit_suffix_conversion():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance
-    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
-    volt_unit = volt_instance.is_unit.get()
+    volt_type = Volt.bind_typegraph(tg=tg).as_type_node()
+    volt_unit = volt_type.is_unit.get()
 
     # Get mV unit
     mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")

@@ -2230,7 +2230,7 @@ class TestAssignments:
             f"Expected 0.003 W, got {base_value} W "
             f"(raw value={value}, multiplier={multiplier})"
         )
-        assert fabll.Traits(r.max_power.get().force_get_units()).get_obj(F.Units.Watt)
+        assert r.max_power.get().force_get_units().serialize() == "W"
 
     def test_assign_bilateral_tolerance(self):
         """Test assigning a bilateral tolerance value to an existing field."""
@@ -3618,9 +3618,8 @@ class TestMakeChildDeduplication:
         assert literal is not None
         assert param.get_values() == [10000.0, 10000.0]
         assert param.force_get_display_units().get_symbols() == ["Ω", "ohm", "ohms"]
-        # With type-level singleton units, the trait owner IS the type node
-        unit_owner = fabll.Traits(param.force_get_units()).get_obj_raw()
-        assert unit_owner.get_type_name() == "Ohm"
+        # With type-level singleton units, verify the unit is Ohm via its symbol
+        assert param.force_get_units().serialize() == "Ω"
 
     def test_inherited_explicit_with_implicit_constraint(self):
         """Derived type constrains inherited explicit parameter.
@@ -3787,7 +3786,7 @@ def _build_numeric_param_mutator() -> tuple[
 ]:
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    unit = F.Units.Dimensionless.bind_typegraph(tg).create_instance(g).is_unit.get()
+    unit = F.Units.Dimensionless.bind_typegraph(tg).as_type_node().is_unit.get()
     param = (
         F.Parameters.NumericParameter.bind_typegraph(tg)
         .create_instance(g)

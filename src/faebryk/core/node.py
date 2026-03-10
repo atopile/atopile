@@ -884,22 +884,10 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         # overrides fields in instance
         for locator, field in type(self).__fields.items():
             if isinstance(field, _ChildField):
-                # For type-level fields, look up the child on the type node
-                # instead of the instance node
-                if field._type_child:
-                    type_edge = fbrk.EdgeType.get_type_edge(bound_node=instance)
-                    if type_edge is not None:
-                        lookup_instance = instance.g().bind(
-                            node=fbrk.EdgeType.get_type_node(edge=type_edge.edge())
-                        )
-                    else:
-                        lookup_instance = instance
-                else:
-                    lookup_instance = instance
                 child = InstanceChildBoundInstance(
                     nodetype=field.nodetype,
                     identifier=field.get_identifier(),
-                    instance=lookup_instance,
+                    instance=instance,
                 )
                 setattr(self, locator, child)
             elif isinstance(field, Traits.ImpliedTrait):
@@ -1071,8 +1059,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     source_chunk_node=source_chunk_node,
                 )
         elif isinstance(field, _EdgeField):
-            # Ensure any type references in RefPaths are registered
-            # with the TypeGraph before processing the edge.
+            # Ensure type references in RefPaths are registered in the TypeGraph
             for path in [field.lhs, field.rhs]:
                 for elem in path:
                     if isinstance(elem, type) and issubclass(elem, Node):
@@ -1460,14 +1447,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     def get_type_name(self) -> str | None:
         type_node = self.get_type_node()
-        if type_node is not None:
-            return fbrk.TypeGraph.get_type_name(type_node=type_node)
-        # If no type edge, this node might BE a type node (e.g. from
-        # type-level singleton traits).  Try using it directly.
-        try:
-            return fbrk.TypeGraph.get_type_name(type_node=self.instance)
-        except Exception:
+        if type_node is None:
             return None
+        return fbrk.TypeGraph.get_type_name(type_node=type_node)
 
     def isinstance(self, *type_node: "type[NodeT]") -> bool:
         """
@@ -1903,7 +1885,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             ).edge()
         )
 
-    def as_type_node(self) -> "NodeT":
+    def as_type_node(self) -> N:
         return self.t.bind_instance(instance=self.get_or_create_type())
 
     def create_instance(self, g: graph.GraphView, attributes: A | None = None) -> N:
@@ -2357,16 +2339,15 @@ class is_interface(Node):
 
         while remaining:
             interface = remaining.pop()
-            name = interface.get_full_name()
-            logger.debug(f"Grouping bus: {name}")
+            logger.info(f"Grouping bus: {interface.get_full_name()}")
             connected = cast(
                 set[N],
                 interface.get_trait(is_interface)
                 .get_connected(include_self=True)
                 .keys(),
             )
-            logger.info(f"Grouping bus {name} complete. Elements: {len(connected)}")
-            logger.debug({i.get_full_name() for i in connected})
+            logger.info(f"Grouping complete. Elements: {len(connected)}")
+            logger.info({i.get_full_name() for i in connected})
             buses[interface] = connected
             remaining.difference_update(connected)
 

@@ -292,9 +292,7 @@ class TestHasSimpleValueRepresentation:
             .setup_from_min_max(
                 min=10.0,
                 max=20,
-                unit=F.Units.Volt.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .is_unit.get(),
+                unit=F.Units.Volt.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
             ),
         )
         m.param2.get().set_superset(
@@ -303,9 +301,7 @@ class TestHasSimpleValueRepresentation:
             .create_instance(g=g)
             .setup_from_singleton(
                 value=5.0,
-                unit=F.Units.Ampere.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .is_unit.get(),
+                unit=F.Units.Ampere.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
             ),
         )
         m.param3.get().set_superset(
@@ -314,9 +310,7 @@ class TestHasSimpleValueRepresentation:
             .create_instance(g=g)
             .setup_from_singleton(
                 value=10.0,
-                unit=F.Units.Volt.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .is_unit.get(),
+                unit=F.Units.Volt.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
             ),
         )
 
@@ -368,9 +362,7 @@ class TestHasSimpleValueRepresentation:
             .setup_from_center_rel(
                 center=12.0,
                 rel=0.05,
-                unit=F.Units.Volt.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .is_unit.get(),
+                unit=F.Units.Volt.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
             )
         )
         lit2 = (
@@ -378,9 +370,7 @@ class TestHasSimpleValueRepresentation:
             .create_instance(g=g)
             .setup_from_singleton(
                 value=2.5,
-                unit=F.Units.Ampere.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .is_unit.get(),
+                unit=F.Units.Ampere.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
             )
         )
 
@@ -494,9 +484,7 @@ class TestHasSimpleValueRepresentation:
             .create_instance(g=g)
             .setup_from_singleton(
                 value=10.0,
-                unit=F.Units.Volt.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .is_unit.get(),
+                unit=F.Units.Volt.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
             ),
         )
         val = m._simple_repr.get().get_value()
@@ -541,7 +529,7 @@ class TestHasSimpleValueRepresentation:
             g=g, tg=tg
         ).setup_from_values(values=[(47000.0, 47000.0)])
         api_lit.numeric_set_ptr.get().point(numeric_set)
-        base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+        base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).as_type_node().is_unit.get()
         base_ohm = base_ohm.copy_into(g=g)
         fabll.Traits.create_and_add_instance_to(api_lit, has_unit).setup(
             is_unit=base_ohm
@@ -592,7 +580,7 @@ class TestHasSimpleValueRepresentation:
         param = F.Parameters.NumericParameter.bind_typegraph(tg).create_instance(g=g)
         param.setup(is_unit=mohm_unit)
 
-        base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+        base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).as_type_node().is_unit.get()
 
         # Should auto SI scale → 500mΩ
         api_lit = F.Literals.Numbers.create_instance(g=g, tg=tg)
@@ -650,9 +638,7 @@ class TestHasSimpleValueRepresentation:
             .create_instance(g=g)
             .setup_from_singleton(
                 value=0.125,
-                unit=F.Units.Watt.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .is_unit.get(),
+                unit=F.Units.Watt.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
             ),
         )
         resistor.max_voltage.get().set_superset(
@@ -661,9 +647,7 @@ class TestHasSimpleValueRepresentation:
             .create_instance(g=g)
             .setup_from_singleton(
                 value=10.0,
-                unit=F.Units.Volt.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .is_unit.get(),
+                unit=F.Units.Volt.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
             ),
         )
         # 10kΩ converts to 10000Ω in display units

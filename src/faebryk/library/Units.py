@@ -2577,77 +2577,77 @@ class BoundUnitsContext:
     @property
     @once
     def Meter(self) -> Meter:
-        return Meter.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Meter.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Second(self) -> Second:
-        return Second.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Second.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Hour(self) -> Hour:
-        return Hour.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Hour.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Dimensionless(self) -> Dimensionless:
-        return Dimensionless.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Dimensionless.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Percent(self) -> Percent:
-        return Percent.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Percent.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Ppm(self) -> Ppm:
-        return Ppm.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Ppm.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Radian(self) -> Radian:
-        return Radian.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Radian.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Steradian(self) -> Steradian:
-        return Steradian.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Steradian.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def DegreeCelsius(self) -> DegreeCelsius:
-        return DegreeCelsius.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return DegreeCelsius.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Kelvin(self) -> Kelvin:
-        return Kelvin.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Kelvin.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Volt(self) -> Volt:
-        return Volt.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Volt.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Ohm(self) -> Ohm:
-        return Ohm.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Ohm.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Ampere(self) -> Ampere:
-        return Ampere.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Ampere.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Degree(self) -> Degree:
-        return Degree.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Degree.bind_typegraph(tg=self.tg).as_type_node()
 
     @property
     @once
     def Bit(self) -> Bit:
-        return Bit.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        return Bit.bind_typegraph(tg=self.tg).as_type_node()
 
 
 class _TestWithContext:
@@ -2939,7 +2939,7 @@ class TestIsUnit(_TestWithContext):
 
     def test_to_base_units_derived(self, ctx: BoundUnitsContext):
         """Derived unit normalizes to base SI dimensions."""
-        newton = Newton.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g).is_unit.get()
+        newton = Newton.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         base = newton.to_base_units(g=ctx.g, tg=ctx.tg)
 
         assert is_unit._extract_basis_vector(base) == BasisVector(
@@ -3140,7 +3140,7 @@ class TestSymbols(_TestWithContext):
         self, ctx: BoundUnitsContext, symbol: str, expected_multiplier: float
     ):
         """Test decoding symbols with binary prefixes for units that support them."""
-        _ = Bit.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        Bit.bind_typegraph(tg=ctx.tg).as_type_node()
         decoded = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol=symbol)
 
         assert is_unit._extract_basis_vector(decoded) == BasisVector(bit=1)
@@ -3163,7 +3163,7 @@ class TestSymbols(_TestWithContext):
         """
         Test decoding symbols with binary prefixes for derived units that support them.
         """
-        _ = Byte.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        Byte.bind_typegraph(tg=ctx.tg).as_type_node()
         decoded = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol=symbol)
 
         assert is_unit._extract_basis_vector(decoded) == BasisVector(bit=1)

@@ -215,22 +215,18 @@ class BoundExpressions:
         def make_dl(self) -> "F.Units.is_unit":
             return (
                 F.Units.Dimensionless.bind_typegraph(tg=self.E.tg)
-                .create_instance(g=self.E.g)
+                .as_type_node()
                 .is_unit.get()
             )
 
         def make_H(self) -> "F.Units.is_unit":
             return (
-                F.Units.Henry.bind_typegraph(tg=self.E.tg)
-                .create_instance(g=self.E.g)
-                .is_unit.get()
+                F.Units.Henry.bind_typegraph(tg=self.E.tg).as_type_node().is_unit.get()
             )
 
         def make_Hz(self) -> "F.Units.is_unit":
             return (
-                F.Units.Hertz.bind_typegraph(tg=self.E.tg)
-                .create_instance(g=self.E.g)
-                .is_unit.get()
+                F.Units.Hertz.bind_typegraph(tg=self.E.tg).as_type_node().is_unit.get()
             )
 
     def __init__(
@@ -258,7 +254,7 @@ class BoundExpressions:
                 g=self.g, tg=self.tg, expr=instance.instance
             )
 
-        return instance.get_trait(F.Units.is_unit)
+        return bound.as_type_node().is_unit.get()
 
     def parameter_op(
         self,
