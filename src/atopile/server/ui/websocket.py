@@ -287,6 +287,19 @@ class CoreSocket:
                     result = await asyncio.to_thread(
                         parts_search.handle_get_part_details,
                         lcsc_id,
+                        project_root=(
+                            str(msg.get("projectRoot"))
+                            if isinstance(msg.get("projectRoot"), str)
+                            and msg.get("projectRoot")
+                            else None
+                        ),
+                        identifier=(
+                            str(msg.get("identifier"))
+                            if isinstance(msg.get("identifier"), str)
+                            and msg.get("identifier")
+                            else None
+                        ),
+                        installed=bool(msg.get("installed")),
                     )
                     await self._send_action_result(
                         ws,

@@ -38,31 +38,20 @@ model with the fewest necessary compatibility changes. The simplest path is:
 | 🟢 | Build queue | Resizable, collapsible, cancel actions, logs/problem affordances | Resizable, collapsible, cancel build, jump-to-logs with build/stage navigation, progress bar, completion animations | Good enough; polish only if bugs appear |
 | 🟡 | Connection UX | Disconnected/restart/help affordances integrated with status | Overlay exists and the chrome now shows live health; restart/help affordances are still thin | Add explicit recovery/help actions, not just status |
 | 🟡 | Files | Mature explorer with lazy loading, context menu, create/rename/delete/duplicate, reveal/open terminal | Read-only tree open-file view | Add file-management operations and explorer affordances |
-| 🟡 | Packages | Browse/install/remove plus detail panel and richer metadata flow | Detail panel is ported and integrated; package workflow exists | Polish behavior, validate copied flows, and close any metadata/action gaps |
-| 🟡 | Parts | Search/install plus detail panel, datasheet and footprint/3D views | Detail panel is ported and integrated; datasheet/image/3D exist | Polish sourcing workflow; footprint preview is deferred until the shared layout viewer lands |
+| 🟢 | Packages | Browse/install/remove plus detail panel and richer metadata flow | Detail panel is ported and integrated; install/update/remove, readme, versioning, import/usage details, and 3D artifact preview exist | Good enough; keep package layout preview tracked under output panels |
+| 🟢 | Parts | Search/install plus detail panel, datasheet and footprint/3D views | Detail panel is ported and integrated; install/uninstall, datasheet, image, and 3D exist | Good enough; keep footprint preview tracked under output panels |
 | 🟢 | Standard library | Browse/search stdlib | Browse/search stdlib | Good enough; keep current rewrite implementation |
 | 🟢 | Structure | Module tree from active file | Module tree from active file | Good enough; polish only if bugs appear |
 | 🟢 | Parameters | Variable/constraint browsing | Variable/constraint browsing | Good enough; polish only if bugs appear |
 | 🟢 | BOM | BOM browsing with enriched cost/stock data, build badge, grouped usages, and source links | Mainline BOM is ported onto the rewrite RPC/store architecture, including LCSC enrichment and source navigation | Validate behavior against real projects and keep follow-up polish small |
 | 🟢 | Logs | Dedicated logs panel with build-log workflows | Dedicated logs panel with structured logging; sidebar build/stage clicks navigate directly via store-driven selection | Good enough; validate end-to-end and polish only if bugs appear |
-| 🟡 | 3D | Dedicated preview surface tied to builds | Dedicated preview surface exists | Mostly done; verify asset resolution, resize, and failure UX |
-| 🟡 | Layout | Real layout editor/preview | Shared layout server is embedded in `panel-layout` and opens the selected target PCB | Validate behavior end to end and restore related preview workflows on top of the shared viewer |
+| 🟡 | 3D | Dedicated preview surface tied to builds | Dedicated preview surface exists and resolves project-target GLB assets | Reopen/resize path exists, but missing-file and load-failure UX still need to be surfaced instead of hanging on a loading state |
+| 🟡 | Layout | Real layout editor/preview | Shared layout server is embedded in `panel-layout` and opens the selected target PCB | Shared viewer path is in place; validate `openLayout` against project/target changes and missing layouts, and restore package/part preview flows on top of it |
 | 🟡 | Migration | Dedicated migrate tab/workflow | Detail UI is ported and integrated into the sidebar | Finish workflow validation and any remaining action/polish gaps |
 
 ## Work Plan
 
-### 1. Finish target lifecycle and polish project creation
-
-The rewrite can now create projects and add build targets, but lifecycle coverage is still incomplete.
-
-- Validate the sidebar "New Project" flow against real workspaces and error cases.
-- Keep the folder browse/pick flow reliable across the VS Code/webview bridge.
-- Implement target rename/update/delete.
-- Decide whether build-command parity belongs in the rewrite UI or can stay implicit.
-- Decide whether target management lives only in the sidebar or also elsewhere in the rewrite UI.
-- Keep this rewrite-native; do not bring back mainline's older card tree unless needed.
-
-### 2. Complete the files surface
+### 1. Complete the files surface
 
 Current rewrite files support is browse/open only.
 
@@ -78,42 +67,26 @@ Current rewrite files support is browse/open only.
 - Add the extension bridge actions to execute those operations safely.
 - Preserve the current simpler tree unless it proves insufficient.
 
-### 3. Add the missing detail workflows
-
-This is the largest sidebar parity gap.
-
-- Validate and polish the copied package detail UI:
-  - description/readme
-  - versions
-  - install/update/remove
-  - imports/usage
-  - package artifacts if still relevant
-- Validate and polish the copied part detail UI:
-  - datasheet link
-  - richer attributes
-  - stock/pricing
-  - image / 3D views where available
-  - restore footprint preview later via the shared layout viewer rather than a temporary custom embed
-
-### 4. Harden the output panels
+### 2. Harden the output panels
 
 The rewrite now has the right panel primitives. The remaining work is to make them
 behave like product features instead of demos.
 
-- Validate the new `openLayout` flow against project changes, target changes, and missing/unbuilt layouts.
+- Validate the existing `openLayout` flow against project changes, target changes, and missing/unbuilt layouts. The wiring exists; the missing work is confidence and failure-path polish.
 - Keep `panel-layout` on the shared layout viewer path; do not add a second layout surface.
-- Reintroduce package-layout and part-footprint preview through the shared layout viewer instead of bespoke embeds.
-- Verify 3D panel open/reopen behavior, model resolution, resize handling, and error states.
-- Use the new structured logging to close debugging gaps, but keep parity work focused on user-visible flows.
+- Reintroduce package-layout preview through the shared layout viewer. Package details currently restore 3D artifacts, but not layout preview.
+- Reintroduce part-footprint preview through the shared layout viewer. Part details still only expose image and 3D tabs.
+- Fix 3D panel failure UX so missing or unloadable models produce a user-visible error state instead of an indefinite loading screen. Preserve the current open/reopen and resize path.
+- Use the new structured logging to close debugging gaps in these flows, but keep parity work focused on user-visible behavior rather than log-only cleanup.
 
-### 5. Finish migration, settings, and status gaps
+### 3. Finish migration, settings, and status gaps
 
 - Finish migrate workflow parity on top of the copied detail UI.
 - Expand settings beyond `devPath` and `autoInstall` if the rewrite is replacing the shipped extension.
 - Keep source/mode/version/health visible in the UI and add obvious recovery/help actions.
 - Make restart/failure recovery obvious from the sidebar and panel surfaces.
 
-### 6. Remove parity-risk dead ends
+### 4. Remove parity-risk dead ends
 
 - Delete placeholder or unused surfaces that are not part of the final parity story.
 - Do not keep duplicate ways to do the same thing unless mainline users rely on them.

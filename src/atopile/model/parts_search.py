@@ -145,7 +145,13 @@ def handle_search_parts(
     return _search_atopile_backend(query, limit=limit)
 
 
-def handle_get_part_details(lcsc_id: str) -> UiPartDetail | None:
+def handle_get_part_details(
+    lcsc_id: str,
+    *,
+    project_root: str | None = None,
+    identifier: str | None = None,
+    installed: bool = False,
+) -> UiPartDetail | None:
     lcsc_numeric = _normalize_lcsc_id(lcsc_id)
     if lcsc_numeric is None:
         raise ValueError(f"Invalid LCSC part number: {lcsc_id}")
@@ -163,12 +169,20 @@ def handle_get_part_details(lcsc_id: str) -> UiPartDetail | None:
 
     component = components[0]
     detail = _serialize_part(component)
+    import_statement = _installed_part_import_statement(
+        project_root=project_root,
+        identifier=identifier,
+        lcsc_id=lcsc_id,
+        installed=installed,
+    )
     return UiPartDetail.model_validate(
         {
             **detail,
-            "identifier": component.part_number or component.lcsc_display,
+            "identifier": identifier or component.part_number or component.lcsc_display,
             "footprint": component.package,
             "image_url": _fetch_jlc_image(lcsc_id),
+            "import_statement": import_statement,
+            "installed": installed,
         }
     )
 
@@ -188,6 +202,51 @@ def _fetch_jlc_image(lcsc_id: str) -> str | None:
             return part.get("image_url")
 
     return results[0].get("image_url")
+
+
+def _installed_part_import_statement(
+    *,
+    project_root: str | None,
+    identifier: str | None,
+    lcsc_id: str,
+    installed: bool,
+) -> str | None:
+    if not (installed and project_root):
+        return None
+
+    config.apply_options(None, working_dir=Path(project_root))
+    parts_path = config.project.paths.parts
+    if not parts_path.exists():
+        return None
+
+    target_identifier = identifier.strip() if identifier else None
+    target_lcsc = lcsc_id.strip().upper()
+
+    for part_dir in sorted(parts_path.iterdir()):
+        if not part_dir.is_dir():
+            continue
+        ato_file = part_dir / f"{part_dir.name}.ato"
+        if not ato_file.exists():
+            continue
+        try:
+            part = AtoPart.load(part_dir)
+        except Exception:
+            continue
+
+        supplier_partno = None
+        if part.pick_part and part.pick_part.supplier.supplier_id.lower() == "lcsc":
+            supplier_partno = part.pick_part.supplier_partno
+
+        if target_identifier and part.identifier != target_identifier:
+            continue
+        if target_identifier is None and (
+            not supplier_partno or supplier_partno.strip().upper() != target_lcsc
+        ):
+            continue
+
+        return part.generate_import_statement(config.project.paths.src)
+
+    return None
 
 
 def handle_install_part(lcsc_id: str, project_root: str) -> dict:

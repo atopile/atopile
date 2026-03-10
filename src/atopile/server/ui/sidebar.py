@@ -151,7 +151,13 @@ async def load_part_details(
         )
 
     try:
-        detail = await asyncio.to_thread(parts_search.handle_get_part_details, lcsc)
+        detail = await asyncio.to_thread(
+            parts_search.handle_get_part_details,
+            lcsc,
+            project_root=project_root,
+            identifier=identifier or (base_part.identifier if base_part else None),
+            installed=installed,
+        )
     except Exception as exc:
         return _set_part_details(
             state,
@@ -184,6 +190,7 @@ async def load_part_details(
             or "",
             "lcsc": detail.lcsc or lcsc,
             "path": detail.path or (base_part.path if base_part else None),
+            "import_statement": detail.import_statement,
             "installed": installed,
         }
     )

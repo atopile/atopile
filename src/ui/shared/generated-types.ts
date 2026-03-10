@@ -525,6 +525,7 @@ export interface UiPartDetail {
   attributes: Record<string, string>;
   footprint: string | null;
   imageUrl: string | null;
+  importStatement: string | null;
   installed: boolean;
 }
 
@@ -842,6 +843,7 @@ export const DEFAULT_UiPartDetail: UiPartDetail = {
   "footprint": null,
   "identifier": "",
   "imageUrl": null,
+  "importStatement": null,
   "installed": false,
   "isBasic": false,
   "isPreferred": false,

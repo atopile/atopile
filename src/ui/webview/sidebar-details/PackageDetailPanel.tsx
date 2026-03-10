@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PackageDetails } from '../../shared/generated-types'
-import { GlbViewer } from '../shared/components'
+import { CopyableCodeBlock, GlbViewer } from '../shared/components'
 import MarkdownRenderer from './MarkdownRenderer'
 import { useBlobAssetUrl } from '../shared/utils'
 import './PackageDetailPanel.css'
@@ -178,6 +178,12 @@ export function PackageDetailPanel({
   const releaseDate = sortedVersions.find(v => v.version === selectedVersion)?.releasedAt
 
   const selectedVersionInfo = sortedVersions.find(v => v.version === selectedVersion)
+  const importStatements = useMemo(
+    () => (details?.importStatements || []).filter(
+      (statement) => statement.importStatement.trim().length > 0
+    ),
+    [details?.importStatements],
+  )
   const buildTargets = useMemo(() => {
     const targets = new Set<string>()
     details?.builds?.forEach(target => {
@@ -194,6 +200,16 @@ export function PackageDetailPanel({
   const [selectedBuildTarget, setSelectedBuildTarget] = useState<string>('')
   const [buildDropdownOpen, setBuildDropdownOpen] = useState(false)
   const buildDropdownRef = useRef<HTMLDivElement>(null)
+  const defaultImportStatement = useMemo(() => {
+    if (importStatements.length === 0) return null
+    if (selectedBuildTarget) {
+      const matching = importStatements.find(
+        (statement) => statement.buildName === selectedBuildTarget,
+      )
+      if (matching) return matching.importStatement
+    }
+    return importStatements[0]?.importStatement || null
+  }, [importStatements, selectedBuildTarget])
 
   useEffect(() => {
     if (!buildTargets.length) {
@@ -507,6 +523,31 @@ export function PackageDetailPanel({
               </div>
             )}
           </div>
+        </section>
+
+        <section className="detail-section">
+          <h3 className="detail-section-title">
+            <FileCode size={14} />
+            Import
+          </h3>
+          {isLoading ? (
+            <div className="detail-panel-loading">
+              <Loader2 size={20} className="spin" />
+              <span>Loading import statement...</span>
+            </div>
+          ) : defaultImportStatement ? (
+            <div className="detail-usage-code">
+              <CopyableCodeBlock
+                code={defaultImportStatement}
+                label="Import"
+                highlightAto
+              />
+            </div>
+          ) : (
+            <div className="detail-empty detail-usage-empty">
+              No import statement available.
+            </div>
+          )}
         </section>
 
         {/* Readme */}

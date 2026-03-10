@@ -1135,6 +1135,7 @@ class UiPartDetail(CamelModel):
     attributes: dict[str, str] = Field(default_factory=dict)
     footprint: str | None = None
     image_url: str | None = None
+    import_statement: str | None = None
     installed: bool = False
 
 

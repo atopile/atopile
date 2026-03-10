@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Loader2, CheckCircle, AlertCircle, Download, Cuboid, Image } from 'lucide-react'
+import { ArrowLeft, Loader2, CheckCircle, AlertCircle, Download, Cuboid, Image, FileCode } from 'lucide-react'
 import type { UiPartDetail } from '../../shared/generated-types'
-import { StepViewer } from '../shared/components'
+import { CopyableCodeBlock, StepViewer } from '../shared/components'
 import { rpcClient } from '../shared/rpcClient'
 import { useBlobAssetUrl } from '../shared/utils'
 import './PackageDetailPanel.css'
@@ -54,7 +54,12 @@ export function PartsDetailPanel({
     setIsLoading(true)
     setError(null)
     setDetails(null)
-    requestAction<{ part?: UiPartDetail | null }>('getPartDetails', { lcsc: part.lcsc })
+    requestAction<{ part?: UiPartDetail | null }>('getPartDetails', {
+      lcsc: part.lcsc,
+      projectRoot,
+      identifier: part.identifier,
+      installed: part.installed,
+    })
       .then((response) => {
         if (!active) return
         setDetails(response.part ?? null)
@@ -71,7 +76,7 @@ export function PartsDetailPanel({
     return () => {
       active = false
     }
-  }, [part.lcsc])
+  }, [part.identifier, part.installed, part.lcsc, projectRoot])
 
   const attributes = useMemo(() => {
     if (!details?.attributes) return []
@@ -143,6 +148,7 @@ export function PartsDetailPanel({
   const displayMpn = details?.mpn || part.mpn
   const imageUrl = details?.imageUrl || part.imageUrl
   const isInstalled = installedOverride !== null ? installedOverride : part.installed
+  const importSnippet = details?.importStatement || part.importStatement
   const modelAsset = useBlobAssetUrl(
     activeVisualTab === '3d' ? 'getPartModelData' : null,
     activeVisualTab === '3d' ? { lcsc: part.lcsc } : null,
@@ -291,6 +297,22 @@ export function PartsDetailPanel({
                 </dl>
               )}
             </div>
+
+            <section className="detail-section parts-detail-section">
+              <h3 className="detail-section-title">
+                <FileCode size={14} />
+                Import
+              </h3>
+              {importSnippet ? (
+                <div className="detail-usage-code">
+                  <CopyableCodeBlock code={importSnippet} label="Import" highlightAto />
+                </div>
+              ) : (
+                <div className="detail-empty detail-usage-empty">
+                  Install this part to get a project-local import statement.
+                </div>
+              )}
+            </section>
 
             <div className="parts-visual-section">
               <div className="parts-visual-tabs">
