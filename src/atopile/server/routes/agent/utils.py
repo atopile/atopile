@@ -201,6 +201,7 @@ async def run_turn_with_chain_recovery(
     session: AgentSession,
     ctx: AppContext,
     project_root: str,
+    scope_root: str | None,
     history: list[dict[str, str]],
     user_message: str,
     session_id: str,
@@ -219,11 +220,13 @@ async def run_turn_with_chain_recovery(
         **copy.copy(ctx).__dict__,
         agent_session_id=session_id,
         agent_run_id=run_id,
+        agent_scope_root=scope_root or project_root,
     )
     try:
         return await orchestrator.run_turn(
             ctx=run_ctx,
             project_root=project_root,
+            scope_root=scope_root or project_root,
             history=history,
             user_message=user_message,
             session_id=session_id,
@@ -251,6 +254,7 @@ async def run_turn_with_chain_recovery(
         return await orchestrator.run_turn(
             ctx=run_ctx,
             project_root=project_root,
+            scope_root=scope_root or project_root,
             history=history,
             user_message=user_message,
             session_id=session_id,
@@ -625,6 +629,7 @@ async def run_turn_in_background(
             session=session,
             ctx=ctx,
             project_root=run.project_root,
+            scope_root=run.scope_root or session.scope_root or run.project_root,
             history=list(session.history),
             user_message=run.message,
             session_id=session_id,
@@ -861,6 +866,7 @@ class TestAgentLogging:
                 session=session,
                 ctx=AppContext(workspace_paths=[]),
                 project_root="/tmp/project",
+                scope_root="/tmp/project",
                 history=[],
                 user_message="continue",
                 session_id=session.session_id,

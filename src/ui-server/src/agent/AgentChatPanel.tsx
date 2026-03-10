@@ -8,11 +8,12 @@ import './AgentChatPanel.css';
 
 interface AgentChatPanelProps {
   projectRoot: string | null;
+  scopeRoot: string | null;
   selectedTargets: string[];
 }
 
-export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelProps) {
-  const runtime = useAgentChatRuntime(projectRoot, selectedTargets);
+export function AgentChatPanel({ projectRoot, scopeRoot, selectedTargets }: AgentChatPanelProps) {
+  const runtime = useAgentChatRuntime(projectRoot, scopeRoot, selectedTargets);
 
   return (
     <div

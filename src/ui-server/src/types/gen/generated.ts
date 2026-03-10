@@ -268,16 +268,16 @@ export interface PackageVersion {
  * A project dependency with version info.
  */
 export interface DependencyInfo {
-    hasUpdate?:      boolean;
-    identifier:      string;
-    isDirect?:       boolean;
-    latestVersion?:  null | string;
-    name:            string;
-    publisher:       string;
-    repository?:     null | string;
-    status?:         null | string;
-    version:         string;
-    via?:            string[] | null;
+    hasUpdate?:     boolean;
+    identifier:     string;
+    isDirect?:      boolean;
+    latestVersion?: null | string;
+    name:           string;
+    publisher:      string;
+    repository?:    null | string;
+    status?:        null | string;
+    version:        string;
+    via?:           string[] | null;
     [property: string]: any;
 }
 
@@ -731,6 +731,7 @@ export enum EventMessageType {
 
 export interface CreateSessionRequest {
     projectRoot: string;
+    scopeRoot?:  null | string;
     [property: string]: any;
 }
 
@@ -743,6 +744,7 @@ export interface CreateSessionResponse {
 export interface SendMessageRequest {
     message:          string;
     projectRoot:      string;
+    scopeRoot?:       null | string;
     selectedTargets?: string[];
     [property: string]: any;
 }
@@ -883,6 +885,7 @@ export interface ToolElement {
 export interface ToolSuggestionsRequest {
     message?:         string;
     projectRoot?:     null | string;
+    scopeRoot?:       null | string;
     selectedTargets?: string[];
     [property: string]: any;
 }
@@ -933,6 +936,7 @@ export interface SessionSkillsResponse {
 export interface CreateRunRequest {
     message:          string;
     projectRoot:      string;
+    scopeRoot?:       null | string;
     selectedTargets?: string[];
     [property: string]: any;
 }

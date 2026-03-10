@@ -98,6 +98,10 @@ def resolve_project_root(project_root: str, ctx: AppContext) -> Path:
     )
 
 
+def resolve_scope_root(scope_root: str, ctx: AppContext) -> Path:
+    return policy_scope.resolve_scope_root(scope_root, ctx, scope_error_cls=ScopeError)
+
+
 def resolve_scoped_path(project_root: Path, path: str) -> Path:
     return policy_scope.resolve_scoped_path(
         project_root, path, scope_error_cls=ScopeError

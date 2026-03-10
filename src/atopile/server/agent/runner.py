@@ -377,6 +377,7 @@ class AgentRunner:
         *,
         ctx: AppContext,
         project_root: str,
+        scope_root: str | None = None,
         history: list[dict[str, str]],
         user_message: str,
         session_id: str = "",
@@ -395,6 +396,7 @@ class AgentRunner:
         cfg = self._config
 
         project_path = _legacy_tools.validate_tool_scope(project_root, ctx)
+        scope_path = _legacy_tools.validate_scope_root(scope_root or project_root, ctx)
         selected = selected_targets or []
         include_primer = previous_response_id is None and len(history) == 0
 
@@ -402,6 +404,7 @@ class AgentRunner:
         instructions, skill_state = build_system_prompt(
             config=cfg,
             project_root=project_path,
+            scope_root=scope_path,
             selected_targets=selected,
             include_session_primer=include_primer,
         )
@@ -429,6 +432,7 @@ class AgentRunner:
         # Build initial input
         user_content = await build_initial_user_message(
             project_root=project_path,
+            scope_root=scope_path,
             selected_targets=selected,
             user_message=user_message,
             context_max_chars=cfg.context_summary_max_chars,

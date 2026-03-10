@@ -46,26 +46,57 @@ _EXCLUDED_DIR_NAMES = {
 _MAX_CONTEXT_FILE_BYTES = 180_000
 
 
+def _resolve_workspace_directory(
+    root_path: str,
+    ctx: AppContext,
+    *,
+    scope_error_cls: type[Exception],
+    label: str,
+) -> Path:
+    root = Path(root_path).expanduser().resolve()
+    if not root.exists() or not root.is_dir():
+        raise scope_error_cls(f"{label} does not exist: {root_path}")
+
+    if ctx.workspace_paths:
+        allowed = [p.expanduser().resolve() for p in ctx.workspace_paths]
+        if not any(root.is_relative_to(ws) or root == ws for ws in allowed):
+            raise scope_error_cls(f"{label} is outside the current workspace scope")
+
+    return root
+
+
 def resolve_project_root(
     project_root: str,
     ctx: AppContext,
     *,
     scope_error_cls: type[Exception],
 ) -> Path:
-    root = Path(project_root).expanduser().resolve()
-    if not root.exists() or not root.is_dir():
-        raise scope_error_cls(f"Project root does not exist: {project_root}")
-
-    if ctx.workspace_paths:
-        allowed = [p.expanduser().resolve() for p in ctx.workspace_paths]
-        if not any(root.is_relative_to(ws) or root == ws for ws in allowed):
-            raise scope_error_cls("Project root is outside the current workspace scope")
+    root = _resolve_workspace_directory(
+        project_root,
+        ctx,
+        scope_error_cls=scope_error_cls,
+        label="Project root",
+    )
 
     ato_yaml = root / "ato.yaml"
     if not ato_yaml.exists():
         raise scope_error_cls(f"No ato.yaml found in project root: {project_root}")
 
     return root
+
+
+def resolve_scope_root(
+    scope_root: str,
+    ctx: AppContext,
+    *,
+    scope_error_cls: type[Exception],
+) -> Path:
+    return _resolve_workspace_directory(
+        scope_root,
+        ctx,
+        scope_error_cls=scope_error_cls,
+        label="Scope root",
+    )
 
 
 def resolve_scoped_path(

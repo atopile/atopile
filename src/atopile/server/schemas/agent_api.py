@@ -54,6 +54,7 @@ class ToolMemoryEntry(ApiModel):
 
 class CreateSessionRequest(ApiModel):
     project_root: str = Field(alias="projectRoot")
+    scope_root: str | None = Field(default=None, alias="scopeRoot")
 
 
 class CreateSessionResponse(ApiModel):
@@ -64,6 +65,7 @@ class CreateSessionResponse(ApiModel):
 class SendMessageRequest(ApiModel):
     message: str
     project_root: str = Field(alias="projectRoot")
+    scope_root: str | None = Field(default=None, alias="scopeRoot")
     selected_targets: list[str] = Field(default_factory=list, alias="selectedTargets")
 
 
@@ -86,6 +88,7 @@ class ToolDirectoryResponse(ApiModel):
 class ToolSuggestionsRequest(ApiModel):
     message: str = ""
     project_root: str | None = Field(default=None, alias="projectRoot")
+    scope_root: str | None = Field(default=None, alias="scopeRoot")
     selected_targets: list[str] = Field(default_factory=list, alias="selectedTargets")
 
 
@@ -113,6 +116,7 @@ class SessionSkillsResponse(ApiModel):
 class CreateRunRequest(ApiModel):
     message: str
     project_root: str = Field(alias="projectRoot")
+    scope_root: str | None = Field(default=None, alias="scopeRoot")
     selected_targets: list[str] = Field(default_factory=list, alias="selectedTargets")
 
 

@@ -147,6 +147,25 @@ export class SidebarSettingsHandlers {
     });
   }
 
+  async browseExplorerDirectory(currentPath?: string | null): Promise<void> {
+    traceInfo(`[SidebarSettings] Browsing for file explorer directory: ${currentPath ?? 'default'}`);
+
+    const defaultUri = currentPath ? vscode.Uri.file(currentPath) : vscode.workspace.workspaceFolders?.[0]?.uri;
+    const result = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      defaultUri,
+      openLabel: 'Use directory',
+      title: 'Choose directory for file explorer',
+    });
+
+    this._postToWebview({
+      type: 'browseExplorerDirectoryResult',
+      path: result?.[0]?.fsPath ?? null,
+    });
+  }
+
   async browseExportDirectory(): Promise<void> {
     traceInfo('[SidebarSettings] Browsing for export directory');
 

@@ -9,3 +9,4 @@ from atopile.dataclasses import AppContext
 class AgentExecutionContext(AppContext):
     agent_session_id: str | None = None
     agent_run_id: str | None = None
+    agent_scope_root: str | None = None

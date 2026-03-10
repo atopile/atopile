@@ -114,6 +114,7 @@ def build_system_prompt(
     *,
     config: AgentConfig,
     project_root: Path,
+    scope_root: Path,
     selected_targets: list[str],
     include_session_primer: bool = True,
 ) -> tuple[str, dict[str, Any]]:
@@ -143,6 +144,7 @@ def build_system_prompt(
         chunks.append(
             "Session primer (dynamic context):\n"
             f"- project_root: {project_root}\n"
+            f"- filesystem_scope_root: {scope_root}\n"
             f"- selected_targets: {targets_text}"
         )
     if skill_block.strip():
@@ -155,6 +157,7 @@ def build_system_prompt(
 async def build_initial_user_message(
     *,
     project_root: Path,
+    scope_root: Path,
     selected_targets: list[str],
     user_message: str,
     context_max_chars: int = 8_000,
@@ -163,12 +166,14 @@ async def build_initial_user_message(
     """Build the first user message with project context."""
     context_text = await _build_context(
         project_root=project_root,
+        scope_root=scope_root,
         selected_targets=selected_targets,
     )
     context_text = _truncate_middle(context_text, context_max_chars)
     trimmed = _trim_user_message(user_message, message_max_chars)
     return (
         f"Project root: {project_root}\n"
+        f"Filesystem scope root: {scope_root}\n"
         f"Selected targets: {selected_targets}\n"
         f"Context:\n{context_text}\n\n"
         f"Request:\n{trimmed}"
@@ -178,6 +183,7 @@ async def build_initial_user_message(
 async def _build_context(
     *,
     project_root: Path,
+    scope_root: Path,
     selected_targets: list[str],
 ) -> str:
     files = await asyncio.to_thread(policy.list_context_files, project_root, 240)
@@ -189,6 +195,12 @@ async def _build_context(
     lines: list[str] = [
         "Project summary:",
         f"- root: {project_root}",
+        f"- filesystem_scope_root: {scope_root}",
+        (
+            "- note: default project/build focus is the project root, but file "
+            "tools may access any path under filesystem_scope_root when "
+            "explicitly asked."
+        ),
         f"- selected_targets: {selected_targets}",
         f"- context_files_count: {len(files)}",
         "- files:",

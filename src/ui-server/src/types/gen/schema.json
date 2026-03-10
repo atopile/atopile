@@ -3143,6 +3143,18 @@
       "projectRoot": {
         "title": "Projectroot",
         "type": "string"
+      },
+      "scopeRoot": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scoperoot"
       }
     },
     "required": [
@@ -3178,6 +3190,18 @@
       "projectRoot": {
         "title": "Projectroot",
         "type": "string"
+      },
+      "scopeRoot": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scoperoot"
       },
       "selectedTargets": {
         "items": {
@@ -3828,6 +3852,18 @@
         "default": null,
         "title": "Projectroot"
       },
+      "scopeRoot": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scoperoot"
+      },
       "selectedTargets": {
         "items": {
           "type": "string"
@@ -4063,6 +4099,18 @@
       "projectRoot": {
         "title": "Projectroot",
         "type": "string"
+      },
+      "scopeRoot": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scoperoot"
       },
       "selectedTargets": {
         "items": {

@@ -63,22 +63,7 @@
   transition-delay: 0.15s;
 }
 
-/* Project Section */
-.project-section {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Project Selector Row */
-.project-selector-row {
-  display: grid;
-  grid-template-columns: var(--project-row-label-width) minmax(0, 1fr) auto;
-  column-gap: 6px;
-  align-items: center;
-}
-
 /* Inline section labels - shared style for consistent alignment */
-.project-selector-row .section-label,
 .build-targets .section-label {
   flex: 0 0 auto;
   justify-self: start;
@@ -304,11 +289,14 @@
 }
 
 .combobox-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding: 4px;
   border-top: 1px solid var(--border-subtle);
 }
 
-.combobox-create-btn {
+.combobox-action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -324,7 +312,7 @@
   transition: all 0.15s ease;
 }
 
-.combobox-create-btn:hover {
+.combobox-action-btn:hover {
   border-color: var(--ctp-blue);
   color: var(--ctp-blue);
   background: color-mix(in srgb, var(--ctp-blue) 8%, transparent);
@@ -335,8 +323,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  padding-top: var(--spacing-xs);
-  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
   flex: 1 1 auto;
   min-height: 0;
 }

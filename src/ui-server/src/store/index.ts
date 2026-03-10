@@ -56,6 +56,18 @@ const arraysEqual = (a: string[], b: string[]) => {
   return a.every((value, index) => value === b[index]);
 };
 
+const normalizePath = (value: string) =>
+  value.replace(/\\/g, '/').replace(/\/+$/, '');
+
+const isWithinPath = (candidate: string, root: string) => {
+  const normalizedCandidate = normalizePath(candidate);
+  const normalizedRoot = normalizePath(root);
+  return (
+    normalizedCandidate === normalizedRoot ||
+    normalizedCandidate.startsWith(`${normalizedRoot}/`)
+  );
+};
+
 // BroadcastChannel for cross-webview state synchronization
 const _channel: BroadcastChannel | null = (() => {
   try {
@@ -69,11 +81,14 @@ const _channel: BroadcastChannel | null = (() => {
 const persistedState = getVsCodeApi()?.getState() as {
   selectedProjectRoot?: string | null;
   selectedTargetRoot?: string | null;
+  selectedExplorerRoot?: string | null;
   selectedProjectName?: string | null;
   selectedTargetNames?: string[];
 } | undefined;
 
-type StoreState = AppState & AgentStoreState;
+type StoreState = AppState & AgentStoreState & {
+  selectedExplorerRoot: string | null;
+};
 
 const initialState: StoreState = {
   // Connection
@@ -86,6 +101,7 @@ const initialState: StoreState = {
   projectsError: null,
   selectedProjectRoot: persistedState?.selectedProjectRoot ?? null,
   selectedTargetRoot: persistedState?.selectedTargetRoot ?? null,
+  selectedExplorerRoot: persistedState?.selectedExplorerRoot ?? null,
   selectedTargetNames: persistedState?.selectedTargetNames ?? [],
   migratingProjectRoots: [] as string[],
   migrationErrors: {} as Record<string, string>,
@@ -213,6 +229,7 @@ interface StoreActions {
   setProjectsError: (error: string | null) => void;
   selectProject: (projectRoot: string | null) => void;
   selectTarget: (projectRoot: string, targetName: string, targetRoot?: string | null) => void;
+  setSelectedExplorerRoot: (root: string | null) => void;
   setSelectedTargetRoot: (targetRoot: string | null) => void;
   setSelectedTargets: (targetNames: string[]) => void;
   toggleTarget: (targetName: string) => void;
@@ -437,6 +454,7 @@ export const useStore = create<Store>()(
         // Validate current selection against discovered projects
         let selectedProjectRoot = state.selectedProjectRoot;
         let selectedTargetRoot = state.selectedTargetRoot;
+        let selectedExplorerRoot = state.selectedExplorerRoot;
         let selectedProjectName = state.selectedProjectName;
         let selectedTargetNames = state.selectedTargetNames;
 
@@ -463,16 +481,26 @@ export const useStore = create<Store>()(
             selectedTargetNames = fallbackTarget?.name ? [fallbackTarget.name] : [];
             selectedTargetRoot = fallbackTarget?.root ?? selectedProject.root;
           }
+
+          const defaultExplorerRoot = selectedProject.root;
+          if (
+            !selectedExplorerRoot ||
+            !isWithinPath(selectedExplorerRoot, selectedProject.root)
+          ) {
+            selectedExplorerRoot = defaultExplorerRoot;
+          }
         } else if (projects.length > 0) {
           // No valid selection — auto-select first project + its first target
           const first = projects[0];
           selectedProjectRoot = first.root;
           selectedTargetRoot = first.targets?.[0]?.root ?? first.root;
+          selectedExplorerRoot = first.root;
           selectedProjectName = first.name;
           selectedTargetNames = first.targets?.[0]?.name ? [first.targets[0].name] : [];
         } else {
           selectedProjectRoot = null;
           selectedTargetRoot = null;
+          selectedExplorerRoot = null;
           selectedProjectName = null;
           selectedTargetNames = [];
         }
@@ -486,6 +514,8 @@ export const useStore = create<Store>()(
           postMessage({
             type: 'selectionChanged',
             projectRoot: selectedProjectRoot,
+            targetRoot: selectedTargetRoot,
+            explorerRoot: selectedExplorerRoot,
             targetNames: selectedTargetNames,
           });
         }
@@ -496,6 +526,7 @@ export const useStore = create<Store>()(
           migratingProjectRoots: stillMigrating,
           selectedProjectRoot,
           selectedTargetRoot,
+          selectedExplorerRoot,
           selectedProjectName,
           selectedTargetNames,
         };
@@ -531,6 +562,7 @@ export const useStore = create<Store>()(
         return {
           selectedProjectRoot: projectRoot,
           selectedTargetRoot: defaultTarget?.root ?? projectRoot,
+          selectedExplorerRoot: projectRoot,
           selectedProjectName: project?.name ?? null,
           selectedTargetNames: defaultTarget?.name ? [defaultTarget.name] : [],
         };
@@ -540,9 +572,15 @@ export const useStore = create<Store>()(
         set((state) => ({
           selectedProjectRoot: projectRoot,
           selectedTargetRoot: targetRoot ?? projectRoot,
+          selectedExplorerRoot:
+            state.selectedExplorerRoot && isWithinPath(state.selectedExplorerRoot, projectRoot)
+              ? state.selectedExplorerRoot
+              : projectRoot,
           selectedProjectName: state.projects.find((p) => p.root === projectRoot)?.name ?? null,
           selectedTargetNames: [targetName],
         })),
+
+      setSelectedExplorerRoot: (root) => set({ selectedExplorerRoot: root }),
 
       setSelectedTargetRoot: (targetRoot) => set({ selectedTargetRoot: targetRoot }),
 
@@ -563,6 +601,12 @@ export const useStore = create<Store>()(
             selectedTargetRoot:
               targetNames.length === 1
                 ? matchedTarget?.root ?? state.selectedTargetRoot ?? state.selectedProjectRoot
+                : state.selectedProjectRoot,
+            selectedExplorerRoot:
+              state.selectedExplorerRoot && state.selectedProjectRoot
+                ? (isWithinPath(state.selectedExplorerRoot, state.selectedProjectRoot)
+                  ? state.selectedExplorerRoot
+                  : state.selectedProjectRoot)
                 : state.selectedProjectRoot,
           };
         }),
@@ -1096,6 +1140,7 @@ useStore.subscribe(
   (state) => ({
     projectRoot: state.selectedProjectRoot,
     targetRoot: state.selectedTargetRoot,
+    explorerRoot: state.selectedExplorerRoot,
     projectName: state.selectedProjectName,
     targetNames: state.selectedTargetNames,
   }),
@@ -1103,6 +1148,7 @@ useStore.subscribe(
     const selectionChanged =
       current.projectRoot !== previous.projectRoot ||
       current.targetRoot !== previous.targetRoot ||
+      current.explorerRoot !== previous.explorerRoot ||
       !arraysEqual(current.targetNames, previous.targetNames);
 
     if (selectionChanged) {
@@ -1110,6 +1156,7 @@ useStore.subscribe(
         type: 'selectionChanged',
         projectRoot: current.projectRoot,
         targetRoot: current.targetRoot,
+        explorerRoot: current.explorerRoot,
         targetNames: current.targetNames,
       });
     }
@@ -1121,6 +1168,7 @@ useStore.subscribe(
       api?.setState({
         selectedProjectRoot: current.projectRoot,
         selectedTargetRoot: current.targetRoot,
+        selectedExplorerRoot: current.explorerRoot,
         selectedProjectName: current.projectName,
         selectedTargetNames: current.targetNames,
       });

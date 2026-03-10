@@ -79,6 +79,7 @@ class AgentSession(BaseModel):
 
     session_id: str
     project_root: str
+    scope_root: str | None = None
     history: list[dict[str, str]] = Field(default_factory=list)
     tool_memory: dict[str, dict[str, Any]] = Field(default_factory=dict)
     recent_selected_targets: list[str] = Field(default_factory=list)
@@ -99,6 +100,7 @@ class AgentRun(BaseModel):
     session_id: str
     message: str
     project_root: str
+    scope_root: str | None = None
     selected_targets: list[str] = Field(default_factory=list)
     status: str = RUN_STATUS_RUNNING
     response_payload: dict[str, Any] | None = None

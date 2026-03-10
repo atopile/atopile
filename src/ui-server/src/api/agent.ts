@@ -67,8 +67,11 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
 }
 
 export const agentApi = {
-  async createSession(projectRoot: string): Promise<CreateSessionResponse> {
-    const requestBody: CreateSessionRequest = { projectRoot };
+  async createSession(
+    projectRoot: string,
+    scopeRoot?: string | null,
+  ): Promise<CreateSessionResponse> {
+    const requestBody: CreateSessionRequest = { projectRoot, scopeRoot: scopeRoot ?? null };
     return request<CreateSessionResponse>('/api/agent/sessions', {
       method: 'POST',
       body: JSON.stringify(requestBody),
@@ -82,6 +85,7 @@ export const agentApi = {
     const requestBody: SendMessageRequest = {
       message: payload.message,
       projectRoot: payload.projectRoot,
+      scopeRoot: payload.scopeRoot ?? null,
       selectedTargets: payload.selectedTargets ?? [],
     };
     return request<AgentMessageResponse>(`/api/agent/sessions/${encodeURIComponent(sessionId)}/messages`, {
@@ -106,6 +110,7 @@ export const agentApi = {
     const requestBody: ToolSuggestionsRequest = {
       message: payload.message ?? '',
       projectRoot: payload.projectRoot ?? null,
+      scopeRoot: payload.scopeRoot ?? null,
       selectedTargets: payload.selectedTargets ?? [],
     };
     return request<ToolSuggestionsResponse>(
@@ -124,6 +129,7 @@ export const agentApi = {
     const requestBody: CreateRunRequest = {
       message: payload.message,
       projectRoot: payload.projectRoot,
+      scopeRoot: payload.scopeRoot ?? null,
       selectedTargets: payload.selectedTargets ?? [],
     };
     return request<AgentRunCreateResponse>(

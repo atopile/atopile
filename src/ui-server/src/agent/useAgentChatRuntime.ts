@@ -10,7 +10,11 @@ import { useStore } from '../store';
 import { postMessage } from '../api/vscodeApi';
 import type { AgentMessage } from './state/types';
 
-export function useAgentChatRuntime(projectRoot: string | null, selectedTargets: string[]) {
+export function useAgentChatRuntime(
+  projectRoot: string | null,
+  scopeRoot: string | null,
+  selectedTargets: string[],
+) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
@@ -52,6 +56,7 @@ export function useAgentChatRuntime(projectRoot: string | null, selectedTargets:
 
   const sessionState = useAgentSessionState({
     projectRoot,
+    scopeRoot,
     sessionId,
     setSessionId,
     messages,
@@ -77,6 +82,7 @@ export function useAgentChatRuntime(projectRoot: string | null, selectedTargets:
 
   const runState = useAgentRunState({
     projectRoot,
+    scopeRoot,
     selectedTargets,
     input: composerState.input,
     setInput: composerState.setInput,

@@ -22,6 +22,7 @@ function isRunNotFoundError(error: unknown): boolean {
 
 interface RunStateDeps {
   projectRoot: string | null;
+  scopeRoot: string | null;
   selectedTargets: string[];
   input: string;
   setInput: (value: string) => void;
@@ -55,6 +56,7 @@ interface SendMessageOptions {
 
 export function useAgentRunState({
   projectRoot,
+  scopeRoot,
   selectedTargets,
   input,
   setInput,
@@ -401,10 +403,15 @@ export function useAgentRunState({
       let currentSessionId = sessionId;
       let run: { runId: string; status: string };
       try {
-        run = await agentApi.createRun(currentSessionId, { message: trimmed, projectRoot, selectedTargets });
+        run = await agentApi.createRun(currentSessionId, {
+          message: trimmed,
+          projectRoot,
+          scopeRoot,
+          selectedTargets,
+        });
       } catch (runStartError: unknown) {
         if (!isSessionNotFoundError(runStartError)) throw runStartError;
-        const recoveredSession = await agentApi.createSession(projectRoot);
+        const recoveredSession = await agentApi.createSession(projectRoot, scopeRoot);
         currentSessionId = recoveredSession.sessionId;
         const recoveredNotice: AgentMessage = {
           id: `${chatPrefix}-session-recovered-${Date.now()}`,
@@ -416,7 +423,12 @@ export function useAgentRunState({
           setSessionId(currentSessionId);
           setMessages((previous) => [...previous, recoveredNotice]);
         }
-        run = await agentApi.createRun(currentSessionId, { message: trimmed, projectRoot, selectedTargets });
+        run = await agentApi.createRun(currentSessionId, {
+          message: trimmed,
+          projectRoot,
+          scopeRoot,
+          selectedTargets,
+        });
       }
 
       updateChatSnapshot(chatId, (chat) => ({ ...chat, pendingRunId: run.runId, activeRunId: run.runId }));
@@ -530,7 +542,7 @@ export function useAgentRunState({
         setIsSending(false);
       }
     }
-  }, [activeChatId, activeChatSnapshot, activeRunId, input, isSending, projectRoot, selectedTargets, sessionId, setActivityLabel, setActiveRunId, setError, setInput, setIsSending, setIsStopping, setMentionIndex, setMentionToken, setMessages, setSessionId, updateChatSnapshot, waitForRunCompletion, pendingSteeringByChatRef, activeChatIdRef, chatSnapshotsRef]);
+  }, [activeChatId, activeChatSnapshot, activeRunId, input, isSending, projectRoot, scopeRoot, selectedTargets, sessionId, setActivityLabel, setActiveRunId, setError, setInput, setIsSending, setIsStopping, setMentionIndex, setMentionToken, setMessages, setSessionId, updateChatSnapshot, waitForRunCompletion, pendingSteeringByChatRef, activeChatIdRef, chatSnapshotsRef]);
 
   return {
     stopRun,

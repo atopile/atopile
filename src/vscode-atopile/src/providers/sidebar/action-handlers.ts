@@ -125,10 +125,11 @@ export class SidebarActionHandlers {
 
   async handleSelectionChanged(message: SelectionChangedMessage): Promise<void> {
     const projectRoot = message.projectRoot ?? null;
+    const explorerRoot = message.explorerRoot ?? message.targetRoot ?? projectRoot;
     setProjectRoot(projectRoot ?? undefined);
 
     // Notify the file watcher about project selection changes
-    this._onProjectSelected?.(projectRoot);
+    this._onProjectSelected?.(explorerRoot);
 
     await loadBuilds();
     const builds = getBuilds();

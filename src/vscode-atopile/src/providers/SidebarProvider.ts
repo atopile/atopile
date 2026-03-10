@@ -258,6 +258,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           traceError(`[SidebarProvider] Error browsing project path: ${error}`);
         });
         break;
+      case 'browseExplorerDirectory':
+        this._settings.browseExplorerDirectory(message.currentPath).catch((error) => {
+          traceError(`[SidebarProvider] Error browsing explorer directory: ${error}`);
+        });
+        break;
       case 'projectCreated':
         void this._handleProjectCreated(message.projectRoot);
         break;

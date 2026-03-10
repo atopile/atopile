@@ -632,12 +632,20 @@ def _resolve_nested_project_path(project_root: Path, raw_project_path: object) -
     return candidate
 
 
+def _resolve_file_scope_root(project_root: Path, ctx: AppContext) -> Path:
+    raw_scope_root = getattr(ctx, "agent_scope_root", None)
+    if not isinstance(raw_scope_root, str) or not raw_scope_root.strip():
+        return project_root
+    return policy.resolve_scope_root(raw_scope_root, ctx)
+
+
 @_register_tool("project_list_files")
 async def _tool_project_list_files(
     arguments: dict[str, Any], project_root: Path, ctx: AppContext
 ) -> dict[str, Any]:
     limit = int(arguments.get("limit", 300))
-    files = await asyncio.to_thread(policy.list_context_files, project_root, limit)
+    file_scope_root = _resolve_file_scope_root(project_root, ctx)
+    files = await asyncio.to_thread(policy.list_context_files, file_scope_root, limit)
     return {"files": files, "total": len(files)}
 
 
@@ -645,9 +653,10 @@ async def _tool_project_list_files(
 async def _tool_project_read_file(
     arguments: dict[str, Any], project_root: Path, ctx: AppContext
 ) -> dict[str, Any]:
+    file_scope_root = _resolve_file_scope_root(project_root, ctx)
     return await asyncio.to_thread(
         policy.read_file_chunk,
-        project_root,
+        file_scope_root,
         str(arguments.get("path", "")),
         start_line=int(arguments.get("start_line", 1)),
         max_lines=int(arguments.get("max_lines", 220)),
@@ -658,9 +667,10 @@ async def _tool_project_read_file(
 async def _tool_project_search(
     arguments: dict[str, Any], project_root: Path, ctx: AppContext
 ) -> dict[str, Any]:
+    file_scope_root = _resolve_file_scope_root(project_root, ctx)
     matches = await asyncio.to_thread(
         policy.search_in_files,
-        project_root,
+        file_scope_root,
         str(arguments.get("query", "")),
         limit=int(arguments.get("limit", 60)),
     )
@@ -1021,9 +1031,10 @@ async def _tool_project_edit_file(
     edits = arguments.get("edits")
     if not isinstance(edits, list):
         raise ValueError("edits must be a list")
+    file_scope_root = _resolve_file_scope_root(project_root, ctx)
     return await asyncio.to_thread(
         policy.apply_hashline_edits,
-        project_root,
+        file_scope_root,
         str(arguments.get("path", "")),
         edits,
     )
@@ -1039,9 +1050,10 @@ async def _tool_project_create_path(
     if not isinstance(content, str):
         raise ValueError("content must be a string")
     kind = str(arguments.get("kind", "file")).strip().lower()
+    file_scope_root = _resolve_file_scope_root(project_root, ctx)
     return await asyncio.to_thread(
         policy.create_path,
-        project_root,
+        file_scope_root,
         str(arguments.get("path", "")),
         kind=kind,
         content=content,
@@ -1054,9 +1066,10 @@ async def _tool_project_create_path(
 async def _tool_project_move_path(
     arguments: dict[str, Any], project_root: Path, ctx: AppContext
 ) -> dict[str, Any]:
+    file_scope_root = _resolve_file_scope_root(project_root, ctx)
     return await asyncio.to_thread(
         policy.rename_path,
-        project_root,
+        file_scope_root,
         str(arguments.get("old_path", "")),
         str(arguments.get("new_path", "")),
         overwrite=bool(arguments.get("overwrite", False)),
@@ -1067,9 +1080,10 @@ async def _tool_project_move_path(
 async def _tool_project_delete_path(
     arguments: dict[str, Any], project_root: Path, ctx: AppContext
 ) -> dict[str, Any]:
+    file_scope_root = _resolve_file_scope_root(project_root, ctx)
     return await asyncio.to_thread(
         policy.delete_path,
-        project_root,
+        file_scope_root,
         str(arguments.get("path", "")),
         recursive=bool(arguments.get("recursive", True)),
     )
@@ -1245,10 +1259,11 @@ async def _tool_datasheet_read(
 
     datasheet_bytes: bytes
     metadata: dict[str, Any]
+    file_scope_root = _resolve_file_scope_root(project_root, ctx)
     if source_path:
         datasheet_bytes, metadata = await asyncio.to_thread(
             policy.read_datasheet_file,
-            project_root,
+            file_scope_root,
             path=source_path,
             url=None,
         )
@@ -2092,3 +2107,8 @@ def parse_tool_arguments(raw_arguments: str) -> dict[str, Any]:
 def validate_tool_scope(project_root: str, ctx: AppContext) -> Path:
     """Validate and resolve project root for tool execution."""
     return policy.resolve_project_root(project_root, ctx)
+
+
+def validate_scope_root(scope_root: str, ctx: AppContext) -> Path:
+    """Validate and resolve the directory root used for file-scoped tools."""
+    return policy.resolve_scope_root(scope_root, ctx)

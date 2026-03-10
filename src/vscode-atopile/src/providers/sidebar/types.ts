@@ -30,6 +30,8 @@ export interface AtopileSettingsMessage {
 export interface SelectionChangedMessage {
   type: 'selectionChanged';
   projectRoot: string | null;
+  targetRoot?: string | null;
+  explorerRoot?: string | null;
   targetNames: string[];
 }
 
@@ -39,6 +41,11 @@ export interface BrowseAtopilePathMessage {
 
 export interface BrowseProjectPathMessage {
   type: 'browseProjectPath';
+}
+
+export interface BrowseExplorerDirectoryMessage {
+  type: 'browseExplorerDirectory';
+  currentPath?: string | null;
 }
 
 export interface ProjectCreatedMessage {
@@ -165,6 +172,7 @@ export type WebviewMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
+  | BrowseExplorerDirectoryMessage
   | ProjectCreatedMessage
   | BrowseExportDirectoryMessage
   | OpenSourceControlMessage

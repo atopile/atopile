@@ -33,7 +33,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { useStore } from '../store';
-import { postToExtension } from '../api/vscodeApi';
+import { postMessage, postToExtension } from '../api/vscodeApi';
 import { FileContextMenu, type ContextMenuPosition, type ContextMenuTarget } from './FileContextMenu';
 import './FileExplorerPanel.css';
 
@@ -105,7 +105,23 @@ export interface FileNode {
 export type SortMode = 'name' | 'modified' | 'type';
 
 interface FileExplorerPanelProps {
-  projectRoot: string | null;
+  rootPath: string | null;
+  defaultRootPath?: string | null;
+  onResetRoot?: () => void;
+}
+
+function formatRootLabel(rootPath: string, defaultRootPath?: string | null): string {
+  const normalized = rootPath.replace(/\\/g, '/').replace(/\/+$/, '');
+  const normalizedDefault = defaultRootPath?.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (
+    normalizedDefault &&
+    normalized !== normalizedDefault &&
+    normalized.startsWith(`${normalizedDefault}/`)
+  ) {
+    return normalized.slice(normalizedDefault.length + 1)
+  }
+  const parts = normalized.split('/').filter(Boolean);
+  return parts[parts.length - 1] || rootPath;
 }
 
 // ============================================================================
@@ -473,9 +489,11 @@ const TreeNode = memo(function TreeNode({
 // Main Component
 // ============================================================================
 
-export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
+export function FileExplorerPanel({ rootPath, defaultRootPath = null, onResetRoot }: FileExplorerPanelProps) {
+  const projectRoot = rootPath;
   const projectFiles = useStore((s) => s.projectFiles);
   const isLoadingFiles = useStore((s) => s.isLoadingFiles);
+  const setSelectedExplorerRoot = useStore((s) => s.setSelectedExplorerRoot);
 
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
@@ -487,6 +505,12 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
   const [sortMode, setSortMode] = useState<SortMode>('name');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const rootLabel = useMemo(
+    () => (projectRoot ? formatRootLabel(projectRoot, defaultRootPath) : ''),
+    [defaultRootPath, projectRoot]
+  );
+  const hasCustomRoot = Boolean(projectRoot && defaultRootPath && projectRoot !== defaultRootPath);
+  const scopeLabel = hasCustomRoot ? rootLabel : 'Project';
 
   // Drag and drop state
   const [draggedPath, setDraggedPath] = useState<string | null>(null);
@@ -589,6 +613,16 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
           next.delete(message.directoryPath);
           return next;
         });
+        const expandedLazyChildren = children
+          .filter((node) => node.type === 'folder' && node.lazyLoad && expandedPaths.has(node.path))
+          .map((node) => node.path);
+        for (const childPath of expandedLazyChildren) {
+          postToExtension({
+            type: 'loadDirectory',
+            projectRoot,
+            directoryPath: childPath,
+          });
+        }
         if (message.error) {
           console.error('Failed to load directory:', message.error);
         }
@@ -597,6 +631,10 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
       // Handle file system changes - clear files to trigger refresh
       if (message?.type === 'filesChanged' && message.projectRoot === projectRoot) {
         useStore.getState().setProjectFiles(projectRoot, []);
+      }
+
+      if (message?.type === 'browseExplorerDirectoryResult' && message.path) {
+        setSelectedExplorerRoot(message.path);
       }
 
       // When a file is duplicated, start rename mode on the new file
@@ -610,7 +648,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [projectRoot, updateDirectoryChildren, expandedPaths]);
+  }, [expandedPaths, projectRoot, setSelectedExplorerRoot, updateDirectoryChildren]);
 
   // Clean up drag state when drag ends anywhere (e.g., dropped outside, cancelled)
   useEffect(() => {
@@ -631,6 +669,13 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
   const handleCollapseAll = useCallback(() => {
     setExpandedPaths(new Set());
   }, []);
+
+  const handleBrowseDirectory = useCallback(() => {
+    postMessage({
+      type: 'browseExplorerDirectory',
+      currentPath: projectRoot,
+    });
+  }, [projectRoot]);
 
   // Cycle sort mode
   const handleCycleSort = useCallback(() => {
@@ -1139,6 +1184,36 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
     >
       {/* Header with actions */}
       <div className="file-explorer-header">
+        <div className="file-explorer-title-group">
+          <div className="file-explorer-title">Files</div>
+          <button
+            type="button"
+            className={`file-explorer-scope-btn ${hasCustomRoot ? 'custom' : 'active'}`}
+            onClick={hasCustomRoot && onResetRoot ? onResetRoot : undefined}
+            disabled={!hasCustomRoot || !onResetRoot}
+            title={hasCustomRoot ? `Return to project root: ${defaultRootPath}` : 'Using project root'}
+          >
+            <span className="file-explorer-scope-label">{scopeLabel}</span>
+          </button>
+          <button
+            type="button"
+            className="file-explorer-scope-open"
+            onClick={handleBrowseDirectory}
+            title="Choose a directory for the file explorer"
+          >
+            Open Directory...
+          </button>
+          {hasCustomRoot && onResetRoot && (
+            <button
+              type="button"
+              className="file-explorer-filter-reset"
+              onClick={onResetRoot}
+              title="Return to project root"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
         <div className="file-explorer-actions">
           <button
             className="file-explorer-action-btn"

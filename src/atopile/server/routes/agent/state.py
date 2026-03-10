@@ -100,6 +100,7 @@ def _serialize_session_state(session: AgentSession) -> dict[str, Any]:
     return {
         "session_id": session.session_id,
         "project_root": session.project_root,
+        "scope_root": session.scope_root,
         "history": _normalize_history_entries(session.history, max_entries=max_history),
         "tool_memory": _normalize_tool_memory(session.tool_memory),
         "recent_selected_targets": _normalize_string_list(
@@ -125,6 +126,7 @@ def _deserialize_session_state(value: Any) -> AgentSession | None:
 
     session_id = value.get("session_id")
     project_root = value.get("project_root")
+    scope_root = value.get("scope_root")
     if not isinstance(session_id, str) or not session_id:
         return None
     if not isinstance(project_root, str) or not project_root:
@@ -146,6 +148,9 @@ def _deserialize_session_state(value: Any) -> AgentSession | None:
     return AgentSession(
         session_id=session_id,
         project_root=project_root,
+        scope_root=scope_root
+        if isinstance(scope_root, str) and scope_root
+        else project_root,
         history=_normalize_history_entries(value.get("history")),
         tool_memory=_normalize_tool_memory(value.get("tool_memory")),
         recent_selected_targets=_normalize_string_list(
@@ -302,9 +307,15 @@ def is_run_stop_requested(run_id: str) -> bool:
         return bool(run and run.stop_requested)
 
 
-def reset_session_state(session: AgentSession, *, project_root: str) -> None:
+def reset_session_state(
+    session: AgentSession,
+    *,
+    project_root: str,
+    scope_root: str | None = None,
+) -> None:
     """Clear per-project session state when switching scopes."""
     session.project_root = project_root
+    session.scope_root = scope_root or project_root
     session.history = []
     session.tool_memory = {}
     session.active_run_id = None

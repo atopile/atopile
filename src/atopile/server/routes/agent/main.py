@@ -14,7 +14,7 @@ from httpx import ASGITransport, AsyncClient
 
 import atopile.server.routes.agent.state as agent_state
 from atopile.dataclasses import AppContext
-from atopile.server.agent.tools import validate_tool_scope
+from atopile.server.agent.tools import validate_scope_root, validate_tool_scope
 from atopile.server.domains.deps import get_ctx
 from atopile.server.routes.agent import utils as agent_utils
 
@@ -89,9 +89,11 @@ def _ensure_project_scope(
     session_id: str,
     session: AgentSession,
     project_root: str,
+    scope_root: str,
 ) -> None:
     """Reset the session if the request switches to another project root."""
     if session.project_root == project_root:
+        session.scope_root = scope_root
         return
 
     log_agent_event(
@@ -102,8 +104,16 @@ def _ensure_project_scope(
             "to_project_root": project_root,
         },
     )
-    reset_session_state(session, project_root=project_root)
+    reset_session_state(session, project_root=project_root, scope_root=scope_root)
     persist_sessions_state()
+
+
+def _resolve_request_scope_root(raw_scope_root: str | None, project_root: str) -> str:
+    return (
+        raw_scope_root
+        if isinstance(raw_scope_root, str) and raw_scope_root
+        else project_root
+    )
 
 
 @router.post("/sessions", response_model=CreateSessionResponse)
@@ -113,11 +123,19 @@ async def create_session(
 ):
     try:
         validate_tool_scope(request.project_root, ctx)
+        scope_root = _resolve_request_scope_root(
+            request.scope_root, request.project_root
+        )
+        validate_scope_root(scope_root, ctx)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
     session_id = uuid.uuid4().hex
-    session = AgentSession(session_id=session_id, project_root=request.project_root)
+    session = AgentSession(
+        session_id=session_id,
+        project_root=request.project_root,
+        scope_root=scope_root,
+    )
 
     with sessions_lock:
         sessions_by_id[session_id] = session
@@ -146,6 +164,10 @@ async def send_message(
     cleanup_finished_runs()
     try:
         validate_tool_scope(request.project_root, ctx)
+        scope_root = _resolve_request_scope_root(
+            request.scope_root, request.project_root
+        )
+        validate_scope_root(scope_root, ctx)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -168,7 +190,7 @@ async def send_message(
             detail=active_run_conflict_detail(conflict_run_id or "sync"),
         )
 
-    _ensure_project_scope(session_id, session, request.project_root)
+    _ensure_project_scope(session_id, session, request.project_root, scope_root)
     session.recent_selected_targets = list(request.selected_targets)
 
     run_id = uuid.uuid4().hex
@@ -204,6 +226,7 @@ async def send_message(
                 session=session,
                 ctx=ctx,
                 project_root=request.project_root,
+                scope_root=scope_root,
                 history=list(session.history),
                 user_message=request.message,
                 session_id=session_id,
@@ -256,6 +279,10 @@ async def create_run(
     cleanup_finished_runs()
     try:
         validate_tool_scope(request.project_root, ctx)
+        scope_root = _resolve_request_scope_root(
+            request.scope_root, request.project_root
+        )
+        validate_scope_root(scope_root, ctx)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -266,7 +293,7 @@ async def create_run(
             status_code=404, detail=session_not_found_detail(session_id)
         )
 
-    _ensure_project_scope(session_id, session, request.project_root)
+    _ensure_project_scope(session_id, session, request.project_root, scope_root)
 
     run_id = uuid.uuid4().hex
     run = AgentRun(
@@ -274,6 +301,7 @@ async def create_run(
         session_id=session_id,
         message=request.message,
         project_root=request.project_root,
+        scope_root=scope_root,
         selected_targets=list(request.selected_targets),
         status=RUN_STATUS_RUNNING,
     )
@@ -627,6 +655,29 @@ async def client(app: FastAPI):
 
 
 class TestAgentRoutes:
+    @pytest.mark.anyio
+    async def test_create_session_accepts_directory_scope_root(
+        self,
+        client: AsyncClient,
+        project_root: Path,
+    ) -> None:
+        scope_root = project_root.parent
+
+        response = await client.post(
+            "/api/agent/sessions",
+            json={
+                "projectRoot": str(project_root),
+                "scopeRoot": str(scope_root),
+            },
+        )
+
+        assert response.status_code == 200
+        session_id = response.json()["sessionId"]
+        with agent_state.sessions_lock:
+            session = agent_state.sessions_by_id[session_id]
+            assert session.project_root == str(project_root)
+            assert session.scope_root == str(scope_root)
+
     @pytest.mark.anyio
     async def test_cancel_route_requests_graceful_stop_instead_of_cancelling_task(
         self,

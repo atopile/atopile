@@ -235,17 +235,19 @@ function ProjectSelector({
 
           {onCreateProject && (
             <div className="combobox-footer">
-              <button
-                className="combobox-create-btn"
-                onClick={() => {
-                  onCreateProject()
-                  setIsOpen(false)
-                  setSearchQuery('')
-                }}
-              >
-                <Plus size={12} />
-                <span>New Project</span>
-              </button>
+              {onCreateProject && (
+                <button
+                  className="combobox-action-btn"
+                  onClick={() => {
+                    onCreateProject()
+                    setIsOpen(false)
+                    setSearchQuery('')
+                  }}
+                >
+                  <Plus size={12} />
+                  <span>New Project</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1016,32 +1018,29 @@ export function ActiveProjectPanel({
         />
       )}
 
-      {/* Project Section */}
-      <div className="project-section">
-        <div className="project-selector-row">
-          <span
-            className="section-label has-tooltip"
-            data-tooltip="A project groups your design modules and the builds created from them."
+      <div className="build-targets">
+        <span
+          className="section-label has-tooltip"
+          data-tooltip="A project groups your design modules and the builds created from them."
+        >
+          Project
+        </span>
+        <ProjectSelector
+          projects={projects}
+          activeProject={activeProject}
+          activeProjectName={selectedProjectName}
+          onSelectProject={onSelectProject}
+          onCreateProject={onCreateProject ? () => setShowNewProjectForm(true) : undefined}
+        />
+        {onCreateProject && (
+          <button
+            className="new-project-btn"
+            onClick={() => setShowNewProjectForm(true)}
+            title="Create new project"
           >
-            Project
-          </span>
-          <ProjectSelector
-            projects={projects}
-            activeProject={activeProject}
-            activeProjectName={selectedProjectName}
-            onSelectProject={onSelectProject}
-            onCreateProject={onCreateProject ? () => setShowNewProjectForm(true) : undefined}
-          />
-          {onCreateProject && (
-            <button
-              className="new-project-btn"
-              onClick={() => setShowNewProjectForm(true)}
-              title="Create new project"
-            >
-              <Plus size={14} />
-            </button>
-          )}
-        </div>
+            <Plus size={14} />
+          </button>
+        )}
       </div>
 
       {/* Build Section */}

@@ -21,6 +21,7 @@ import type { FileTreeNode } from '../../types/build';
 
 interface SessionDeps {
   projectRoot: string | null;
+  scopeRoot: string | null;
   sessionId: string | null;
   setSessionId: (value: string | null) => void;
   messages: AgentMessage[];
@@ -46,6 +47,7 @@ interface SessionDeps {
 
 export function useAgentSessionState({
   projectRoot,
+  scopeRoot,
   sessionId,
   setSessionId,
   messages,
@@ -162,14 +164,14 @@ export function useAgentSessionState({
     updateAgentSnapshotInStore(chatId, updater);
   }, [updateAgentSnapshotInStore]);
 
-  const startChatSession = useCallback(async (chatId: string, root: string) => {
+  const startChatSession = useCallback(async (chatId: string, root: string, currentScopeRoot: string | null) => {
     if (activeChatIdRef.current === chatId) {
       setIsSessionLoading(true);
       setError(null);
       setActivityLabel('Starting');
     }
     try {
-      const response = await agentApi.createSession(root);
+      const response = await agentApi.createSession(root, currentScopeRoot);
       const readyMessage: AgentMessage = {
         id: `${chatId}-welcome-${response.sessionId}`,
         role: 'system',
@@ -281,8 +283,8 @@ export function useAgentSessionState({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
-    void startChatSession(chatId, root);
-  }, [resetChatUiState, setActivityLabel, setError, setInput, setIsSessionLoading, setMessages, setSessionId, startChatSession, upsertSnapshot]);
+    void startChatSession(chatId, root, scopeRoot);
+  }, [resetChatUiState, scopeRoot, setActivityLabel, setError, setInput, setIsSessionLoading, setMessages, setSessionId, startChatSession, upsertSnapshot]);
 
   const activateChat = useCallback((chatId: string) => {
     const snapshot = chatSnapshotsRef.current.find((chat) => chat.id === chatId);

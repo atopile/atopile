@@ -78,6 +78,7 @@ export interface SelectionChangedMessage {
   type: 'selectionChanged';
   projectRoot: string | null;
   targetRoot?: string | null;
+  explorerRoot?: string | null;
   targetNames: string[];
 }
 
@@ -87,6 +88,11 @@ export interface BrowseAtopilePathMessage {
 
 export interface BrowseProjectPathMessage {
   type: 'browseProjectPath';
+}
+
+export interface BrowseExplorerDirectoryMessage {
+  type: 'browseExplorerDirectory';
+  currentPath?: string | null;
 }
 
 export interface ProjectCreatedMessage {
@@ -183,6 +189,7 @@ export type ExtensionMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
+  | BrowseExplorerDirectoryMessage
   | ProjectCreatedMessage
   | ReloadWindowMessage
   | ShowLogsMessage
@@ -238,6 +245,11 @@ export interface BrowseAtopilePathResultMessage {
 
 export interface BrowseProjectPathResultMessage {
   type: 'browseProjectPathResult';
+  path: string | null;
+}
+
+export interface BrowseExplorerDirectoryResultMessage {
+  type: 'browseExplorerDirectoryResult';
   path: string | null;
 }
 
@@ -315,6 +327,7 @@ export type ExtensionToWebviewMessage =
   | ActiveFileMessage
   | BrowseAtopilePathResultMessage
   | BrowseProjectPathResultMessage
+  | BrowseExplorerDirectoryResultMessage
   | BrowseExportDirectoryResultMessage
   | AtopileInstallingMessage
   | AtopileInstallErrorMessage
@@ -359,6 +372,7 @@ export function initExtensionMessageListener(): void {
       message.type === 'activeFile' ||
       message.type === 'browseAtopilePathResult' ||
       message.type === 'browseProjectPathResult' ||
+      message.type === 'browseExplorerDirectoryResult' ||
       message.type === 'browseExportDirectoryResult' ||
       message.type === 'serverReady' ||
       message.type === 'filesListed' ||

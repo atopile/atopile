@@ -55,6 +55,7 @@ export function Sidebar() {
   const projects = useStore((s) => s.projects);
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
   const selectedTargetRoot = useStore((s) => s.selectedTargetRoot) ?? null;
+  const selectedExplorerRoot = useStore((s) => s.selectedExplorerRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
   const isLoadingPackages = useStore((s) => s.isLoadingPackages);
   const installingPackageIds = useStore((s) => s.installingPackageIds);
@@ -87,6 +88,9 @@ export function Sidebar() {
     const project = projects?.find((p) => p.root === selectedProjectRoot);
     return project?.targets?.[0]?.name ?? null;
   }, [selectedProjectRoot, selectedTargetNames, projects]);
+
+  const defaultExplorerRoot = selectedProjectRoot || null;
+  const fileExplorerRoot = selectedExplorerRoot || defaultExplorerRoot;
 
   // Local UI state
   const [, setSelection] = useState<Selection>({ type: 'none' });
@@ -493,7 +497,13 @@ export function Sidebar() {
           <div className="tab-content">
             {activeTab === 'files' && (
               <FileExplorerPanel
-                projectRoot={selectedProjectRoot}
+                rootPath={fileExplorerRoot}
+                defaultRootPath={defaultExplorerRoot}
+                onResetRoot={
+                  selectedExplorerRoot && selectedExplorerRoot !== defaultExplorerRoot
+                    ? () => useStore.getState().setSelectedExplorerRoot(defaultExplorerRoot)
+                    : undefined
+                }
               />
             )}
             {activeTab === 'builds' && (
@@ -570,12 +580,13 @@ export function Sidebar() {
           </div>
         </div>
 
-        {ENABLE_CHAT && (
+          {ENABLE_CHAT && (
           <AgentChatPanel
             projectRoot={selectedProjectRoot}
+            scopeRoot={fileExplorerRoot}
             selectedTargets={selectedTargetNames}
           />
-        )}
+          )}
       </div>
 
       {/* Detail Panel (slides in when package/part/manufacturing selected) */}

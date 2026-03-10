@@ -32,6 +32,104 @@ export class SidebarFileOperations {
     this._notifyFilesChanged = opts.notifyFilesChanged;
   }
 
+  private _excludedDirs = new Set([
+    '__pycache__',
+    'node_modules',
+    '.pytest_cache',
+    '.mypy_cache',
+    'dist',
+    'egg-info',
+  ]);
+
+  private _lazyLoadDirs = new Set([
+    '.git',
+    '.venv',
+    '.ato',
+    'build',
+    'venv',
+  ]);
+
+  private _sortEntries(
+    entries: [string, vscode.FileType][],
+  ): [string, vscode.FileType][] {
+    return [...entries].sort((a, b) => {
+      const aIsDir = (a[1] & vscode.FileType.Directory) !== 0;
+      const bIsDir = (b[1] & vscode.FileType.Directory) !== 0;
+      if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+      return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
+    });
+  }
+
+  private _shouldExcludeDir(name: string): boolean {
+    return this._excludedDirs.has(name) || name.endsWith('.egg-info');
+  }
+
+  private _shouldIncludeFile(name: string, includeAll: boolean): boolean {
+    const isHidden = name.startsWith('.');
+    if (isHidden && !includeAll) return false;
+    if (includeAll) return true;
+    const ext = name.split('.').pop()?.toLowerCase();
+    return ext === 'ato' || ext === 'py';
+  }
+
+  private async _readDirectoryNodes(
+    dirUri: vscode.Uri,
+    basePath: string,
+    opts: {
+      includeAll: boolean;
+      recursive: boolean;
+    },
+  ): Promise<FileNode[]> {
+    const { includeAll, recursive } = opts;
+    const nodes: FileNode[] = [];
+    try {
+      const entries = this._sortEntries(await vscode.workspace.fs.readDirectory(dirUri));
+      for (const [name, fileType] of entries) {
+        if (this._shouldExcludeDir(name)) continue;
+
+        const relativePath = basePath ? `${basePath}/${name}` : name;
+        const itemUri = vscode.Uri.joinPath(dirUri, name);
+        const isHidden = name.startsWith('.');
+
+        if ((fileType & vscode.FileType.Directory) !== 0) {
+          const shouldLazyLoad =
+            !recursive || this._lazyLoadDirs.has(name) || (isHidden && !includeAll);
+
+          nodes.push({
+            name,
+            path: relativePath,
+            type: 'folder',
+            children: [],
+            lazyLoad: shouldLazyLoad,
+          });
+
+          if (!shouldLazyLoad) {
+            nodes[nodes.length - 1].children = await this._readDirectoryNodes(itemUri, relativePath, {
+              includeAll,
+              recursive,
+            });
+          }
+          continue;
+        }
+
+        if ((fileType & vscode.FileType.File) === 0) continue;
+        if (!this._shouldIncludeFile(name, includeAll)) continue;
+
+        const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
+        nodes.push({
+          name,
+          path: relativePath,
+          type: 'file',
+          extension: ext,
+        });
+      }
+    } catch (err) {
+      traceError(`[SidebarFileOps] Error reading directory ${dirUri.fsPath}: ${err}`);
+    }
+
+    return nodes;
+  }
+
   renameFile(oldPath: string, newPath: string): void {
     const oldUri = vscode.Uri.file(oldPath);
     const newUri = vscode.Uri.file(newPath);
@@ -172,102 +270,12 @@ export class SidebarFileOperations {
   async listFiles(projectRoot: string, includeAll: boolean): Promise<void> {
     traceInfo(`[SidebarFileOps] Listing files for: ${projectRoot}, includeAll: ${includeAll}`);
 
-    // Directories to completely exclude (not even show)
-    const excludedDirs = new Set([
-      '__pycache__',
-      'node_modules',
-      '.pytest_cache',
-      '.mypy_cache',
-      'dist',
-      'egg-info',
-    ]);
-
-    // Hidden directories to show but lazy load (don't recurse into by default)
-    const lazyLoadDirs = new Set([
-      '.git',
-      '.venv',
-      '.ato',
-      'build',
-      'venv',
-    ]);
-
-    const buildFileTree = async (dirUri: vscode.Uri, basePath: string): Promise<FileNode[]> => {
-      const nodes: FileNode[] = [];
-
-      try {
-        const entries = await vscode.workspace.fs.readDirectory(dirUri);
-
-        // Sort: directories first, then alphabetically
-        entries.sort((a, b) => {
-          const aIsDir = (a[1] & vscode.FileType.Directory) !== 0;
-          const bIsDir = (b[1] & vscode.FileType.Directory) !== 0;
-          if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-          return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
-        });
-
-        for (const [name, fileType] of entries) {
-          // Skip completely excluded directories
-          if (excludedDirs.has(name)) continue;
-          if (name.endsWith('.egg-info')) continue;
-
-          const relativePath = basePath ? `${basePath}/${name}` : name;
-          const itemUri = vscode.Uri.joinPath(dirUri, name);
-          const isHidden = name.startsWith('.');
-
-          if ((fileType & vscode.FileType.Directory) !== 0) {
-            // Check if this directory should be lazy loaded
-            const shouldLazyLoad = lazyLoadDirs.has(name) || (isHidden && !includeAll);
-
-            if (shouldLazyLoad) {
-              // Show the directory but mark it for lazy loading
-              nodes.push({
-                name,
-                path: relativePath,
-                type: 'folder',
-                children: [],
-                lazyLoad: true,
-              });
-            } else {
-              const children = await buildFileTree(itemUri, relativePath);
-              // Skip empty directories unless includeAll
-              if (children.length > 0 || includeAll) {
-                nodes.push({
-                  name,
-                  path: relativePath,
-                  type: 'folder',
-                  children,
-                });
-              }
-            }
-          } else if ((fileType & vscode.FileType.File) !== 0) {
-            // Skip hidden files unless includeAll
-            if (isHidden && !includeAll) continue;
-
-            // If not includeAll, only include .ato and .py files
-            if (!includeAll) {
-              const ext = name.split('.').pop()?.toLowerCase();
-              if (ext !== 'ato' && ext !== 'py') continue;
-            }
-
-            const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
-            nodes.push({
-              name,
-              path: relativePath,
-              type: 'file',
-              extension: ext,
-            });
-          }
-        }
-      } catch (err) {
-        traceError(`[SidebarFileOps] Error reading directory ${dirUri.fsPath}: ${err}`);
-      }
-
-      return nodes;
-    };
-
     try {
       const rootUri = vscode.Uri.file(projectRoot);
-      const files = await buildFileTree(rootUri, '');
+      const files = await this._readDirectoryNodes(rootUri, '', {
+        includeAll,
+        recursive: false,
+      });
 
       // Count total files (excluding lazy-loaded directories)
       const countFiles = (nodes: FileNode[]): number => {
@@ -309,38 +317,10 @@ export class SidebarFileOperations {
 
     try {
       const dirUri = vscode.Uri.file(path.join(projectRoot, directoryPath));
-      const entries = await vscode.workspace.fs.readDirectory(dirUri);
-      const nodes: FileNode[] = [];
-
-      // Sort: directories first, then alphabetically
-      entries.sort((a, b) => {
-        const aIsDir = (a[1] & vscode.FileType.Directory) !== 0;
-        const bIsDir = (b[1] & vscode.FileType.Directory) !== 0;
-        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-        return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
+      const nodes = await this._readDirectoryNodes(dirUri, directoryPath, {
+        includeAll: true,
+        recursive: false,
       });
-
-      for (const [name, fileType] of entries) {
-        const relativePath = `${directoryPath}/${name}`;
-
-        if ((fileType & vscode.FileType.Directory) !== 0) {
-          nodes.push({
-            name,
-            path: relativePath,
-            type: 'folder',
-            children: [],
-            lazyLoad: true,
-          });
-        } else if ((fileType & vscode.FileType.File) !== 0) {
-          const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
-          nodes.push({
-            name,
-            path: relativePath,
-            type: 'file',
-            extension: ext,
-          });
-        }
-      }
 
       this._postToWebview({
         type: 'directoryLoaded',

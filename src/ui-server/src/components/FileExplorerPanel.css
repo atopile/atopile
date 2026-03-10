@@ -464,12 +464,90 @@
   flex-shrink: 0;
 }
 
+.file-explorer-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
 .file-explorer-title {
   font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   color: var(--vscode-sideBarSectionHeader-foreground, var(--text-secondary));
+  flex-shrink: 0;
+}
+
+.file-explorer-scope-btn,
+.file-explorer-scope-open {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 180px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--vscode-foreground, var(--text-secondary));
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.file-explorer-scope-btn {
+  background: var(--vscode-badge-background, var(--bg-tertiary));
+  color: var(--vscode-badge-foreground, var(--text-primary));
+}
+
+.file-explorer-scope-btn.active {
+  border-color: var(--vscode-focusBorder, var(--border-strong));
+}
+
+.file-explorer-scope-btn.custom {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+}
+
+.file-explorer-scope-btn:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.file-explorer-scope-open:hover,
+.file-explorer-scope-btn.custom:hover {
+  background: var(--vscode-toolbar-hoverBackground, var(--bg-hover));
+}
+
+.file-explorer-scope-open {
+  color: var(--vscode-textLink-foreground, var(--text-secondary));
+}
+
+.file-explorer-scope-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-explorer-filter-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground, var(--text-secondary));
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.file-explorer-filter-reset:hover {
+  background: var(--vscode-toolbar-hoverBackground, var(--bg-hover));
 }
 
 .file-explorer-actions {
