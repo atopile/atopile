@@ -502,6 +502,7 @@ pub const BoundNodeReference = struct {
 
     /// No guarantee that there is only one
     pub fn get_single_edge(self: @This(), edge_type: Edge.EdgeType, is_target: ?bool) ?BoundEdgeReference {
+        if (self.g.destroyed) return null;
         // is_target = null -> directed = null (any direction)
         // is_target = true -> directed = false (node is target)
         // is_target = false -> directed = true (node is source)
@@ -771,6 +772,7 @@ pub const GraphView = struct {
     edge_set: UUIDBitSet,
 
     self_node: NodeReference,
+    destroyed: bool = false,
 
     pub fn init(b_allocator: std.mem.Allocator) @This() {
         const arena_ptr = b_allocator.create(std.heap.ArenaAllocator) catch @panic("OOM allocating arena");
@@ -790,6 +792,7 @@ pub const GraphView = struct {
     }
 
     pub fn deinit(g: *@This()) void {
+        g.destroyed = true;
         g.arena.deinit();
         g.base_allocator.destroy(g.arena);
     }
@@ -927,6 +930,7 @@ pub const GraphView = struct {
 
     pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T), directed: ?bool) visitor.VisitResult(T) {
         const Result = visitor.VisitResult(T);
+        if (g.destroyed) return Result{ .EXHAUSTED = {} };
         const edges = g.get_edges_of_type(node, edge_type);
         if (edges == null) {
             return Result{ .EXHAUSTED = {} };

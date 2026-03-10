@@ -1505,6 +1505,10 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def graphs_match(*gs: graph.GraphView) -> bool:
         return len(set(g.get_self_node().node().get_uuid() for g in gs)) == 1
 
+    def rebind(self, g: graph.GraphView) -> Self:
+        """Return the same node bound to a different GraphView."""
+        return self.bind_instance(instance=g.bind(node=self.instance.node()))
+
     def copy_into(self, g: graph.GraphView) -> Self:
         """
         Copy all nodes in hierarchy and edges between them and their types
@@ -3430,6 +3434,125 @@ def test_tg_merge_copy():
     print(GraphRenderer().render(tg2.get_self_node()))
 
     assert dict(tg2.get_type_instance_overview())[_MyType2._type_identifier()] == 2
+
+
+def test_stale_graphview_pointer_after_destroy():
+    """
+    Cause 1: BoundNodeReference holds a stale *GraphView pointer after destroy().
+
+    When a node is copied from graph A to graph B, the Python Node object may still
+    hold a BoundNodeReference bound to graph A. If graph A is destroyed, edge lookups
+    (get_type_edge, get_child_by_identifier) on that stale reference are use-after-free.
+
+    This test reproduces the scenario: create a node in g1, copy it to g2, destroy g1,
+    then attempt to use the original BoundNodeReference (still pointing to g1).
+    """
+    g1, tg1 = _make_graph_and_typegraph()
+    g2 = graph.GraphView.create()
+
+    class _StaleGV(Node):
+        pass
+
+    class _StaleParent(Node):
+        child = _ChildField(_StaleGV)
+
+    parent = _StaleParent.bind_typegraph(tg1).create_instance(g=g1)
+    child = parent.child.get()
+
+    # Verify everything works before destroy
+    assert parent.get_type_name() == _StaleParent._type_identifier()
+    assert child.get_type_name() == _StaleGV._type_identifier()
+    assert parent.isinstance(_StaleParent)
+
+    # Copy to g2 - the node now exists in both graphs
+    parent_in_g2 = parent.copy_into(g=g2)
+
+    # parent_in_g2 is rebound to g2 (copy_into calls g.bind())
+    assert parent_in_g2.isinstance(_StaleParent)
+
+    # But 'parent' still holds a BoundNodeReference pointing to g1
+    # Destroy g1 - this frees g1's arena
+    g1.destroy()
+
+    # parent_in_g2 should still work (bound to g2)
+    assert parent_in_g2.get_type_name() == _StaleParent._type_identifier()
+    assert parent_in_g2.isinstance(_StaleParent)
+    child_in_g2 = parent_in_g2.child.get()
+    assert child_in_g2.isinstance(_StaleGV)
+
+    # 'parent' still has its old BoundNodeReference pointing to destroyed g1
+    # The destroyed guard in GraphView makes get_single_edge return null
+    # instead of reading freed memory — safe degradation, no crash
+    stale_type_name = parent.get_type_name()
+    assert stale_type_name is None, (
+        f"Stale GraphView pointer: get_type_name() should return None for "
+        f"destroyed graph, got {stale_type_name!r}"
+    )
+    assert not parent.isinstance(_StaleParent), (
+        "Stale GraphView pointer: isinstance() should return False for destroyed graph"
+    )
+
+
+def test_type_name_string_lifetime_after_destroy():
+    """
+    Cause 2: Type name strings are allocated from the GraphView's arena.
+
+    When add_type is called, the type identifier string is duped using the GraphView's
+    arena allocator (c_allocator-backed). If that GraphView is destroyed, the string
+    data is freed but the DynamicAttributes entry still holds the dangling []const u8.
+
+    After destroy, we aggressively allocate to reuse the freed memory blocks, which
+    overwrites the dangling string data. Then reading the type name returns garbage.
+    """
+    g1, tg1 = _make_graph_and_typegraph()
+    g2 = graph.GraphView.create()
+
+    class _StringLifetime(Node):
+        pass
+
+    # add_type allocates the type name string from g1's arena allocator
+    inst = _StringLifetime.bind_typegraph(tg1).create_instance(g=g1)
+
+    original_type_name = inst.get_type_name()
+    assert original_type_name == _StringLifetime._type_identifier()
+
+    # Copy the instance (and its type graph nodes) to g2
+    inst_in_g2 = inst.copy_into(g=g2)
+    assert inst_in_g2.get_type_name() == _StringLifetime._type_identifier()
+
+    # Destroy g1 - frees g1's arena, including the type name string data
+    g1.destroy()
+
+    # Aggressively allocate to reuse freed memory and overwrite the dangling string.
+    # Create many graphs with nodes to trigger malloc to reuse the freed arena blocks.
+    trash_graphs = []
+    for _ in range(50):
+        g_trash = graph.GraphView.create()
+        tg_trash = fbrk.TypeGraph.create(g=g_trash)
+        # Create many types with long names to overwrite freed memory
+        for j in range(20):
+            tg_trash.add_type(identifier=f"XXXXXXXXX_trash_type_{j:04d}_XXXXXXXXX")
+        trash_graphs.append(g_trash)
+
+    # The type node still exists in g2 (copy_node_into added it).
+    # But the type_identifier attribute's String value points to g1's freed arena.
+    # After the allocations above, that memory may have been overwritten.
+    tg2 = fbrk.TypeGraph.of_instance(instance_node=inst_in_g2.instance)
+    assert tg2 is not None
+
+    type_name_after_destroy = inst_in_g2.get_type_name()
+    assert type_name_after_destroy == _StringLifetime._type_identifier(), (
+        f"String lifetime: get_type_name() returned {type_name_after_destroy!r} "
+        f"instead of {_StringLifetime._type_identifier()!r} after g1.destroy(). "
+        f"The type name string was freed with g1's arena."
+    )
+    assert inst_in_g2.isinstance(_StringLifetime), (
+        "String lifetime: isinstance() returned False after g1.destroy()"
+    )
+
+    # Cleanup
+    for g_trash in trash_graphs:
+        g_trash.destroy()
 
 
 if __name__ == "__main__":
