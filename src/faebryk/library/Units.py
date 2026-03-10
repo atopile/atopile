@@ -2688,8 +2688,7 @@ class TestIsUnit(_TestWithContext):
         """Test that single item list returns its unit"""
         result = TestIsUnit.assert_commensurability([ctx.Meter.is_unit.get()])
         assert result == ctx.Meter.is_unit.get()
-        parent, _ = result.get_parent_force()
-        assert parent.isinstance(Meter)
+        assert result.serialize() == "m"
         assert is_unit.bind_instance(result.instance).get_symbols() == ["m"]
 
     def test_assert_commensurability(self, ctx: BoundUnitsContext):
@@ -2700,8 +2699,7 @@ class TestIsUnit(_TestWithContext):
                 ctx.Hour.is_unit.get(),
             ]
         )
-        parent, _ = result.get_parent_force()
-        assert parent.isinstance(Second)
+        assert result.serialize() == "s"
 
     def test_assert_incommensurability(self, ctx: BoundUnitsContext):
         """Test that incompatible units raise UnitsNotCommensurable"""
@@ -2721,24 +2719,14 @@ class TestIsUnit(_TestWithContext):
             ("km/h", "kph"), ((KilometerExpr, 1), (Hour, -1))
         )
 
-        class _App(fabll.Node):
-            meters_per_second_expr = MetersPerSecondExpr.MakeChild()
-            kilometers_per_hour_expr = KilometersPerHourExpr.MakeChild()
-
-        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-        meters_per_second = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.meters_per_second_expr.get().instance
+        mps_unit = (
+            MetersPerSecondExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         )
-        kilometers_per_hour = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.kilometers_per_hour_expr.get().instance
+        kmh_unit = (
+            KilometersPerHourExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         )
 
-        TestIsUnit.assert_commensurability(
-            [
-                not_none(meters_per_second),
-                not_none(kilometers_per_hour),
-            ]
-        )
+        TestIsUnit.assert_commensurability([mps_unit, kmh_unit])
 
     def test_assert_commensurability_with_incommensurable_derived(
         self,
@@ -2750,24 +2738,14 @@ class TestIsUnit(_TestWithContext):
         )
         MeterSecondsExpr = UnitExpressionFactory(("m*s",), ((Meter, 1), (Second, 1)))
 
-        class _App(fabll.Node):
-            meters_per_second_expr = MetersPerSecondExpr.MakeChild()
-            meter_seconds_expr = MeterSecondsExpr.MakeChild()
-
-        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-        meters_per_second = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.meters_per_second_expr.get().instance
+        mps_unit = (
+            MetersPerSecondExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         )
-        meter_seconds = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.meter_seconds_expr.get().instance
+        ms_unit = (
+            MeterSecondsExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         )
         with pytest.raises(UnitsNotCommensurableError):
-            TestIsUnit.assert_commensurability(
-                [
-                    not_none(meters_per_second),
-                    not_none(meter_seconds),
-                ]
-            )
+            TestIsUnit.assert_commensurability([mps_unit, ms_unit])
 
     def test_dimensionless_radian_steradian_incompatible(self, ctx: BoundUnitsContext):
         """
@@ -2793,8 +2771,7 @@ class TestIsUnit(_TestWithContext):
         ppm = ctx.Ppm.is_unit.get()
 
         result = TestIsUnit.assert_commensurability([dimensionless, percent, ppm])
-        parent, _ = result.get_parent_force()
-        assert parent.isinstance(Dimensionless)
+        assert result.serialize() == "dimensionless"
 
     def test_unit_multiply(self, ctx: BoundUnitsContext):
         """Test unit multiplication: Volt * Ampere produces Watt-equivalent basis."""
@@ -3213,15 +3190,7 @@ class TestUnitExpressions(_TestWithContext):
         """Test that a simple unit expression (Meter^1) resolves correctly."""
         MeterExpr = UnitExpressionFactory(("m", "meter"), ((Meter, 1),))
 
-        class _App(fabll.Node):
-            meter_expr = MeterExpr.MakeChild()
-
-        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-        resolved = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.meter_expr.get().instance
-        )
-
-        unit = not_none(resolved)
+        unit = MeterExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         assert unit._extract_basis_vector() == BasisVector(meter=1)
         assert unit._extract_multiplier() == 1.0
 
@@ -3229,15 +3198,7 @@ class TestUnitExpressions(_TestWithContext):
         """Test that derived units (Meter * Second^-1) resolve correctly."""
         VelocityExpr = UnitExpressionFactory(("m/s",), ((Meter, 1), (Second, -1)))
 
-        class _App(fabll.Node):
-            velocity_expr = VelocityExpr.MakeChild()
-
-        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-        resolved = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.velocity_expr.get().instance
-        )
-
-        unit = not_none(resolved)
+        unit = VelocityExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         assert unit._extract_basis_vector() == BasisVector(meter=1, second=-1)
         assert unit._extract_multiplier() == 1.0
 
@@ -3245,15 +3206,7 @@ class TestUnitExpressions(_TestWithContext):
         """Test that expressions with scaled units resolve with correct multiplier."""
         KilometerExpr = UnitExpressionFactory(("km",), ((Meter, 1),), multiplier=1000.0)
 
-        class _App(fabll.Node):
-            km_expr = KilometerExpr.MakeChild()
-
-        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-        resolved = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.km_expr.get().instance
-        )
-
-        unit = not_none(resolved)
+        unit = KilometerExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         assert unit._extract_basis_vector() == BasisVector(meter=1)
         assert unit._extract_multiplier() == 1000.0
 
@@ -3264,15 +3217,9 @@ class TestUnitExpressions(_TestWithContext):
             ("km/h", "kph"), ((KilometerExpr, 1), (Hour, -1))
         )
 
-        class _App(fabll.Node):
-            kmh_expr = KilometersPerHourExpr.MakeChild()
-
-        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-        resolved = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.kmh_expr.get().instance
+        unit = (
+            KilometersPerHourExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         )
-
-        unit = not_none(resolved)
         assert unit._extract_basis_vector() == BasisVector(meter=1, second=-1)
         # km/h = 1000m / 3600s
         assert unit._extract_multiplier() == pytest.approx(1000.0 / 3600.0)
@@ -3318,29 +3265,16 @@ class TestUnitExpressions(_TestWithContext):
             ("km",), ((Meter, 1),), multiplier=1000.0
         )
 
-        class _App(fabll.Node):
-            scaled_expr = ScaledMeterExpr.MakeChild()
-
-        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-        resolved = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.scaled_expr.get().instance
-        )
-
-        assert not_none(resolved)._extract_multiplier() == 1000.0
+        unit = ScaledMeterExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
+        assert unit._extract_multiplier() == 1000.0
 
     def test_resolve_unit_expression_with_offset_raises(self, ctx: BoundUnitsContext):
-        """Test that UnitExpression with non-zero offset raises error."""
+        """Test that UnitExpression with non-zero offset has offset in is_unit."""
         OffsetExpr = UnitExpressionFactory(("m", "meter"), ((Meter, 1),), offset=10.0)
 
-        class _App(fabll.Node):
-            offset_expr = OffsetExpr.MakeChild()
-
-        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-
-        with pytest.raises(UnitExpressionError):
-            resolve_unit_expression(
-                tg=ctx.tg, g=ctx.g, expr=app.offset_expr.get().instance
-            )
+        unit = OffsetExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
+        assert unit._extract_offset() == 10.0
+        assert unit.is_affine
 
     def test_resolve_non_integer_exponent_raises(self, ctx: BoundUnitsContext):
         """Test that non-integer exponents raise UnitExpressionError."""
@@ -3368,15 +3302,7 @@ class TestUnitExpressions(_TestWithContext):
         """Test that dimensionless results (e.g., Meter / Meter) are handled."""
         MeterOverMeterExpr = UnitExpressionFactory(("m/m",), ((Meter, 1), (Meter, -1)))
 
-        class _App(fabll.Node):
-            dimensionless_expr = MeterOverMeterExpr.MakeChild()
-
-        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-        resolved = resolve_unit_expression(
-            tg=ctx.tg, g=ctx.g, expr=app.dimensionless_expr.get().instance
-        )
-
-        unit = not_none(resolved)
+        unit = MeterOverMeterExpr.bind_typegraph(tg=ctx.tg).as_type_node().is_unit.get()
         assert unit._extract_basis_vector() == _BasisVector.ORIGIN
         assert unit.is_dimensionless()
 

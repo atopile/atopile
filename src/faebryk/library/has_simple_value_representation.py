@@ -504,8 +504,7 @@ class TestHasSimpleValueRepresentation:
                 F.Parameters.can_be_operand.MakeChild()
             ).put_on_type()
 
-        kohm_instance = _Kiloohm.bind_typegraph(tg=tg).create_instance(g=g)
-        return kohm_instance.is_unit_trait.get()
+        return _Kiloohm.bind_typegraph(tg=tg).as_type_node().is_unit_trait.get()
 
     def test_repr_display_unit_conversion(self):
         """
@@ -560,8 +559,7 @@ class TestHasSimpleValueRepresentation:
                 F.Parameters.can_be_operand.MakeChild()
             ).put_on_type()
 
-        mohm_instance = _Milliohm.bind_typegraph(tg=tg).create_instance(g=g)
-        return mohm_instance.is_unit_trait.get()
+        return _Milliohm.bind_typegraph(tg=tg).as_type_node().is_unit_trait.get()
 
     def test_repr_display_unit_mismatch(self):
         """
