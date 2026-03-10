@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -37,6 +38,16 @@ from atopile.version import needs_migration
 from faebryk.libs.package.meta import get_package_state
 
 log = logging.getLogger(__name__)
+
+_SKIP_PROJECT_DIRS = {
+    ".ato",
+    ".git",
+    "build",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -144,24 +155,53 @@ def discover_modules_in_project(project_root: Path) -> list[ModuleDefinition]:
     return all_modules
 
 
+def _resolved_targets_for_project(project_root: Path) -> list[ResolvedBuildTarget]:
+    project_config = config.ProjectConfig.from_path(project_root)
+    if project_config is None or not project_config.builds:
+        return []
+
+    root_str = str(project_root)
+    return [
+        ResolvedBuildTarget(
+            name=name,
+            entry=build.address or "",
+            pcb_path=str(build.paths.layout),
+            model_path=str(build.paths.output_base.with_suffix(".pcba.glb")),
+            root=root_str,
+        )
+        for name, build in project_config.builds.items()
+    ]
+
+
+def _discover_nested_project_targets(project_root: Path) -> list[ResolvedBuildTarget]:
+    targets: list[ResolvedBuildTarget] = []
+
+    for dirpath, dirnames, filenames in os.walk(project_root):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in _SKIP_PROJECT_DIRS and not d.startswith("{{")
+        ]
+        current_dir = Path(dirpath)
+        if current_dir == project_root or "ato.yaml" not in filenames:
+            continue
+        targets.extend(_resolved_targets_for_project(current_dir))
+
+    targets.sort(
+        key=lambda target: (
+            Path(target.root).relative_to(project_root).as_posix().lower(),
+            target.name.lower(),
+        )
+    )
+    return targets
+
+
 def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
     """
     Discover all ato projects in the given paths.
     """
     projects: list[Project] = []
     seen_roots: set[str] = set()
-
-    # Directories that never contain projects — skip to avoid
-    # walking potentially huge trees (e.g. .ato/modules dependencies).
-    _SKIP_DIRS = {
-        ".ato",
-        ".git",
-        "build",
-        "node_modules",
-        "__pycache__",
-        ".venv",
-        "venv",
-    }
 
     for root_path in paths:
         if not root_path.exists():
@@ -177,7 +217,7 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 dirnames[:] = [
                     d
                     for d in dirnames
-                    if d not in _SKIP_DIRS and not d.startswith("{{")
+                    if d not in _SKIP_PROJECT_DIRS and not d.startswith("{{")
                 ]
                 if "ato.yaml" in filenames:
                     ato_files.append(Path(dirpath) / "ato.yaml")
@@ -204,22 +244,9 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 if not data or "builds" not in data:
                     continue
 
-                project_config = config.ProjectConfig.from_path(project_root)
-                if project_config is None or not project_config.builds:
-                    continue
-
-                targets = [
-                    ResolvedBuildTarget(
-                        name=name,
-                        entry=build.address or "",
-                        pcb_path=str(build.paths.layout),
-                        model_path=str(
-                            build.paths.output_base.with_suffix(".pcba.glb")
-                        ),
-                        root=root_str,
-                    )
-                    for name, build in project_config.builds.items()
-                ]
+                targets = _resolved_targets_for_project(project_root)
+                if targets:
+                    targets.extend(_discover_nested_project_targets(project_root))
 
                 if targets:
                     projects.append(
@@ -239,6 +266,106 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
 
     projects.sort(key=lambda p: p.root.lower())
     return projects
+
+
+def _normalize_local_package_slug(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    if not slug:
+        raise ValueError("Package name must include at least one letter or number")
+    if not slug[0].isalpha():
+        slug = f"pkg-{slug}"
+    return slug
+
+
+def _normalize_package_file_stem(name: str) -> str:
+    stem = re.sub(r"[^0-9A-Za-z_]+", "_", name.strip()).strip("_")
+    if not stem:
+        raise ValueError(
+            "Package name must include at least one valid filename character"
+        )
+    return stem
+
+
+def _ensure_file_dependency(
+    project_root: Path, dependency_path: Path, identifier: str
+) -> None:
+    data, ato_file = load_ato_yaml(project_root)
+    dependencies = data.setdefault("dependencies", [])
+    if not isinstance(dependencies, list):
+        raise ValueError("Root ato.yaml dependencies must be a list")
+
+    rel_path = f"./{dependency_path.relative_to(project_root).as_posix()}"
+    for dep in dependencies:
+        if (
+            isinstance(dep, dict)
+            and dep.get("type") == "file"
+            and dep.get("path") == rel_path
+        ):
+            if dep.get("identifier") != identifier:
+                dep["identifier"] = identifier
+                save_ato_yaml(ato_file, data)
+            return
+
+    dependencies.append({"type": "file", "path": rel_path, "identifier": identifier})
+    save_ato_yaml(ato_file, data)
+
+
+def create_local_package(
+    project_root: Path,
+    name: str,
+    entry_module: str,
+    description: str | None = None,
+) -> dict[str, str]:
+    root_data, _ = load_ato_yaml(project_root)
+
+    package_name = name.strip()
+    if not package_name:
+        raise ValueError("Package name is required")
+    if not entry_module.strip().isidentifier():
+        raise ValueError("entry_module must be a valid identifier")
+
+    package_dir = project_root / "packages" / package_name
+    if package_dir.exists():
+        raise ValueError(f"Package already exists: {package_dir}")
+
+    package_dir.mkdir(parents=True, exist_ok=False)
+    (package_dir / "layouts").mkdir()
+
+    package_identifier = f"local/{_normalize_local_package_slug(package_name)}"
+    file_stem = _normalize_package_file_stem(package_name)
+    ato_path = package_dir / f"{file_stem}.ato"
+    package_ato_yaml = package_dir / "ato.yaml"
+    requires_atopile = root_data.get("requires-atopile", "^0.0.0")
+
+    ato_yaml_data = {
+        "requires-atopile": requires_atopile,
+        "paths": {"src": "./", "layout": "./layouts"},
+        "builds": {"default": {"entry": f"{ato_path.name}:{entry_module.strip()}"}},
+        "package": {"identifier": package_identifier, "version": "0.0.1"},
+    }
+    save_ato_yaml(package_ato_yaml, ato_yaml_data)
+
+    module_lines: list[str] = []
+    description_text = (description or "").strip()
+    if description_text:
+        module_lines.append(f'"""{description_text}"""')
+        module_lines.append("")
+    module_lines.extend([f"module {entry_module.strip()}:", "    pass", ""])
+    ato_path.write_text("\n".join(module_lines), encoding="utf-8")
+
+    _ensure_file_dependency(project_root, package_dir, package_identifier)
+
+    return {
+        "path": str(package_dir),
+        "ato_yaml_path": str(package_ato_yaml),
+        "module_path": str(ato_path),
+        "file_name": ato_path.name,
+        "entry": f"{ato_path.name}:{entry_module.strip()}",
+        "identifier": package_identifier,
+        "import_statement": (
+            f'from "{package_identifier}/{ato_path.name}" import {entry_module.strip()}'
+        ),
+    }
 
 
 def create_project(

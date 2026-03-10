@@ -782,8 +782,11 @@ class CoreSocket:
             case "installPart":
                 project_root = msg.get("projectRoot", "")
                 lcsc = msg.get("lcsc", "")
-                await asyncio.to_thread(
-                    parts_search.handle_install_part,
+                create_package = bool(msg.get("createPackage"))
+                result = await asyncio.to_thread(
+                    parts_search.handle_install_part_as_package
+                    if create_package
+                    else parts_search.handle_install_part,
                     lcsc,
                     project_root,
                 )
@@ -800,14 +803,24 @@ class CoreSocket:
                     and part_state.project_root == project_root
                 ):
                     part = part_state.part
+                    seed = (
+                        part.model_copy(
+                            update={
+                                "installed": False if create_package else True,
+                                "import_statement": result.get("import_statement")
+                                if create_package
+                                else part.import_statement,
+                            }
+                        )
+                        if part
+                        else None
+                    )
                     await self._show_part_details(
                         project_root=project_root,
                         identifier=part.identifier if part else None,
                         lcsc=lcsc,
-                        installed=True,
-                        seed=part.model_copy(update={"installed": True})
-                        if part
-                        else None,
+                        installed=False if create_package else True,
+                        seed=seed,
                     )
                 return
 
