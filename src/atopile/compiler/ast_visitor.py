@@ -64,6 +64,7 @@ STDLIB_ALLOWLIST: AllowListT = (
     {
         F.Addressor,
         F.BJT,
+        F.CAN,
         F.CAN_TTL,
         F.Capacitor,
         F.CapacitorPolarized,
@@ -94,6 +95,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.Regulator,
         F.AdjustableRegulator,
         F.RS232,
+        F.RS485HalfDuplex,
         F.SPI,
         F.SPIFlash,
         F.SWD,
@@ -102,6 +104,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.USB2_0_IF,
         F.USB2_0,
         F.USB3,
+        F.USB3_IF,
         F.XtalIF,
         F.TestPoint,
         F.MountingHole,
@@ -226,7 +229,7 @@ class _ScopeStack:
 
         current_state.symbols[symbol.name] = symbol
 
-        logger.info(f"Added symbol {symbol} to scope")
+        logger.debug(f"Added symbol {symbol} to scope")
 
     def try_resolve_symbol(self, name: str) -> Symbol | None:
         for state in reversed(self.stack):
@@ -731,7 +734,7 @@ class ASTVisitor:
         module = "atopile.compiler.ast_types"
         mod_suffix = "." + ".".join(reversed(module.split(".")))
         node_type = cast_assert(str, node.get_type_name()).removesuffix(mod_suffix)
-        logger.info(f"Visiting node of type {node_type}")
+        logger.debug(f"Visiting node of type {node_type}")
 
         try:
             handler = getattr(self, f"visit_{node_type}")
