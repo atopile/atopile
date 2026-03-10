@@ -16,6 +16,7 @@ import { isModelViewerOpen, openModelViewerPreview } from '../../ui/modelviewer'
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../../common/target';
 import { type Build, loadBuilds, getBuilds } from '../../common/manifest';
 import { isLayoutEditorOpen, openLayoutEditor } from '../../ui/layout-editor';
+import { openStackupViewer } from '../../ui/stackup-viewer';
 import type { OpenSignalsMessage, SelectionChangedMessage } from './types';
 import { isWebIdeUi } from '../../common/environment';
 
@@ -42,6 +43,9 @@ export class SidebarActionHandlers {
     }
     if (msg.open3d) {
       void this.open3dPreview(msg.open3d);
+    }
+    if (msg.openStackup) {
+      void openStackupViewer(msg.openStackup.projectRoot, msg.openStackup.target);
     }
   }
 

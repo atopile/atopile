@@ -52,7 +52,7 @@ from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
-from faebryk.exporters.pcb.stackup import export_stackup_markdown
+from faebryk.exporters.pcb.stackup import export_stackup_json, export_stackup_markdown
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.exporters.power_tree.power_tree import export_power_tree
 from faebryk.libs.app.checks import check_design
@@ -913,6 +913,30 @@ def generate_bom(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    "stackup",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_stackup(ctx: BuildStepContext) -> None:
+    """Export the PCB stackup as JSON and Markdown."""
+    app = ctx.require_app()
+    try:
+        export_stackup_json(
+            app,
+            path=config.build.paths.output_base.with_suffix(".stackup.json"),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to generate stackup JSON: {e}")
+    try:
+        export_stackup_markdown(
+            app,
+            path=config.build.paths.output_base.with_suffix(".stackup.md"),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to generate stackup markdown: {e}")
+
+
+@muster.register(
     name="glb",
     aliases=["3d-model"],
     tags={Tags.REQUIRES_KICAD},
@@ -1094,15 +1118,6 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
         except Exception as e:
             logger.warning(f"Failed to generate PCB summary: {e}")
 
-        # Export stackup as markdown
-        try:
-            export_stackup_markdown(
-                app,
-                path=config.build.paths.output_base.with_suffix(".stackup.md"),
-            )
-        except Exception as e:
-            logger.warning(f"Failed to generate stackup markdown: {e}")
-
         # Copy kicad_pcb to build directory for manufacturing export
         import shutil
 
@@ -1207,6 +1222,7 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
+        generate_stackup,
         generate_manifest,
         generate_variable_report,
         # generate_power_tree,

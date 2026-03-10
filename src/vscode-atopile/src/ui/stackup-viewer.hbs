@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="{{csp}}">
+  <title>PCB Stackup</title>
+  {{baseCssLink}}
+  {{cssLink}}
+  <script nonce="{{nonce}}">
+    window.__ATOPILE_API_URL__ = {{apiUrlJson}};
+    window.__ATOPILE_STACKUP_PROJECT_ROOT__ = {{projectRootJson}};
+    window.__ATOPILE_STACKUP_TARGET__ = {{targetJson}};
+  </script>
+  <script id="{{bridgeConfigElementId}}" type="application/json">{{bridgeConfigJson}}</script>
+  <script src="{{bridgeRuntimeUri}}"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script nonce="{{nonce}}" type="module" src="{{jsUri}}"></script>
+</body>
+</html>
