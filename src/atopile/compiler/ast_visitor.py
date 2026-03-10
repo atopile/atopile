@@ -366,17 +366,19 @@ class _TypeContextStack:
     def _format_path_error(
         field_path: FieldPath, error: fbrk.TypeGraphPathError
     ) -> str:
-        full_path = ".".join(error.path) if error.path else str(field_path)
+        full_path = (
+            FieldPath.format_identifiers(error.path) if error.path else str(field_path)
+        )
 
         match error.kind:
             # FIXME: enum or different types or format on Zig side
             case "missing_parent":
                 prefix = error.path[: error.failing_segment_index]
-                joined = ".".join(prefix) if prefix else full_path
+                joined = FieldPath.format_identifiers(prefix) if prefix else full_path
                 return f"Field `{joined}` is not defined in scope"
             case "invalid_index":
                 container_segments = error.path[: error.failing_segment_index]
-                container = ".".join(container_segments)
+                container = FieldPath.format_identifiers(container_segments)
                 index_value = (
                     error.index_value
                     if error.index_value is not None
@@ -659,12 +661,16 @@ class ASTVisitor:
         )
 
         if owning_type is None:
-            raise CompilerException(f"Cannot resolve type for path {parent_path}")
+            raise CompilerException(
+                f"Cannot resolve type for path "
+                f"{FieldPath.format_identifiers(parent_path)}"
+            )
 
         if resolved_node is None:
             # Incomplete linking
             raise CompilerException(
-                f"Cannot resolve type for path {loop.container_path}"
+                f"Cannot resolve type for path "
+                f"{FieldPath.format_identifiers(loop.container_path)}"
             )
 
         if (
@@ -672,7 +678,8 @@ class ASTVisitor:
             == F.Collections.PointerSequence._type_identifier()
         ):
             raise DslTypeError(
-                f"Cannot iterate over `{'.'.join(loop.container_path)}`: "
+                f"Cannot iterate over "
+                f"`{FieldPath.format_identifiers(loop.container_path)}`: "
                 f"expected a sequence, got `{type_name}`"
             )
 

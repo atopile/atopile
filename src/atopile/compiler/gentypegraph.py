@@ -94,16 +94,13 @@ class FieldPath:
     def is_singleton(self) -> bool:
         return len(self.segments) == 1
 
+    @staticmethod
+    def format_identifiers(path: Sequence[str], *, flatten: bool = False) -> str:
+        """Render resolved identifier segments in compiler path formatting."""
+        return ("_" if flatten else ".").join(path)
+
     def __str__(self) -> str:
-        parts: list[str] = []
-
-        for segment in self.segments:
-            if segment.is_index:
-                parts[-1] = f"{parts[-1]}[{segment.identifier}]"
-            else:
-                parts.append(segment.identifier)
-
-        return ".".join(parts)
+        return self.format_identifiers(self.identifiers())
 
     def identifiers(self) -> tuple[str, ...]:
         """
@@ -539,7 +536,7 @@ class ActionsFactory:
                 )
 
             unique_target_str = (
-                str(target_path).replace(".", "_")
+                FieldPath.format_identifiers(target_path.identifiers(), flatten=True)
                 + f"_{next(ActionsFactory._unique_counter)}"
             )
 

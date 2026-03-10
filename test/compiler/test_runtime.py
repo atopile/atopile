@@ -2563,9 +2563,7 @@ class TestRetypeInstanceIsolation:
         slot2_type = _get_type_name(slot2)
 
         # inst2.slot should be SlotB (retyped)
-        assert "SlotB" in slot2_type, (
-            f"inst2.slot should be SlotB, got {slot2_type}"
-        )
+        assert "SlotB" in slot2_type, f"inst2.slot should be SlotB, got {slot2_type}"
 
         # inst1.slot should still be SlotA (NOT affected by inst2's retype)
         assert "SlotA" in slot1_type, (
@@ -2614,6 +2612,93 @@ class TestRetypeInstanceIsolation:
         assert "TypeA" in c3_child_type, (
             f"c3.child should remain TypeA, got {c3_child_type}"
         )
+
+    def test_retype_isolation_across_linked_modules(self):
+        """
+        Nested retypes in separate imported files stay isolated and avoid collisions.
+        """
+        g = GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        stdlib = StdlibRegistry(tg, allowlist=STDLIB_ALLOWLIST)
+
+        with tempfile.TemporaryDirectory() as temp_dir_str:
+            temp_dir_path = Path(temp_dir_str)
+
+            (temp_dir_path / "shared.ato").write_text(
+                textwrap.dedent(
+                    """
+                    import Electrical
+
+                    module SlotA:
+                        a = new Electrical
+
+                    module SlotB:
+                        b = new Electrical
+
+                    module Assembly:
+                        slot = new SlotA
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            for filename, module_name in (
+                ("left.ato", "Left"),
+                ("right.ato", "Right"),
+            ):
+                (temp_dir_path / filename).write_text(
+                    textwrap.dedent(
+                        f"""
+                        from "shared.ato" import Assembly
+                        from "shared.ato" import SlotB
+
+                        module {module_name}:
+                            inst1 = new Assembly
+                            inst2 = new Assembly
+                            inst2.slot -> SlotB
+                        """
+                    ),
+                    encoding="utf-8",
+                )
+
+            main_path = temp_dir_path / "main.ato"
+            main_path.write_text(
+                textwrap.dedent(
+                    """
+                    from "left.ato" import Left
+                    from "right.ato" import Right
+
+                    module App:
+                        left = new Left
+                        right = new Right
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            result = build_file(g=g, tg=tg, import_path="main.ato", path=main_path)
+            linker = Linker(NULL_CONFIG, stdlib, tg)
+            build_stage_2(g=g, tg=tg, linker=linker, result=result)
+
+        app_instance = tg.instantiate_node(
+            type_node=result.state.type_roots["App"], attributes={}
+        )
+
+        for branch_name in ("left", "right"):
+            branch = _get_child(app_instance, branch_name)
+            inst1_slot_type = _get_type_name(
+                _get_child(_get_child(branch, "inst1"), "slot")
+            )
+            inst2_slot_type = _get_type_name(
+                _get_child(_get_child(branch, "inst2"), "slot")
+            )
+
+            assert "SlotA" in inst1_slot_type, (
+                f"{branch_name}.inst1.slot should remain SlotA, got {inst1_slot_type}"
+            )
+            assert "SlotB" in inst2_slot_type, (
+                f"{branch_name}.inst2.slot should be SlotB, got {inst2_slot_type}"
+            )
 
 
 class TestImplicitParameterUnitInference:

@@ -514,7 +514,7 @@ class ReferenceOverrideRegistry:
                 suffix = list(path[i + 1 :])
 
                 def _fmt(parts: list[str]) -> str:
-                    return ".".join(parts) if parts else "<self>"
+                    return FieldPath.format_identifiers(parts) if parts else "<self>"
 
                 prefix_str = [p for p in prefix if isinstance(p, str)]
                 suffix_str = [s for s in suffix if isinstance(s, str)]
