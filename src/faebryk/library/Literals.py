@@ -6403,12 +6403,12 @@ class TestNumbers:
 
         # Get the unit class dynamically
         unit_cls = getattr(Units, unit_name)
-        unit_instance = unit_cls.bind_typegraph(tg=tg).create_instance(g=g)
+        unit_type_node = unit_cls.bind_typegraph(tg=tg).as_type_node()
 
         # Create original Numbers with an interval
         original = Numbers.create_instance(g=g, tg=tg)
         original.setup_from_min_max(
-            min=min_val, max=max_val, unit=unit_instance.is_unit.get()
+            min=min_val, max=max_val, unit=unit_type_node.is_unit.get()
         )
 
         # Serialize and deserialize
