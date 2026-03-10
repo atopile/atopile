@@ -14,6 +14,7 @@ import faebryk.library._F as F
 from atopile.errors import UserDesignCheckException, accumulate
 from faebryk.library.DataBus import has_databus_role, has_databus_specification
 from faebryk.libs.app.checks import check_design
+from faebryk.libs.app.erc import _format_source_info, _get_connection_source_chunk
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,25 @@ class BusMissingControllerError(BusCheckFault):
 
 
 # -----------------------------------------------------------------------------
+# Source location helpers
+# -----------------------------------------------------------------------------
+
+
+def _get_bus_source_info(bus_members: set[fabll.Node], tg: fbrk.TypeGraph) -> str:
+    """
+    Try to find source location for a bus connection by looking up the .ato
+    source chunk for a representative pair of bus members.
+    """
+    members = list(bus_members)
+    for i, source in enumerate(members):
+        for target in members[i + 1 :]:
+            chunk = _get_connection_source_chunk(source, target, tg)
+            if chunk is not None:
+                return _format_source_info(chunk)
+    return ""
+
+
+# -----------------------------------------------------------------------------
 # Check trait
 # -----------------------------------------------------------------------------
 
@@ -75,69 +95,26 @@ class needs_bus_check(fabll.Node):
     @F.implements_design_check.register_post_instantiation_design_check
     def __check_post_instantiation_design_check__(self):
         logger.info("Checking bus constraints")
+
+        g = self.g
+        tg = self.tg
+
+        # Ensure bus spec parameters are resolved (@once makes repeated calls free)
+        has_databus_specification.resolve_data_bus_specification_parameters(g, tg)
+
         with accumulate(
             BusCheckFault,
             F.implements_design_check.MaybeUnfulfilledCheckException,
         ) as accumulator:
-            bus_groups = self._get_bus_groups()
-            self._check_topology_constraints(accumulator, bus_groups)
-            self._check_role_constraints(accumulator, bus_groups)
-
-    def _get_bus_groups(
-        self,
-    ) -> list[tuple[has_databus_specification, set[fabll.Node]]]:
-        """
-        Discover all bus types with has_databus_specification, get their instances,
-        and group them into buses.
-
-        Returns list of (spec_trait, bus_member_set) tuples.
-        """
-        g = self.g
-        tg = self.tg
-
-        implementors = list(
-            fabll.Traits.get_implementors(
-                has_databus_specification.bind_typegraph(tg), g=g
-            )
-        )
-
-        if not implementors:
-            return []
-
-        # Group implementors by their owner type
-        type_to_spec: dict[type[fabll.Node], has_databus_specification] = {}
-        type_to_instances: dict[type[fabll.Node], list[fabll.Node]] = {}
-
-        for impl in implementors:
-            owner = fabll.Traits(impl).get_obj_raw()
-            type_node = owner.get_type_node()
-            type_map = fabll.TypeNodeBoundTG.__TYPE_NODE_MAP__
-            if type_node is not None and type_node in type_map:
-                py_class = type_map[type_node].t
-            else:
-                py_class = type(owner)
-
-            if py_class not in type_to_spec:
-                type_to_spec[py_class] = impl
-                instances = py_class.bind_typegraph(tg).get_instances(g=g)
-                type_to_instances[py_class] = instances
-
-        result = []
-        for py_class, spec in type_to_spec.items():
-            instances = type_to_instances[py_class]
-            if not instances:
-                continue
-
-            buses = fabll.is_interface.group_into_buses(instances)
-            for bus_members in buses.values():
-                result.append((spec, bus_members))
-
-        return result
+            bus_groups = has_databus_specification.get_bus_groups(g, tg)
+            self._check_topology_constraints(accumulator, bus_groups, tg)
+            self._check_role_constraints(accumulator, bus_groups, tg)
 
     def _check_topology_constraints(
         self,
         accumulator: accumulate,
         bus_groups: list[tuple[has_databus_specification, set[fabll.Node]]],
+        tg: fbrk.TypeGraph,
     ) -> None:
         """Check that point-to-point buses have at most 2 endpoints."""
         for spec, bus_members in bus_groups:
@@ -149,10 +126,13 @@ class needs_bus_check(fabll.Node):
                     topologies == {has_databus_specification.Topology.POINT_TO_POINT}
                     and len(bus_members) > 2
                 ):
-                    friendly = ", ".join(n.get_full_name() for n in bus_members)
+                    friendly = ", ".join(
+                        n.get_full_name(include_uuid=False) for n in bus_members
+                    )
+                    source_info = _get_bus_source_info(bus_members, tg)
                     raise BusTopologyViolation(
                         f"Point-to-point bus has {len(bus_members)} endpoints "
-                        f"(max 2): {friendly}",
+                        f"(max 2): {friendly}{source_info}",
                         nodes=list(bus_members),
                     )
 
@@ -160,6 +140,7 @@ class needs_bus_check(fabll.Node):
         self,
         accumulator: accumulate,
         bus_groups: list[tuple[has_databus_specification, set[fabll.Node]]],
+        tg: fbrk.TypeGraph,
     ) -> None:
         """Check controller/target role constraints on buses."""
         for spec, bus_members in bus_groups:
@@ -191,25 +172,32 @@ class needs_bus_check(fabll.Node):
                 # Multiple controllers check
                 if len(controllers) > 1:
                     friendly_controllers = ", ".join(
-                        n.get_full_name() for n in controllers
+                        n.get_full_name(include_uuid=False) for n in controllers
                     )
+                    source_info = _get_bus_source_info(bus_members, tg)
                     if multi_controller is False:
                         raise BusMultipleControllersError(
                             f"Multiple controllers on bus that doesn't support "
-                            f"multi-controller: {friendly_controllers}",
+                            f"multi-controller: "
+                            f"{friendly_controllers}{source_info}",
                             nodes=controllers,
                         )
                     else:
                         raise BusMultipleControllersWarning(
-                            f"Multiple controllers on bus: {friendly_controllers}",
+                            f"Multiple controllers on bus: "
+                            f"{friendly_controllers}{source_info}",
                             nodes=controllers,
                         )
 
                 # Targets without controller check
                 if len(targets) > 0 and len(controllers) == 0:
-                    friendly_targets = ", ".join(n.get_full_name() for n in targets)
+                    friendly_targets = ", ".join(
+                        n.get_full_name(include_uuid=False) for n in targets
+                    )
+                    source_info = _get_bus_source_info(bus_members, tg)
                     raise BusMissingControllerError(
-                        f"Bus has targets but no controller: {friendly_targets}",
+                        f"Bus has targets but no controller: "
+                        f"{friendly_targets}{source_info}",
                         nodes=list(bus_members),
                     )
 

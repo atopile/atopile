@@ -129,15 +129,16 @@ class has_databus_specification(fabll.Node):
             )
 
     @staticmethod
-    @once
-    def resolve_data_bus_specification_parameters(
+    def get_bus_groups(
         g: graph.GraphView, tg: fbrk.TypeGraph
-    ):
+    ) -> list[tuple["has_databus_specification", set[fabll.Node]]]:
         """
-        Find all DataBus.has_specification implementors, group interfaces into buses,
-        and create Is constraints across each bus.
-        Called from build_steps.py during SETUP alongside
-        resolve_data_bus_specification_parameters().
+        Discover all has_databus_specification implementors, group their owner
+        interfaces into buses, and return (spec, bus_members) pairs.
+
+        This is the shared discovery logic used by both
+        resolve_data_bus_specification_parameters (SETUP) and bus_checks
+        (DESIGN_CHECK).
         """
         implementors = list(
             fabll.Traits.get_implementors(
@@ -146,7 +147,7 @@ class has_databus_specification(fabll.Node):
         )
 
         if not implementors:
-            return
+            return []
 
         # Group implementors by their owner interface type
         interface_specs: dict[fabll.Node, has_databus_specification] = {}
@@ -157,6 +158,7 @@ class has_databus_specification(fabll.Node):
         # Group interfaces into buses
         buses = fabll.is_interface.group_into_buses(interface_specs.keys())
 
+        result: list[tuple[has_databus_specification, set[fabll.Node]]] = []
         processed: set[frozenset[fabll.Node]] = set()
         for bus_interfaces in buses.values():
             bus_id = frozenset(bus_interfaces)
@@ -167,8 +169,23 @@ class has_databus_specification(fabll.Node):
             # Find a representative spec from this bus
             for iface in bus_interfaces:
                 if iface in interface_specs:
-                    interface_specs[iface].resolve(bus_interfaces)
+                    result.append((interface_specs[iface], bus_interfaces))
                     break
+
+        return result
+
+    @staticmethod
+    @once
+    def resolve_data_bus_specification_parameters(
+        g: graph.GraphView, tg: fbrk.TypeGraph
+    ):
+        """
+        Find all DataBus.has_specification implementors, group interfaces into buses,
+        and create Is constraints across each bus.
+        Called from build_steps.py during SETUP.
+        """
+        for spec, bus_members in has_databus_specification.get_bus_groups(g, tg):
+            spec.resolve(bus_members)
 
 
 class has_databus_role(fabll.Node):
