@@ -319,9 +319,11 @@ export class RpcProxy implements vscode.Disposable {
       return;
     }
 
-    this._logger.info(
-      `extension_request session=${sessionId} action=${request.action} requestId=${request.requestId}`,
-    );
+    if (request.action !== "vscode.log") {
+      this._logger.debug(
+        `extension_request session=${sessionId} action=${request.action} requestId=${request.requestId}`,
+      );
+    }
 
     let response: ExtensionRequestResult;
     try {
@@ -333,9 +335,11 @@ export class RpcProxy implements vscode.Disposable {
       };
     }
 
-    this._logger.info(
-      `extension_response session=${sessionId} action=${request.action} requestId=${request.requestId} ok=${response.ok}`,
-    );
+    if (request.action !== "vscode.log") {
+      this._logger.debug(
+        `extension_response session=${sessionId} action=${request.action} requestId=${request.requestId} ok=${response.ok}`,
+      );
+    }
 
     this.sendSessionPayload(sessionId, {
       type: "extension_response",

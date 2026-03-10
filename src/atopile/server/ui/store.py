@@ -16,10 +16,16 @@ from atopile.dataclasses import (
     PackagesSummaryData,
     Project,
     StdLibData,
+    UiBlobAssetData,
     UiBOMData,
+    UiBuildsByProjectData,
     UiCoreStatus,
+    UiEntryCheckData,
     UiExtensionSettings,
+    UiFileActionData,
     UiInstalledPartsData,
+    UiLayoutData,
+    UiLcscPartsData,
     UiPartsSearchData,
     UiProjectState,
     UiSidebarDetails,
@@ -80,6 +86,14 @@ class UiStore(CamelModel):
     bom_data: UiBOMData = Field(
         default_factory=UiBOMData, json_schema_extra={"mergeable": True}
     )
+    entry_check: UiEntryCheckData = Field(default_factory=UiEntryCheckData)
+    lcsc_parts_data: UiLcscPartsData = Field(default_factory=UiLcscPartsData)
+    builds_by_project_data: UiBuildsByProjectData = Field(
+        default_factory=UiBuildsByProjectData
+    )
+    layout_data: UiLayoutData = Field(default_factory=UiLayoutData)
+    blob_asset: UiBlobAssetData = Field(default_factory=UiBlobAssetData)
+    file_action: UiFileActionData = Field(default_factory=UiFileActionData)
 
 
 @dataclass(frozen=True)

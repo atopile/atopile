@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 
@@ -7,10 +7,6 @@ declare global {
     __ATOPILE_LAYOUT_SERVER_URL__?: string;
   }
 }
-
-type OpenLayoutResult = {
-  path: string;
-};
 
 type LayoutSelection = {
   projectRoot: string;
@@ -21,8 +17,7 @@ const layoutServerUrl = window.__ATOPILE_LAYOUT_SERVER_URL__ ?? "";
 
 function App() {
   const projectState = WebviewRpcClient.useSubscribe("projectState");
-  const [error, setError] = useState<string | null>(null);
-  const [layoutPath, setLayoutPath] = useState<string | null>(null);
+  const layoutData = WebviewRpcClient.useSubscribe("layoutData");
 
   const selection: LayoutSelection | null =
     projectState.selectedProject && projectState.selectedTarget
@@ -35,34 +30,26 @@ function App() {
 
   useEffect(() => {
     if (!layoutServerUrl || !selection) {
-      setError(null);
-      setLayoutPath(null);
       return;
     }
-
-    let cancelled = false;
-    setError(null);
-    setLayoutPath(null);
-
-    void rpcClient
-      ?.requestAction<OpenLayoutResult>("openLayout", selection)
-      .then((result) => {
-        if (!cancelled) {
-          setLayoutPath(result.path);
-          setError(null);
-        }
-      })
-      .catch((nextError) => {
-        if (!cancelled) {
-          setLayoutPath(null);
-          setError(nextError instanceof Error ? nextError.message : String(nextError));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    rpcClient?.sendAction("openLayout", selection);
   }, [selectionKey]);
+
+  const layoutPath =
+    layoutData.projectRoot === selection?.projectRoot &&
+    layoutData.target === selection?.target
+      ? layoutData.path
+      : null;
+  const error =
+    layoutData.projectRoot === selection?.projectRoot &&
+    layoutData.target === selection?.target
+      ? layoutData.error
+      : null;
+  const isLoading =
+    layoutData.projectRoot === selection?.projectRoot &&
+    layoutData.target === selection?.target
+      ? layoutData.loading
+      : false;
 
   if (!layoutServerUrl) {
     return (
@@ -86,7 +73,7 @@ function App() {
     return (
       <div className="panel">
         <h2>Layout</h2>
-        <p>{error ?? "Opening PCB layout..."}</p>
+        <p>{error ?? (isLoading ? "Opening PCB layout..." : "Select a project and build target to open the PCB layout.")}</p>
       </div>
     );
   }

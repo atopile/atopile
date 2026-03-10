@@ -313,6 +313,7 @@ export function FilesPanel() {
   const projectState = WebviewRpcClient.useSubscribe("projectState");
   const { selectedProject: projectRoot, activeFilePath } = projectState;
   const projectFiles = WebviewRpcClient.useSubscribe("projectFiles");
+  const fileAction = WebviewRpcClient.useSubscribe("fileAction");
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -410,6 +411,20 @@ export function FilesPanel() {
     [projectRoot],
   );
 
+  useEffect(() => {
+    if (!fileAction.path || fileAction.action === "delete") {
+      return;
+    }
+    revealPath(fileAction.path, fileAction.isFolder);
+    if (fileAction.action !== "create_file" || !projectRoot) {
+      return;
+    }
+    const relativePath = relativeToProject(projectRoot, fileAction.path);
+    if (relativePath) {
+      handleOpenFile(relativePath);
+    }
+  }, [fileAction, handleOpenFile, projectRoot, revealPath]);
+
   const openContextMenu = useCallback(
     (event: ReactMouseEvent, target: ContextMenuTarget) => {
       const width = 210;
@@ -437,26 +452,16 @@ export function FilesPanel() {
           return;
 
         case "new-file": {
-          const result = await rpcClient?.requestAction<{ path: string | null }>("createFile", {
-            path: joinChildPath(target.directoryPath, value ?? ""),
-          });
-          logger.info(`createFile result=${result?.path ?? "null"}`);
-          revealPath(result?.path ?? null);
-          if (result?.path) {
-            const relativePath = relativeToProject(projectRoot, result.path);
-            if (relativePath) {
-              handleOpenFile(relativePath);
-            }
-          }
+          const path = joinChildPath(target.directoryPath, value ?? "");
+          rpcClient?.sendAction("createFile", { path });
+          logger.info(`createFile requested path=${path}`);
           return;
         }
 
         case "new-folder": {
-          const result = await rpcClient?.requestAction<{ path: string | null }>("createFolder", {
-            path: joinChildPath(target.directoryPath, value ?? ""),
-          });
-          logger.info(`createFolder result=${result?.path ?? "null"}`);
-          revealPath(result?.path ?? null, true);
+          const path = joinChildPath(target.directoryPath, value ?? "");
+          rpcClient?.sendAction("createFolder", { path });
+          logger.info(`createFolder requested path=${path}`);
           return;
         }
 
@@ -465,26 +470,24 @@ export function FilesPanel() {
           if (normalizePath(newPath) === normalizePath(target.fullPath)) {
             return;
           }
-          const result = await rpcClient?.requestAction<{ path: string | null }>("renamePath", {
+          rpcClient?.sendAction("renamePath", {
             path: target.fullPath,
             newPath,
           });
-          logger.info(`renamePath result=${result?.path ?? "null"}`);
-          revealPath(result?.path ?? null, target.isFolder);
+          logger.info(`renamePath requested target=${target.fullPath} next=${newPath}`);
           return;
         }
 
         case "duplicate": {
-          const result = await rpcClient?.requestAction<{ path: string | null }>("duplicatePath", {
+          rpcClient?.sendAction("duplicatePath", {
             path: target.fullPath,
           });
-          logger.info(`duplicatePath result=${result?.path ?? "null"}`);
-          revealPath(result?.path ?? null, target.isFolder);
+          logger.info(`duplicatePath requested target=${target.fullPath}`);
           return;
         }
 
         case "delete":
-          await rpcClient?.requestAction("deletePath", { path: target.fullPath });
+          rpcClient?.sendAction("deletePath", { path: target.fullPath });
           logger.info(`deletePath completed target=${target.fullPath}`);
           return;
 

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import type { Build, BuildStage } from "../../shared/generated-types";
 import { SOURCE_COLORS, type TimeMode } from "../../shared/types";
-import { rpcClient } from './rpcClient';
+import { WebviewRpcClient, rpcClient } from './rpcClient';
 
 /** Canonical mapping from status string → Lucide icon component. */
 export const STATUS_ICONS: Record<string, LucideIcon> = {
@@ -110,12 +110,6 @@ export function getCurrentStage(build: Build): BuildStage | null {
   return completed.length > 0 ? completed[completed.length - 1] : null;
 }
 
-interface AssetResponse {
-  contentType: string;
-  filename: string;
-  data: string;
-}
-
 function decodeBase64(base64: string): Uint8Array {
   const binary = window.atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -129,49 +123,51 @@ export function useBlobAssetUrl(
   action: string | null,
   payload: Record<string, unknown> | null,
 ): { url: string; error: string | null; loading: boolean } {
+  const blobAsset = WebviewRpcClient.useSubscribe("blobAsset");
   const [state, setState] = useState({ url: "", error: null as string | null, loading: false });
+  const requestKey = payload ? JSON.stringify(payload) : "";
 
   useEffect(() => {
     if (!action || !payload) {
       setState({ url: "", error: null, loading: false });
       return;
     }
-
-    let revokedUrl = "";
-    let cancelled = false;
     setState({ url: "", error: null, loading: true });
+    rpcClient?.sendAction(action, payload);
+  }, [action, requestKey]);
 
-    void rpcClient?.requestAction<AssetResponse>(action, payload)
-      .then((result) => {
-        if (cancelled || !result?.data) {
-          return;
-        }
-        const bytes = decodeBase64(result.data);
-        const buffer = new ArrayBuffer(bytes.byteLength);
-        new Uint8Array(buffer).set(bytes);
-        const blob = new Blob([buffer], {
-          type: result.contentType || "application/octet-stream",
-        });
-        revokedUrl = URL.createObjectURL(blob);
-        setState({ url: revokedUrl, error: null, loading: false });
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setState({
-            url: "",
-            error: error instanceof Error ? error.message : String(error),
-            loading: false,
-          });
-        }
+  useEffect(() => {
+    if (!action || !payload) {
+      return;
+    }
+    if (blobAsset.action !== action || blobAsset.requestKey !== requestKey) {
+      return;
+    }
+    if (blobAsset.loading) {
+      setState({ url: "", error: null, loading: true });
+      return;
+    }
+    if (blobAsset.error || !blobAsset.data) {
+      setState({
+        url: "",
+        error: blobAsset.error || "Failed to load asset",
+        loading: false,
       });
+      return;
+    }
 
+    const bytes = decodeBase64(blobAsset.data);
+    const buffer = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(buffer).set(bytes);
+    const blob = new Blob([buffer], {
+      type: blobAsset.contentType || "application/octet-stream",
+    });
+    const url = URL.createObjectURL(blob);
+    setState({ url, error: null, loading: false });
     return () => {
-      cancelled = true;
-      if (revokedUrl) {
-        URL.revokeObjectURL(revokedUrl);
-      }
+      URL.revokeObjectURL(url);
     };
-  }, [action, payload ? JSON.stringify(payload) : ""]);
+  }, [action, blobAsset, payload, requestKey]);
 
   return state;
 }

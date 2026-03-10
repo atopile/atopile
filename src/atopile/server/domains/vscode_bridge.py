@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from typing import Any
 
@@ -26,9 +25,9 @@ class VscodeBridge:
     def handles(self, action: str) -> bool:
         return action.startswith(VSCODE_ACTION_PREFIX)
 
-    async def forward_request(
+    def forward_request(
         self, ws: ServerConnection, session_id: str, msg: dict[str, Any]
-    ) -> None:
+    ) -> dict[str, Any]:
         action = str(msg.get("action", ""))
         request_id = msg.get("requestId")
         if not isinstance(request_id, str) or not request_id:
@@ -47,22 +46,22 @@ class VscodeBridge:
                 "action": action,
             }
         )
-        await ws.send(json.dumps(payload))
+        return payload
 
-    async def handle_response(
+    def handle_response(
         self, ws: ServerConnection, session_id: str, msg: dict[str, Any]
-    ) -> None:
+    ) -> dict[str, Any] | None:
         request_id = msg.get("requestId")
         if not isinstance(request_id, str) or not request_id:
-            return
+            return None
 
         pending_by_session = self._pending_requests.get(ws)
         if pending_by_session is None:
-            return
+            return None
 
         pending = pending_by_session.get(session_id)
         if pending is None:
-            return
+            return None
 
         action = pending.pop(request_id, msg.get("action", ""))
         ok = msg.get("ok") is not False
@@ -77,4 +76,4 @@ class VscodeBridge:
             response["result"] = msg.get("result")
         else:
             response["error"] = msg.get("error") or f"{action} failed"
-        await ws.send(json.dumps(response))
+        return response

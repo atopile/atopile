@@ -1,9 +1,9 @@
 ---
-name: dev
-description: "LLM-focused workflow for working in this repo: compile Zig, run the orchestrated test runner, consume test-report.json/html artifacts, and discover/debug ConfigFlags."
+name: core-dev
+description: "LLM-focused workflow for working in this repo's core systems: compile Zig, run the orchestrated test runner, consume test-report.json/html artifacts, and discover/debug ConfigFlags."
 ---
 
-# Dev Module
+# Core Dev Module
 
 This skill is written for LLMs working inside this repo. It focuses on the fastest, most reliable inner loop:
 

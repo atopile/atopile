@@ -58,6 +58,7 @@ from atopile.model.builds import (
 from atopile.model.file_watcher import FileWatcher
 from atopile.model.module_introspection import introspect_module_definition
 from atopile.model.sqlite import Logs
+from atopile.server import dev_tools
 from atopile.server.domains.vscode_bridge import VscodeBridge
 from atopile.server.ui import remote_assets, sidebar
 from atopile.server.ui.store import Store
@@ -66,7 +67,6 @@ log = logging.getLogger(__name__)
 
 STREAM_POLL_INTERVAL = 0.25  # seconds
 EXTENSION_SESSION_ID = "extension"
-_NO_ACTION_RESULT = object()
 
 
 class CoreSocket:
@@ -107,20 +107,31 @@ class CoreSocket:
         self._subscriptions[ws] = {}
         self._log_tasks[ws] = {}
         self._vscode_bridge.add_client(ws)
-        log.info("Core WS client connected (%d total)", len(self._clients))
 
         try:
             async for raw in ws:
                 msg = json.loads(raw)
+                keys = msg.get("keys")
+                self._log_websocket_event(
+                    "recv",
+                    session_id=self._session_id(msg),
+                    type=msg.get("type"),
+                    action=msg.get("action"),
+                    request_id=msg.get("requestId"),
+                    ok=msg.get("ok"),
+                    key_count=len(keys) if isinstance(keys, list) else None,
+                )
                 match msg.get("type"):
                     case "subscribe":
                         await self._handle_subscribe(ws, msg)
                     case "action":
                         await self._dispatch(ws, msg)
                     case "extension_response":
-                        await self._vscode_bridge.handle_response(
+                        response = self._vscode_bridge.handle_response(
                             ws, self._session_id(msg), msg
                         )
+                        if response is not None:
+                            await self._send_message(ws, response)
 
         except websockets.ConnectionClosed:
             pass
@@ -130,7 +141,6 @@ class CoreSocket:
             self._vscode_bridge.remove_client(ws)
             for task in self._log_tasks.pop(ws, {}).values():
                 task.cancel()
-            log.info("Core WS client disconnected (%d total)", len(self._clients))
 
     async def _handle_subscribe(
         self, ws: ServerConnection, msg: dict[str, Any]
@@ -149,6 +159,26 @@ class CoreSocket:
 
     def _projects_state(self) -> list[Project]:
         return cast(list[Project], self._store.get("projects"))
+
+    @staticmethod
+    def _request_key(msg: dict[str, Any]) -> str:
+        payload = {
+            key: value
+            for key, value in msg.items()
+            if key not in {"type", "action", "requestId", "sessionId"}
+        }
+        return json.dumps(payload, separators=(",", ":"))
+
+    def _log_websocket_event(self, event: str, **fields: Any) -> None:
+        if fields.get("action") == "vscode.log":
+            return
+        details = " ".join(
+            f"{key}={value}" for key, value in fields.items() if value is not None
+        )
+        if details:
+            log.info("WebSocket %s %s", event, details)
+            return
+        log.info("WebSocket %s", event)
 
     async def _show_package_details(
         self,
@@ -251,58 +281,32 @@ class CoreSocket:
     async def _dispatch(self, ws: ServerConnection, msg: dict) -> None:
         session_id = self._session_id(msg)
         action = str(msg.get("action", ""))
-        request_id = msg.get("requestId")
-        if not isinstance(request_id, str):
-            request_id = None
         if self._vscode_bridge.handles(action):
-            await self._vscode_bridge.forward_request(ws, session_id, msg)
+            await self._send_message(
+                ws, self._vscode_bridge.forward_request(ws, session_id, msg)
+            )
             return
-
-        result: Any = _NO_ACTION_RESULT
-        error: str | None = None
 
         match action:
             case "getRemoteAsset":
-                result = await remote_assets.proxy_remote_asset(
+                request_key = self._request_key(msg)
+                asset = await remote_assets.proxy_remote_asset(
                     str(msg.get("url", "")),
                     str(msg.get("filename")) if msg.get("filename") else None,
                 )
-
-            case "getPartDetails":
-                lcsc_id = str(msg.get("lcsc", ""))
-                part = await asyncio.to_thread(
-                    parts_search.handle_get_part_details,
-                    lcsc_id,
-                    project_root=(
-                        str(msg.get("projectRoot"))
-                        if isinstance(msg.get("projectRoot"), str)
-                        and msg.get("projectRoot")
-                        else None
-                    ),
-                    identifier=(
-                        str(msg.get("identifier"))
-                        if isinstance(msg.get("identifier"), str)
-                        and msg.get("identifier")
-                        else None
-                    ),
-                    installed=bool(msg.get("installed")),
+                self._store.set(
+                    "blob_asset",
+                    {
+                        "action": action,
+                        "requestKey": request_key,
+                        **asset,
+                    },
                 )
-                result = {
-                    "part": None
-                    if part is None
-                    else part.model_dump(mode="json", by_alias=True)
-                }
-                if part is None:
-                    error = f"Part not found: {lcsc_id}"
-
-            case "getMigrationSteps":
-                result = {
-                    "steps": [step.to_dict() for step in migrations.get_all_steps()],
-                    "topics": migrations.get_topics(),
-                }
+                return
 
             case "getPartModelData":
                 lcsc_id = str(msg.get("lcsc", ""))
+                request_key = self._request_key(msg)
                 model = await asyncio.to_thread(
                     parts_search.handle_get_part_model,
                     lcsc_id,
@@ -310,11 +314,17 @@ class CoreSocket:
                 if not model:
                     raise ValueError(f"3D model not found: {lcsc_id}")
                 data, name = model
-                result = {
-                    "contentType": "model/step",
-                    "filename": name,
-                    "data": base64.b64encode(data).decode("ascii"),
-                }
+                self._store.set(
+                    "blob_asset",
+                    {
+                        "action": action,
+                        "requestKey": request_key,
+                        "contentType": "model/step",
+                        "filename": name,
+                        "data": base64.b64encode(data).decode("ascii"),
+                    },
+                )
+                return
 
             case "selectProject":
                 project_root = msg.get("projectRoot") or None
@@ -412,7 +422,14 @@ class CoreSocket:
                     projects.handle_create_project, request
                 )
                 await self._refresh_projects()
-                result = create_result.model_dump(by_alias=True)
+                self._store.merge(
+                    "project_state",
+                    {
+                        "selectedProject": create_result.project_root,
+                        "selectedTarget": None,
+                    },
+                )
+                return
 
             case "addBuildTarget":
                 request = AddBuildTargetRequest(
@@ -431,7 +448,7 @@ class CoreSocket:
                         "selectedTarget": add_result.target,
                     },
                 )
-                result = add_result.model_dump(by_alias=True)
+                return
 
             case "updateBuildTarget":
                 request = UpdateBuildTargetRequest(
@@ -460,16 +477,14 @@ class CoreSocket:
                         "project_state",
                         {"selectedTarget": update_result.target or request.old_name},
                     )
-                result = update_result.model_dump(by_alias=True)
+                return
 
             case "deleteBuildTarget":
                 request = DeleteBuildTargetRequest(
                     project_root=str(msg.get("projectRoot") or ""),
                     name=str(msg.get("name") or ""),
                 )
-                delete_result = await asyncio.to_thread(
-                    projects.handle_delete_build_target, request
-                )
+                await asyncio.to_thread(projects.handle_delete_build_target, request)
                 await self._refresh_project_entry(request.project_root)
                 project_state = cast(dict[str, Any], self._store.dump("project_state"))
                 selected_project = project_state.get("selectedProject")
@@ -491,7 +506,7 @@ class CoreSocket:
                             ),
                         },
                     )
-                result = delete_result.model_dump(by_alias=True)
+                return
 
             case "checkEntry":
                 project_root = str(msg.get("projectRoot") or "")
@@ -503,6 +518,15 @@ class CoreSocket:
                     entry,
                     project.targets if project else None,
                 )
+                self._store.set(
+                    "entry_check",
+                    {
+                        "projectRoot": project_root or None,
+                        "entry": entry,
+                        **result,
+                    },
+                )
+                return
 
             case "listFiles":
                 project_root = msg.get("projectRoot", "")
@@ -514,56 +538,82 @@ class CoreSocket:
 
             case "createFile":
                 requested_path = str(msg.get("path") or "")
-                log.info("Files action createFile path=%s", requested_path)
                 created_path = await asyncio.to_thread(
                     file_ops.create_file,
                     requested_path,
                 )
-                log.info("Files action createFile success path=%s", created_path)
-                result = {"path": created_path}
+                self._store.set(
+                    "file_action",
+                    {
+                        "action": "create_file",
+                        "path": created_path,
+                        "isFolder": False,
+                    },
+                )
+                return
 
             case "createFolder":
                 requested_path = str(msg.get("path") or "")
-                log.info("Files action createFolder path=%s", requested_path)
                 created_path = await asyncio.to_thread(
                     file_ops.create_folder,
                     requested_path,
                 )
-                log.info("Files action createFolder success path=%s", created_path)
-                result = {"path": created_path}
+                self._store.set(
+                    "file_action",
+                    {
+                        "action": "create_folder",
+                        "path": created_path,
+                        "isFolder": True,
+                    },
+                )
+                return
 
             case "renamePath":
                 requested_path = str(msg.get("path") or "")
                 new_path = str(msg.get("newPath") or "")
-                log.info(
-                    "Files action renamePath from=%s to=%s",
-                    requested_path,
-                    new_path,
-                )
                 renamed_path = await asyncio.to_thread(
                     file_ops.rename_path,
                     requested_path,
                     new_path,
                 )
-                log.info("Files action renamePath success path=%s", renamed_path)
-                result = {"path": renamed_path}
+                self._store.set(
+                    "file_action",
+                    {
+                        "action": "rename",
+                        "path": renamed_path,
+                        "isFolder": Path(renamed_path).is_dir(),
+                    },
+                )
+                return
 
             case "deletePath":
                 requested_path = str(msg.get("path") or "")
-                log.info("Files action deletePath path=%s", requested_path)
                 await asyncio.to_thread(file_ops.delete_path, requested_path)
-                log.info("Files action deletePath success path=%s", requested_path)
-                result = {"success": True}
+                self._store.set(
+                    "file_action",
+                    {
+                        "action": "delete",
+                        "path": requested_path,
+                        "isFolder": False,
+                    },
+                )
+                return
 
             case "duplicatePath":
                 requested_path = str(msg.get("path") or "")
-                log.info("Files action duplicatePath path=%s", requested_path)
                 duplicated_path = await asyncio.to_thread(
                     file_ops.duplicate_path,
                     requested_path,
                 )
-                log.info("Files action duplicatePath success path=%s", duplicated_path)
-                result = {"path": duplicated_path}
+                self._store.set(
+                    "file_action",
+                    {
+                        "action": "duplicate",
+                        "path": duplicated_path,
+                        "isFolder": Path(duplicated_path).is_dir(),
+                    },
+                )
+                return
 
             case "startBuild":
                 request = BuildRequest(
@@ -577,14 +627,21 @@ class CoreSocket:
 
             case "cancelBuild":
                 build_id = str(msg.get("buildId") or "")
-                result = await asyncio.to_thread(builds.handle_cancel_build, build_id)
-                if not result.get("success"):
-                    error = result.get("message")
+                await asyncio.to_thread(builds.handle_cancel_build, build_id)
+                return
 
             case "openLayout":
                 request = OpenLayoutRequest.model_validate(msg)
                 layout_path = await self._open_layout(request)
-                result = {"path": str(layout_path)}
+                self._store.set(
+                    "layout_data",
+                    {
+                        "projectRoot": request.project_root,
+                        "target": request.target,
+                        "path": str(layout_path),
+                    },
+                )
+                return
 
             case "getPackagesSummary":
                 project_root = msg.get("projectRoot", "")
@@ -752,7 +809,7 @@ class CoreSocket:
                         if part
                         else None,
                     )
-                result = {"success": True}
+                return
 
             case "uninstallPart":
                 project_root = msg.get("projectRoot", "")
@@ -784,7 +841,7 @@ class CoreSocket:
                         if part
                         else None,
                     )
-                result = {"success": True}
+                return
 
             case "showMigrationDetails":
                 project_root = str(msg.get("projectRoot", ""))
@@ -814,17 +871,6 @@ class CoreSocket:
                             error=None,
                         ),
                     )
-                    await ws.send(
-                        json.dumps(
-                            {
-                                "type": "migration_step_result",
-                                "project_root": project_root,
-                                "step": step_id,
-                                "success": True,
-                                "error": None,
-                            }
-                        )
-                    )
                 final_state, success = sidebar.complete_migration_run(
                     self._sidebar_details_state()
                 )
@@ -838,16 +884,7 @@ class CoreSocket:
                         project_root,
                     ),
                 )
-                await ws.send(
-                    json.dumps(
-                        {
-                            "type": "migration_result",
-                            "project_root": project_root,
-                            "success": success,
-                        }
-                    )
-                )
-                result = {"success": success}
+                return
 
             case "getVariables":
                 project_root = msg.get("projectRoot", "")
@@ -868,31 +905,75 @@ class CoreSocket:
                     project_root,
                     target,
                 )
-                result = bom or {
-                    "components": [],
-                    "totalQuantity": 0,
-                    "uniqueParts": 0,
-                    "estimatedCost": None,
-                    "outOfStock": 0,
-                }
-                self._store.set("bom_data", result)
+                self._store.set(
+                    "bom_data",
+                    {
+                        "projectRoot": project_root or None,
+                        "target": target,
+                        **(
+                            bom
+                            or {
+                                "components": [],
+                                "totalQuantity": 0,
+                                "uniqueParts": 0,
+                                "estimatedCost": None,
+                                "outOfStock": 0,
+                            }
+                        ),
+                    },
+                )
+                return
 
             case "getBuildsByProject":
+                project_root = msg.get("projectRoot") or None
+                target = msg.get("target") or None
+                limit = int(msg.get("limit", 50))
                 result = await asyncio.to_thread(
                     builds.handle_get_builds_by_project,
-                    msg.get("projectRoot") or None,
-                    msg.get("target") or None,
-                    int(msg.get("limit", 50)),
+                    project_root,
+                    target,
+                    limit,
                 )
+                self._store.set(
+                    "builds_by_project_data",
+                    {
+                        "projectRoot": project_root,
+                        "target": target,
+                        "limit": limit,
+                        "builds": result.get("builds", []),
+                    },
+                )
+                return
 
             case "fetchLcscParts":
                 lcsc_ids = [str(value) for value in msg.get("lcscIds", []) if value]
+                project_root = msg.get("projectRoot") or None
+                target = msg.get("target") or None
+                current_lcsc_parts = cast(
+                    dict[str, Any], self._store.dump("lcsc_parts_data")
+                )
+                current_parts = current_lcsc_parts.get("parts", {})
+                if (
+                    current_lcsc_parts.get("projectRoot") != project_root
+                    or current_lcsc_parts.get("target") != target
+                ):
+                    current_parts = {}
                 result = await asyncio.to_thread(
                     parts.handle_get_lcsc_parts,
                     lcsc_ids,
-                    project_root=msg.get("projectRoot") or None,
-                    target=msg.get("target") or None,
+                    project_root=project_root,
+                    target=target,
                 )
+                self._store.set(
+                    "lcsc_parts_data",
+                    {
+                        "projectRoot": project_root,
+                        "target": target,
+                        "parts": {**current_parts, **result.get("parts", {})},
+                        "loadingIds": [],
+                    },
+                )
+                return
 
             case "subscribeLogs":
                 request = UiBuildLogRequest.model_validate(msg)
@@ -902,7 +983,7 @@ class CoreSocket:
                         error="buildId is required"
                     ).model_dump(mode="json")
                     payload["sessionId"] = session_id
-                    await ws.send(json.dumps(payload))
+                    await self._send_message(ws, payload)
                     return
                 old_task = self._log_tasks.setdefault(ws, {}).pop(session_id, None)
                 if old_task:
@@ -917,29 +998,22 @@ class CoreSocket:
                 }
                 task = asyncio.create_task(self._log_stream_loop(ws, query))
                 self._log_tasks.setdefault(ws, {})[session_id] = task
-                log.debug("Log client subscribed to build %s", build_id)
                 return
 
             case "unsubscribeLogs":
                 old_task = self._log_tasks.setdefault(ws, {}).pop(session_id, None)
                 if old_task:
                     old_task.cancel()
-                log.debug("Log client unsubscribed")
+                return
+
+            case "clearBuildDatabases":
+                await asyncio.to_thread(dev_tools.handle_clear_build_databases)
+                await self._push_builds()
                 return
 
             case _:
                 raise ValueError(f"Unknown action: {action}")
-
-        if result is _NO_ACTION_RESULT:
-            return
-        await self._send_action_result(
-            ws,
-            session_id,
-            action,
-            request_id,
-            result=result,
-            error=error,
-        )
+        return
 
     # -- Log streaming -----------------------------------------------------
 
@@ -984,7 +1058,7 @@ class CoreSocket:
                 last_id=new_last_id,
             ).model_dump(mode="json")
             payload["sessionId"] = session_id
-            await ws.send(json.dumps(payload))
+            await self._send_message(ws, payload)
             return new_last_id
 
         return after_id
@@ -1020,42 +1094,37 @@ class CoreSocket:
         field_name: str,
         data: Any,
     ) -> None:
-        await ws.send(
-            json.dumps(
-                {
-                    "type": "state",
-                    "sessionId": session_id,
-                    "key": self._store.wire_key(field_name),
-                    "data": data,
-                }
-            )
+        await self._send_message(
+            ws,
+            {
+                "type": "state",
+                "sessionId": session_id,
+                "key": self._store.wire_key(field_name),
+                "data": data,
+            },
         )
 
-    async def _send_action_result(
+    async def _send_message(
         self,
         ws: ServerConnection,
-        session_id: str,
-        action: str,
-        request_id: str | None,
-        *,
-        result: Any = None,
-        error: str | None = None,
+        payload: dict[str, Any],
     ) -> None:
-        if not request_id:
-            return
-        await ws.send(
-            json.dumps(
-                {
-                    "type": "action_result",
-                    "sessionId": session_id,
-                    "requestId": request_id,
-                    "action": action,
-                    "ok": error is None,
-                    "result": result,
-                    "error": error,
-                }
-            )
+        self._log_websocket_event(
+            "send",
+            session_id=payload.get("sessionId"),
+            type=payload.get("type"),
+            action=payload.get("action"),
+            request_id=payload.get("requestId"),
+            ok=payload.get("ok"),
+            key=payload.get("key"),
+            step=payload.get("step"),
+            success=payload.get("success"),
+            last_id=payload.get("last_id"),
+            log_count=(
+                len(payload["logs"]) if isinstance(payload.get("logs"), list) else None
+            ),
         )
+        await ws.send(json.dumps(payload))
 
     async def _open_layout(self, request: OpenLayoutRequest) -> Path:
         from atopile.layout_server.models import WsMessage

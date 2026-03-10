@@ -41,10 +41,6 @@ class Topics:
         return list(cls._all)
 
 
-EVENT_MIGRATION_STEP_RESULT = "migration_step_result"
-EVENT_MIGRATION_RESULT = "migration_result"
-
-
 class MigrationStep(ABC):
     """
     Base class for all migration steps.

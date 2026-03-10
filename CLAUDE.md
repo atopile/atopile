@@ -51,9 +51,11 @@ Skills are located in `.claude/skills/`.
 │ └── SKILL.md
 ├── compiler
 │ └── SKILL.md
-├── dev
+├── core-dev
 │ └── SKILL.md
 ├── domain-layer
+│ └── SKILL.md
+├── extension-dev
 │ └── SKILL.md
 ├── fabll
 │ └── SKILL.md

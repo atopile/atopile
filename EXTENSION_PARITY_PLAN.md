@@ -45,9 +45,13 @@ model with the fewest necessary compatibility changes. The simplest path is:
 | 🟢 | Parameters | Variable/constraint browsing | Variable/constraint browsing | Good enough; polish only if bugs appear |
 | 🟢 | BOM | BOM browsing with enriched cost/stock data, build badge, grouped usages, and source links | Mainline BOM is ported onto the rewrite RPC/store architecture, including LCSC enrichment and source navigation | Validate behavior against real projects and keep follow-up polish small |
 | 🟢 | Logs | Dedicated logs panel with build-log workflows | Dedicated logs panel with structured logging; sidebar build/stage clicks navigate directly via store-driven selection | Good enough; validate end-to-end and polish only if bugs appear |
+| 🟡 | Runtime resolution | Extension-managed `uv`, strict ato binary resolution, self-check before use, explicit binary path override, explicit `from` source/version override, and default version pinning to the extension release | `uv` auto-bootstrap exists, production runs are pinned to the extension version, and local dev mode exists via `devPath`, but there is no explicit ato path override, no explicit `from` override, no self-check gate, and bootstrap/version behavior differs from mainline | Decide the rewrite contract for binary resolution, then restore parity for the supported modes instead of leaving install/bootstrap/version behavior implicit |
+| 🔴 | LSP | VS Code language client started from the extension, with editor diagnostics/navigation/completions and build-target notifications wired through `atopile/didChangeBuildTarget` | Core server only; no VS Code `LanguageClient` is started | Add rewrite-native LSP startup and editor integration; this is separate from sidebar parity and required for full extension parity |
 | 🟡 | 3D | Dedicated preview surface tied to builds | Dedicated preview surface exists and resolves project-target GLB assets | Reopen/resize path exists, but missing-file and load-failure UX still need to be surfaced instead of hanging on a loading state |
 | 🟡 | Layout | Real layout editor/preview | Shared layout server is embedded in `panel-layout` and opens the selected target PCB | Shared viewer path is in place; validate `openLayout` against project/target changes and missing layouts, and restore package/part preview flows on top of it |
 | 🟡 | Migration | Dedicated migrate tab/workflow | Detail UI is ported and integrated into the sidebar | Finish workflow validation and any remaining action/polish gaps |
+| 🟢 | Syntax highlighting | `ato` language contribution, language configuration, and TextMate grammar | Same `ato` language contribution, language configuration, and TextMate grammar | Good enough; keep current rewrite implementation |
+| 🔴 | Snippets | Extension contributes `ato` snippets | No snippet contribution | Port the mainline snippets contribution unless it is intentionally being replaced with LSP completions |
 
 ## Work Plan
 
@@ -79,14 +83,34 @@ behave like product features instead of demos.
 - Fix 3D panel failure UX so missing or unloadable models produce a user-visible error state instead of an indefinite loading screen. Preserve the current open/reopen and resize path.
 - Use the new structured logging to close debugging gaps in these flows, but keep parity work focused on user-visible behavior rather than log-only cleanup.
 
-### 3. Finish migration, settings, and status gaps
+### 3. Finish migration and settings gaps
 
 - Finish migrate workflow parity on top of the copied detail UI.
 - Expand settings beyond `devPath` and `autoInstall` if the rewrite is replacing the shipped extension.
-- Keep source/mode/version/health visible in the UI and add obvious recovery/help actions.
-- Make restart/failure recovery obvious from the sidebar and panel surfaces.
+- Make binary/runtime resolution explicit instead of leaving it as resolver behavior hidden behind `devPath`.
+- Decide and document which mainline resolution modes the rewrite keeps:
+  - extension-managed default install pinned to the extension version
+  - explicit ato binary path override
+  - explicit source/version override (`from`)
+  - local checkout/dev mode
+- Add a real validation step before treating a resolved runtime as healthy, so bootstrap/install failures fail fast instead of surfacing later as generic core-server startup errors.
+- Align `uv` bootstrap behavior with the chosen contract and keep the user-facing install flow obvious when auto-install is enabled or disabled.
 
-### 4. Remove parity-risk dead ends
+### 4. Restore editor integration parity
+
+- Start the atopile LSP from the rewrite extension as a proper VS Code `LanguageClient`.
+- Match mainline document selector coverage for normal `.ato` editing.
+- Wire selected build-target changes into the LSP via `atopile/didChangeBuildTarget`.
+- Validate editor-facing parity for diagnostics, hovers, go-to-definition, references, completion, and rename/code actions as supported by the server.
+- Keep this integration at the extension boundary; do not route editor features through the sidebar RPC/webview path.
+
+### 5. Restore language-authoring contributions
+
+- Keep the current syntax highlighting and language configuration unchanged unless regressions appear.
+- Port snippet contribution parity from mainline.
+- Prefer snippet parity through the normal VS Code contribution path rather than inventing a rewrite-specific mechanism.
+
+### 6. Remove parity-risk dead ends
 
 - Delete placeholder or unused surfaces that are not part of the final parity story.
 - Do not keep duplicate ways to do the same thing unless mainline users rely on them.

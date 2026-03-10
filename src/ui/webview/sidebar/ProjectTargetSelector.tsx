@@ -14,8 +14,9 @@ import type {
   ModuleDefinition,
   Project,
   ResolvedBuildTarget,
+  UiEntryCheckData,
 } from "../../shared/generated-types";
-import { rpcClient } from "../shared/rpcClient";
+import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import "./ProjectTargetSelector.css";
 
 interface ProjectTargetSelectorProps {
@@ -515,6 +516,7 @@ function NewTargetForm({
   modules,
   initialName = "",
   initialEntry = "",
+  entryCheck,
   onSubmit,
   onCancel,
   isCreating,
@@ -526,6 +528,7 @@ function NewTargetForm({
   modules: ModuleDefinition[];
   initialName?: string;
   initialEntry?: string;
+  entryCheck: UiEntryCheckData;
   onSubmit: (data: NewTargetData) => void;
   onCancel: () => void;
   isCreating: boolean;
@@ -584,26 +587,30 @@ function NewTargetForm({
   useEffect(() => {
     if (!projectRoot || !entry.trim()) {
       setEntryStatus(null);
+      setIsCheckingEntry(false);
       return;
     }
-    const timer = window.setTimeout(async () => {
+    const timer = window.setTimeout(() => {
       setIsCheckingEntry(true);
-      try {
-        const result = await rpcClient?.requestAction<EntryStatus>("checkEntry", {
-          projectRoot,
-          entry,
-        });
-        setEntryStatus(
-          result ?? { fileExists: false, moduleExists: false, targetExists: false },
-        );
-      } catch {
-        setEntryStatus({ fileExists: false, moduleExists: false, targetExists: false });
-      } finally {
-        setIsCheckingEntry(false);
-      }
+      rpcClient?.sendAction("checkEntry", {
+        projectRoot,
+        entry: entry.trim(),
+      });
     }, 300);
     return () => window.clearTimeout(timer);
   }, [entry, projectRoot]);
+
+  useEffect(() => {
+    if (entryCheck.projectRoot !== projectRoot || entryCheck.entry !== entry.trim()) {
+      return;
+    }
+    setEntryStatus({
+      fileExists: entryCheck.fileExists,
+      moduleExists: entryCheck.moduleExists,
+      targetExists: entryCheck.targetExists,
+    });
+    setIsCheckingEntry(entryCheck.loading);
+  }, [entry, entryCheck, projectRoot]);
 
   const isValidEntryFormat = (value: string): boolean =>
     /\.ato:(.+)$/.test(value.trim());
@@ -794,6 +801,7 @@ export function ProjectTargetSelector({
   selectedTarget,
   onSelectTarget,
 }: ProjectTargetSelectorProps) {
+  const entryCheck = WebviewRpcClient.useSubscribe("entryCheck");
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [showNewTargetForm, setShowNewTargetForm] = useState(false);
   const [showEditTargetForm, setShowEditTargetForm] = useState(false);
@@ -851,30 +859,17 @@ export function ProjectTargetSelector({
       {showNewProjectForm ? (
         <NewProjectForm
           initialParentDirectory={defaultParentDirectory}
-          onSubmit={async (data) => {
+          onSubmit={(data) => {
             setIsCreatingProject(true);
             setCreateProjectError(null);
-            try {
-              const result = await rpcClient?.requestAction<{
-                projectRoot?: string | null;
-              }>("createProject", {
-                name: data.name,
-                parentDirectory: data.parentDirectory,
-                license: data.license,
-                description: data.description,
-              });
-              const projectRoot = result?.projectRoot;
-              if (projectRoot) {
-                onSelectProject(projectRoot);
-              }
-              setShowNewProjectForm(false);
-            } catch (error) {
-              setCreateProjectError(
-                error instanceof Error ? error.message : "Failed to create project",
-              );
-            } finally {
-              setIsCreatingProject(false);
-            }
+            rpcClient?.sendAction("createProject", {
+              name: data.name,
+              parentDirectory: data.parentDirectory,
+              license: data.license,
+              description: data.description,
+            });
+            setShowNewProjectForm(false);
+            setIsCreatingProject(false);
           }}
           onCancel={() => setShowNewProjectForm(false)}
           isCreating={isCreatingProject}
@@ -887,28 +882,17 @@ export function ProjectTargetSelector({
           projectName={activeProject.name}
           projectRoot={activeProject.root}
           modules={modules}
-          onSubmit={async (data) => {
+          entryCheck={entryCheck}
+          onSubmit={(data) => {
             setIsCreatingTarget(true);
             setCreateTargetError(null);
-            try {
-              const result = await rpcClient?.requestAction<{ target?: string | null }>(
-                "addBuildTarget",
-                {
-                  projectRoot: activeProject.root,
-                  name: data.name,
-                  entry: data.entry,
-                },
-              );
-              const targetName = result?.target || data.name;
-              onSelectTarget(targetName);
-              setShowNewTargetForm(false);
-            } catch (error) {
-              setCreateTargetError(
-                error instanceof Error ? error.message : "Failed to create build",
-              );
-            } finally {
-              setIsCreatingTarget(false);
-            }
+            rpcClient?.sendAction("addBuildTarget", {
+              projectRoot: activeProject.root,
+              name: data.name,
+              entry: data.entry,
+            });
+            setShowNewTargetForm(false);
+            setIsCreatingTarget(false);
           }}
           onCancel={() => setShowNewTargetForm(false)}
           isCreating={isCreatingTarget}
@@ -924,28 +908,18 @@ export function ProjectTargetSelector({
           modules={modules}
           initialName={activeTarget.name}
           initialEntry={activeTarget.entry}
-          onSubmit={async (data) => {
+          entryCheck={entryCheck}
+          onSubmit={(data) => {
             setIsUpdatingTarget(true);
             setEditTargetError(null);
-            try {
-              const result = await rpcClient?.requestAction<{ target?: string | null }>(
-                "updateBuildTarget",
-                {
-                  projectRoot: activeProject.root,
-                  oldName: activeTarget.name,
-                  newName: data.name,
-                  newEntry: data.entry,
-                },
-              );
-              onSelectTarget(result?.target || data.name);
-              setShowEditTargetForm(false);
-            } catch (error) {
-              setEditTargetError(
-                error instanceof Error ? error.message : "Failed to update build",
-              );
-            } finally {
-              setIsUpdatingTarget(false);
-            }
+            rpcClient?.sendAction("updateBuildTarget", {
+              projectRoot: activeProject.root,
+              oldName: activeTarget.name,
+              newName: data.name,
+              newEntry: data.entry,
+            });
+            setShowEditTargetForm(false);
+            setIsUpdatingTarget(false);
           }}
           onCancel={() => setShowEditTargetForm(false)}
           isCreating={isUpdatingTarget}
@@ -1006,20 +980,12 @@ export function ProjectTargetSelector({
                 setIsDeletingTarget(true);
                 setCreateTargetError(null);
                 setEditTargetError(null);
-                try {
-                  await rpcClient?.requestAction("deleteBuildTarget", {
-                    projectRoot: activeProject.root,
-                    name: activeTarget.name,
-                  });
-                  setShowEditTargetForm(false);
-                } catch (error) {
-                  setEditTargetError(
-                    error instanceof Error ? error.message : "Failed to delete build",
-                  );
-                  setShowEditTargetForm(true);
-                } finally {
-                  setIsDeletingTarget(false);
-                }
+                rpcClient?.sendAction("deleteBuildTarget", {
+                  projectRoot: activeProject.root,
+                  name: activeTarget.name,
+                });
+                setShowEditTargetForm(false);
+                setIsDeletingTarget(false);
               }}
               title="Delete selected build"
               disabled={!activeProject || !activeTarget || isDeletingTarget}

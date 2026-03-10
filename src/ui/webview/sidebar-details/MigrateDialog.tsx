@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Check, AlertCircle, Package, FileCode, Settings, FolderTree } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { rpcClient } from '../shared/rpcClient'
+import type { UiMigrationState } from '../../shared/generated-types'
 import './MigrateDialog.css'
 
 type StepStatus = 'idle' | 'running' | 'success' | 'error'
@@ -67,70 +68,49 @@ function buildGroups(steps: MigrationStep[], topics: TopicInfo[]): StepGroup[] {
 }
 
 interface MigrateDialogProps {
-  projectRoot: string
+  migration: UiMigrationState
   actualVersion: string
   onClose: () => void
 }
 
-export function MigrateDialog({ projectRoot, actualVersion, onClose }: MigrateDialogProps) {
-  const [steps, setSteps] = useState<MigrationStep[]>([])
-  const [groups, setGroups] = useState<StepGroup[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState<string | null>(null)
-
+export function MigrateDialog({ migration, actualVersion, onClose }: MigrateDialogProps) {
   const [selectedSteps, setSelectedSteps] = useState<Set<string>>(new Set())
-  const [stepStatuses, setStepStatuses] = useState<Record<string, StepStatus>>({})
-  const [stepErrors, setStepErrors] = useState<Record<string, string>>({})
-  const [isMigrating, setIsMigrating] = useState(false)
+  const stepKey = useMemo(
+    () => migration.steps.map((step) => step.id).join('|'),
+    [migration.steps],
+  )
+  const groups = useMemo(
+    () => buildGroups(migration.steps, migration.topics),
+    [migration.steps, migration.topics],
+  )
+  const stepStatuses = useMemo<Record<string, StepStatus>>(
+    () =>
+      Object.fromEntries(
+        migration.stepResults.map((result) => [result.stepId, result.status]),
+      ) as Record<string, StepStatus>,
+    [migration.stepResults],
+  )
+  const stepErrors = useMemo<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        migration.stepResults
+          .filter((result) => result.error)
+          .map((result) => [result.stepId, result.error!]),
+      ),
+    [migration.stepResults],
+  )
+  const isMigrating = migration.running
+  const allDone = migration.completed
+  const hasErrors =
+    migration.stepResults.some((result) => result.status === 'error') || Boolean(migration.error)
 
-  // Fetch steps from backend, retrying until WebSocket is connected
   useEffect(() => {
-    let cancelled = false
-    let retryTimeout: ReturnType<typeof setTimeout>
-    let retryCount = 0
-    const MAX_RETRIES = 30 // 15 seconds at 500ms intervals
-
-    async function fetchSteps() {
-      try {
-        const response = await rpcClient?.requestAction<{
-          steps?: MigrationStep[]
-          topics?: TopicInfo[]
-        }>('getMigrationSteps', {})
-        if (cancelled) return
-        const fetched: MigrationStep[] = response?.steps || []
-        const topics: TopicInfo[] = response?.topics || []
-        setSteps(fetched)
-        setGroups(buildGroups(fetched, topics))
-        setSelectedSteps(new Set(fetched.map(s => s.id)))
-        setLoading(false)
-      } catch (err) {
-        if (cancelled) return
-        // Retry if WebSocket isn't connected yet
-        if (String(err).includes('not connected') && retryCount < MAX_RETRIES) {
-          retryCount++
-          retryTimeout = setTimeout(fetchSteps, 500)
-        } else {
-          setFetchError(String(err))
-          setLoading(false)
-        }
-      }
-    }
-    fetchSteps()
-    return () => {
-      cancelled = true
-      clearTimeout(retryTimeout)
-    }
-  }, [])
-
-  const allDone = isMigrating && steps
-    .filter(s => selectedSteps.has(s.id))
-    .every(s => stepStatuses[s.id] === 'success' || stepStatuses[s.id] === 'error')
-
-  const hasErrors = Object.values(stepStatuses).some(s => s === 'error')
+    setSelectedSteps(new Set(migration.steps.map((step) => step.id)))
+  }, [migration.projectRoot, stepKey])
 
   const toggleStep = (stepId: string) => {
     if (isMigrating) return
-    const step = steps.find(s => s.id === stepId)
+    const step = migration.steps.find(s => s.id === stepId)
     if (step?.mandatory) return
     setSelectedSteps(prev => {
       const next = new Set(prev)
@@ -144,64 +124,16 @@ export function MigrateDialog({ projectRoot, actualVersion, onClose }: MigrateDi
   }
 
   const handleMigrate = () => {
-    const selected = steps
+    const selected = migration.steps
       .filter(s => selectedSteps.has(s.id))
       .map(s => s.id)
     if (selected.length === 0) return
 
-    setIsMigrating(true)
-    const initialStatuses: Record<string, StepStatus> = {}
-    for (const id of selected) {
-      initialStatuses[id] = 'running'
-    }
-    setStepStatuses(initialStatuses)
-    setStepErrors({})
-
     rpcClient?.sendAction('migrateProjectSteps', {
-      projectRoot,
+      projectRoot: migration.projectRoot,
       steps: selected,
     })
   }
-
-  // Listen for per-step results
-  const handleStepResult = useCallback((data: string) => {
-    let detail: {
-      project_root?: string
-      step?: string
-      success?: boolean
-      error?: string | null
-    }
-    try {
-      const message = JSON.parse(data) as { type?: string } & typeof detail
-      if (message.type !== 'migration_step_result') {
-        return
-      }
-      detail = message
-    } catch {
-      return
-    }
-    if (detail.project_root !== projectRoot) return
-    const stepId = detail.step
-    if (!stepId) return
-
-    if (detail.success) {
-      setStepStatuses(prev => ({ ...prev, [stepId]: 'success' }))
-    } else {
-      setStepStatuses(prev => ({ ...prev, [stepId]: 'error' }))
-      if (detail.error) {
-        setStepErrors(prev => ({ ...prev, [stepId]: detail.error! }))
-      }
-    }
-  }, [projectRoot])
-
-  useEffect(() => {
-    const client = rpcClient
-    if (!client) {
-      return
-    }
-    client.addRawListener(handleStepResult)
-    return () => client.removeRawListener(handleStepResult)
-  }, [handleStepResult])
 
   // Keyboard: Escape to close when not migrating
   useEffect(() => {
@@ -246,7 +178,7 @@ export function MigrateDialog({ projectRoot, actualVersion, onClose }: MigrateDi
 
   const versionDisplay = actualVersion || 'the latest version'
 
-  if (loading) {
+  if (migration.loading) {
     return (
       <div className="migrate-page">
         <div className="migrate-header">
@@ -260,7 +192,7 @@ export function MigrateDialog({ projectRoot, actualVersion, onClose }: MigrateDi
     )
   }
 
-  if (fetchError) {
+  if (migration.error && migration.steps.length === 0) {
     return (
       <div className="migrate-page">
         <div className="migrate-header">
@@ -269,7 +201,7 @@ export function MigrateDialog({ projectRoot, actualVersion, onClose }: MigrateDi
         </div>
         <div className="migrate-banner error">
           <AlertCircle size={16} />
-          <span>{fetchError}</span>
+          <span>{migration.error}</span>
         </div>
         <div className="migrate-actions">
           <button type="button" className="migrate-btn secondary" onClick={onClose}>
@@ -362,7 +294,7 @@ export function MigrateDialog({ projectRoot, actualVersion, onClose }: MigrateDi
       {allDone && hasErrors && (
         <div className="migrate-banner error">
           <AlertCircle size={16} />
-          <span>Some steps failed. Check the errors above and try again or fix them manually.</span>
+          <span>{migration.error || 'Some steps failed. Check the errors above and try again or fix them manually.'}</span>
         </div>
       )}
 

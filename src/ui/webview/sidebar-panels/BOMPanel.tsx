@@ -11,18 +11,8 @@ import {
 } from "lucide-react";
 import { EmptyState, PanelSearchBox } from "../shared/components";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
-import type { Build, UiBOMComponent } from "../../shared/generated-types";
+import type { UiBOMComponent, UiLcscPartData } from "../../shared/generated-types";
 import "./BOMPanel.css";
-
-interface LcscPartData {
-  manufacturer?: string | null;
-  mpn?: string | null;
-  description?: string | null;
-  stock?: number | null;
-  unit_cost?: number | null;
-  is_basic?: boolean | null;
-  is_preferred?: boolean | null;
-}
 
 interface UsageLocation {
   path: string;
@@ -421,48 +411,25 @@ export function BOMPanel() {
   const { selectedProject: projectRoot, selectedTarget } = WebviewRpcClient.useSubscribe("projectState");
   const bomData = WebviewRpcClient.useSubscribe("bomData");
   const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
+  const buildsByProjectData = WebviewRpcClient.useSubscribe("buildsByProjectData");
+  const lcscPartsData = WebviewRpcClient.useSubscribe("lcscPartsData");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
-  const [lcscParts, setLcscParts] = useState<Record<string, LcscPartData | null>>({});
-  const [lcscLoadingIds, setLcscLoadingIds] = useState<Set<string>>(new Set());
-  const [latestBuildInfo, setLatestBuildInfo] = useState<Build | null>(null);
   const [forceRefreshBuildId, setForceRefreshBuildId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const lcscRequestIdRef = useRef(0);
   const lastLcscRefreshBuildIdRef = useRef<string | null>(null);
 
   const target = selectedTarget ?? "default";
 
   const refreshBom = useCallback(() => {
     if (!projectRoot) {
-      setIsLoading(false);
-      setError(null);
       return;
     }
-    const client = rpcClient;
-    if (!client) {
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    void client
-      .requestAction("getBom", { projectRoot, target })
-      .catch((requestError: unknown) => {
-        setError(requestError instanceof Error ? requestError.message : "Failed to load BOM");
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    rpcClient?.sendAction("getBom", { projectRoot, target });
   }, [projectRoot, target]);
 
   useEffect(() => {
     setExpandedIds(new Set());
-    setLcscParts({});
-    setLcscLoadingIds(new Set());
-    setLatestBuildInfo(null);
     setForceRefreshBuildId(null);
     lastLcscRefreshBuildIdRef.current = null;
     refreshBom();
@@ -481,22 +448,21 @@ export function BOMPanel() {
     if (!projectRoot) {
       return;
     }
-    const client = rpcClient;
-    if (!client) {
-      return;
-    }
-    void client.requestAction<{ builds: Build[] }>("getBuildsByProject", {
-        projectRoot,
-        target,
-        limit: 1,
-      })
-      .then((result) => {
-        setLatestBuildInfo(result.builds[0] ?? null);
-      })
-      .catch(() => {
-        setLatestBuildInfo(null);
-      });
+    rpcClient?.sendAction("getBuildsByProject", {
+      projectRoot,
+      target,
+      limit: 1,
+    });
   }, [projectRoot, target]);
+
+  const latestBuildInfo = useMemo(
+    () =>
+      buildsByProjectData.projectRoot === projectRoot &&
+      buildsByProjectData.target === target
+        ? buildsByProjectData.builds[0] ?? null
+        : null,
+    [buildsByProjectData, projectRoot, target],
+  );
 
   useEffect(() => {
     const buildId = latestBuildInfo?.buildId;
@@ -545,56 +511,48 @@ export function BOMPanel() {
     if (!projectRoot || idsToRequest.length === 0) {
       return;
     }
+    const lcscParts =
+      lcscPartsData.projectRoot === projectRoot && lcscPartsData.target === target
+        ? lcscPartsData.parts
+        : {};
+    const lcscLoadingIds = new Set(
+      lcscPartsData.projectRoot === projectRoot && lcscPartsData.target === target
+        ? lcscPartsData.loadingIds
+        : [],
+    );
     const missing = forceRefresh
       ? idsToRequest
-      : idsToRequest.filter((id) => !(id in lcscParts));
+      : idsToRequest.filter((id) => !(id in lcscParts) && !lcscLoadingIds.has(id));
     if (missing.length === 0) {
       return;
     }
-    const client = rpcClient;
-    if (!client) {
-      return;
-    }
-
-    const requestId = ++lcscRequestIdRef.current;
-    setLcscLoadingIds((prev) => {
-      const next = new Set(prev);
-      for (const id of missing) {
-        next.add(id);
-      }
-      return next;
+    rpcClient?.sendAction("fetchLcscParts", {
+      lcscIds: missing,
+      projectRoot,
+      target,
     });
+    if (forceRefresh && latestBuildInfo?.buildId) {
+      lastLcscRefreshBuildIdRef.current = latestBuildInfo.buildId;
+      setForceRefreshBuildId(null);
+    }
+  }, [forceRefreshBuildId, latestBuildInfo?.buildId, lcscIds, lcscIdsToFetch, lcscPartsData, projectRoot, target]);
 
-    void client.requestAction<{ parts: Record<string, LcscPartData | null> }>("fetchLcscParts", {
-        lcscIds: missing,
-        projectRoot,
-        target,
-      })
-      .then((result) => {
-        if (requestId !== lcscRequestIdRef.current) {
-          return;
-        }
-        setLcscParts((prev) => ({ ...prev, ...result.parts }));
-      })
-      .catch(() => {
-        if (requestId !== lcscRequestIdRef.current) {
-          return;
-        }
-      })
-      .finally(() => {
-        setLcscLoadingIds((prev) => {
-          const next = new Set(prev);
-          for (const id of missing) {
-            next.delete(id);
-          }
-          return next;
-        });
-        if (forceRefresh && latestBuildInfo?.buildId) {
-          lastLcscRefreshBuildIdRef.current = latestBuildInfo.buildId;
-          setForceRefreshBuildId(null);
-        }
-      });
-  }, [forceRefreshBuildId, latestBuildInfo?.buildId, lcscIds, lcscIdsToFetch, lcscParts, projectRoot, target]);
+  const lcscParts = useMemo<Record<string, UiLcscPartData | null>>(
+    () =>
+      lcscPartsData.projectRoot === projectRoot && lcscPartsData.target === target
+        ? lcscPartsData.parts
+        : {},
+    [lcscPartsData, projectRoot, target],
+  );
+  const lcscLoadingIds = useMemo(
+    () =>
+      new Set(
+        lcscPartsData.projectRoot === projectRoot && lcscPartsData.target === target
+          ? lcscPartsData.loadingIds
+          : [],
+      ),
+    [lcscPartsData, projectRoot, target],
+  );
 
   const bomComponents = useMemo((): BOMComponentUI[] => {
     return bomData.components.map((component) => {
@@ -609,9 +567,9 @@ export function BOMPanel() {
         return uiComponent;
       }
 
-      if (uiComponent.unitCost == null && lcscInfo.unit_cost != null) {
-        uiComponent.unitCost = lcscInfo.unit_cost;
-        uiComponent.totalCost = lcscInfo.unit_cost * uiComponent.quantity;
+      if (uiComponent.unitCost == null && lcscInfo.unitCost != null) {
+        uiComponent.unitCost = lcscInfo.unitCost;
+        uiComponent.totalCost = lcscInfo.unitCost * uiComponent.quantity;
       }
       if (uiComponent.inStock == null && lcscInfo.stock != null) {
         uiComponent.inStock = lcscInfo.stock > 0;
@@ -626,11 +584,11 @@ export function BOMPanel() {
       if (!uiComponent.mpn && lcscInfo.mpn) {
         uiComponent.mpn = lcscInfo.mpn;
       }
-      if (uiComponent.isBasic == null && lcscInfo.is_basic != null) {
-        uiComponent.isBasic = lcscInfo.is_basic;
+      if (uiComponent.isBasic == null && lcscInfo.isBasic != null) {
+        uiComponent.isBasic = lcscInfo.isBasic;
       }
-      if (uiComponent.isPreferred == null && lcscInfo.is_preferred != null) {
-        uiComponent.isPreferred = lcscInfo.is_preferred;
+      if (uiComponent.isPreferred == null && lcscInfo.isPreferred != null) {
+        uiComponent.isPreferred = lcscInfo.isPreferred;
       }
 
       return uiComponent;
@@ -736,7 +694,7 @@ export function BOMPanel() {
     return "Run a build to generate the Bill of Materials";
   };
 
-  if (isLoading) {
+  if (bomData.loading) {
     return (
       <div className="bom-panel">
         <PanelSearchBox value={searchQuery} onChange={setSearchQuery} placeholder="Search value, MPN..." />
@@ -748,11 +706,11 @@ export function BOMPanel() {
     );
   }
 
-  if (error) {
+  if (bomData.error) {
     return (
       <div className="bom-panel">
         <PanelSearchBox value={searchQuery} onChange={setSearchQuery} placeholder="Search value, MPN..." />
-        <EmptyState title="Error loading BOM" description={error} />
+        <EmptyState title="Error loading BOM" description={bomData.error} />
       </div>
     );
   }

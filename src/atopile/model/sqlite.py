@@ -28,6 +28,19 @@ def _ensure_db_dir(db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def close_thread_connections(db_paths: set[Path] | None = None) -> None:
+    connections = getattr(_thread_local, "connections", None)
+    if not connections:
+        return
+
+    targets = db_paths or set(connections)
+    for db_path in list(targets):
+        conn = connections.pop(db_path, None)
+        if conn is None:
+            continue
+        conn.close()
+
+
 @contextmanager
 def _get_connection(db_path: Path, timeout: float = 30.0):
     """

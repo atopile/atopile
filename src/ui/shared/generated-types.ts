@@ -382,6 +382,10 @@ export interface UiBOMComponent {
 }
 
 export interface UiBOMData {
+  projectRoot: string | null;
+  target: string | null;
+  loading: boolean;
+  error: string | null;
   version: string | null;
   buildId: string | null;
   components: UiBOMComponent[];
@@ -403,12 +407,30 @@ export interface UiBOMUsage {
   line: number | null;
 }
 
+export interface UiBlobAssetData {
+  action: string | null;
+  requestKey: string;
+  contentType: string | null;
+  filename: string | null;
+  data: string | null;
+  loading: boolean;
+  error: string | null;
+}
+
 export interface UiBuildLogRequest {
   buildId: string;
   stage: string | null;
   logLevels: UiLogLevel[] | null;
   audience: UiAudience | null;
   count: number | null;
+}
+
+export interface UiBuildsByProjectData {
+  projectRoot: string | null;
+  target: string | null;
+  limit: number;
+  builds: Build[];
+  loading: boolean;
 }
 
 export interface UiCoreStatus {
@@ -420,9 +442,24 @@ export interface UiCoreStatus {
   coreServerPort: number;
 }
 
+export interface UiEntryCheckData {
+  projectRoot: string | null;
+  entry: string;
+  fileExists: boolean;
+  moduleExists: boolean;
+  targetExists: boolean;
+  loading: boolean;
+}
+
 export interface UiExtensionSettings {
   devPath: string;
   autoInstall: boolean;
+}
+
+export interface UiFileActionData {
+  action: "none" | "create_file" | "create_folder" | "rename" | "duplicate" | "delete";
+  path: string | null;
+  isFolder: boolean;
 }
 
 export interface UiInstalledPartItem {
@@ -437,6 +474,31 @@ export interface UiInstalledPartItem {
 
 export interface UiInstalledPartsData {
   parts: UiInstalledPartItem[];
+}
+
+export interface UiLayoutData {
+  projectRoot: string | null;
+  target: string | null;
+  path: string | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export interface UiLcscPartData {
+  manufacturer: string | null;
+  mpn: string | null;
+  description: string | null;
+  stock: number | null;
+  unitCost: number | null;
+  isBasic: boolean | null;
+  isPreferred: boolean | null;
+}
+
+export interface UiLcscPartsData {
+  projectRoot: string | null;
+  target: string | null;
+  parts: Record<string, UiLcscPartData | null>;
+  loadingIds: string[];
 }
 
 export interface UiLogEntry {
@@ -594,6 +656,12 @@ export interface UiStore {
   structureData: UiStructureData;
   variablesData: UiVariablesData;
   bomData: UiBOMData;
+  entryCheck: UiEntryCheckData;
+  lcscPartsData: UiLcscPartsData;
+  buildsByProjectData: UiBuildsByProjectData;
+  layoutData: UiLayoutData;
+  blobAsset: UiBlobAssetData;
+  fileAction: UiFileActionData;
 }
 
 export interface UiStructureData {
@@ -624,7 +692,7 @@ export interface UiVariablesData {
   nodes: UiVariableNode[];
 }
 
-export const STORE_KEYS = ["bomData", "coreStatus", "currentBuilds", "extensionSettings", "installedParts", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "sidebarDetails", "stdlibData", "structureData", "variablesData"] as const;
+export const STORE_KEYS = ["blobAsset", "bomData", "buildsByProjectData", "coreStatus", "currentBuilds", "entryCheck", "extensionSettings", "fileAction", "installedParts", "layoutData", "lcscPartsData", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "sidebarDetails", "stdlibData", "structureData", "variablesData"] as const;
 export type StoreKey = typeof STORE_KEYS[number];
 
 export const DEFAULT_Build: Build = {
@@ -689,8 +757,12 @@ export function createUiBOMComponent(): UiBOMComponent {
 export const DEFAULT_UiBOMData: UiBOMData = {
   "buildId": null,
   "components": [],
+  "error": null,
   "estimatedCost": null,
+  "loading": false,
   "outOfStock": 0,
+  "projectRoot": null,
+  "target": null,
   "totalQuantity": 0,
   "uniqueParts": 0,
   "version": null
@@ -720,6 +792,20 @@ export function createUiBOMUsage(): UiBOMUsage {
   return cloneGenerated(DEFAULT_UiBOMUsage);
 }
 
+export const DEFAULT_UiBlobAssetData: UiBlobAssetData = {
+  "action": null,
+  "contentType": null,
+  "data": null,
+  "error": null,
+  "filename": null,
+  "loading": false,
+  "requestKey": ""
+};
+
+export function createUiBlobAssetData(): UiBlobAssetData {
+  return cloneGenerated(DEFAULT_UiBlobAssetData);
+}
+
 export const DEFAULT_UiBuildLogRequest: UiBuildLogRequest = {
   "audience": null,
   "buildId": "",
@@ -730,6 +816,18 @@ export const DEFAULT_UiBuildLogRequest: UiBuildLogRequest = {
 
 export function createUiBuildLogRequest(): UiBuildLogRequest {
   return cloneGenerated(DEFAULT_UiBuildLogRequest);
+}
+
+export const DEFAULT_UiBuildsByProjectData: UiBuildsByProjectData = {
+  "builds": [],
+  "limit": 0,
+  "loading": false,
+  "projectRoot": null,
+  "target": null
+};
+
+export function createUiBuildsByProjectData(): UiBuildsByProjectData {
+  return cloneGenerated(DEFAULT_UiBuildsByProjectData);
 }
 
 export const DEFAULT_UiCoreStatus: UiCoreStatus = {
@@ -745,6 +843,19 @@ export function createUiCoreStatus(): UiCoreStatus {
   return cloneGenerated(DEFAULT_UiCoreStatus);
 }
 
+export const DEFAULT_UiEntryCheckData: UiEntryCheckData = {
+  "entry": "",
+  "fileExists": false,
+  "loading": false,
+  "moduleExists": false,
+  "projectRoot": null,
+  "targetExists": false
+};
+
+export function createUiEntryCheckData(): UiEntryCheckData {
+  return cloneGenerated(DEFAULT_UiEntryCheckData);
+}
+
 export const DEFAULT_UiExtensionSettings: UiExtensionSettings = {
   "autoInstall": true,
   "devPath": ""
@@ -752,6 +863,16 @@ export const DEFAULT_UiExtensionSettings: UiExtensionSettings = {
 
 export function createUiExtensionSettings(): UiExtensionSettings {
   return cloneGenerated(DEFAULT_UiExtensionSettings);
+}
+
+export const DEFAULT_UiFileActionData: UiFileActionData = {
+  "action": "none",
+  "isFolder": false,
+  "path": null
+};
+
+export function createUiFileActionData(): UiFileActionData {
+  return cloneGenerated(DEFAULT_UiFileActionData);
 }
 
 export const DEFAULT_UiInstalledPartItem: UiInstalledPartItem = {
@@ -774,6 +895,43 @@ export const DEFAULT_UiInstalledPartsData: UiInstalledPartsData = {
 
 export function createUiInstalledPartsData(): UiInstalledPartsData {
   return cloneGenerated(DEFAULT_UiInstalledPartsData);
+}
+
+export const DEFAULT_UiLayoutData: UiLayoutData = {
+  "error": null,
+  "loading": false,
+  "path": null,
+  "projectRoot": null,
+  "target": null
+};
+
+export function createUiLayoutData(): UiLayoutData {
+  return cloneGenerated(DEFAULT_UiLayoutData);
+}
+
+export const DEFAULT_UiLcscPartData: UiLcscPartData = {
+  "description": null,
+  "isBasic": null,
+  "isPreferred": null,
+  "manufacturer": null,
+  "mpn": null,
+  "stock": null,
+  "unitCost": null
+};
+
+export function createUiLcscPartData(): UiLcscPartData {
+  return cloneGenerated(DEFAULT_UiLcscPartData);
+}
+
+export const DEFAULT_UiLcscPartsData: UiLcscPartsData = {
+  "loadingIds": [],
+  "parts": {},
+  "projectRoot": null,
+  "target": null
+};
+
+export function createUiLcscPartsData(): UiLcscPartsData {
+  return cloneGenerated(DEFAULT_UiLcscPartsData);
 }
 
 export const DEFAULT_UiLogEntry: UiLogEntry = {
@@ -950,14 +1108,34 @@ export function createUiSidebarDetails(): UiSidebarDetails {
 }
 
 export const DEFAULT_UiStore: UiStore = {
+  "blobAsset": {
+    "action": null,
+    "contentType": null,
+    "data": null,
+    "error": null,
+    "filename": null,
+    "loading": false,
+    "requestKey": ""
+  },
   "bomData": {
     "buildId": null,
     "components": [],
+    "error": null,
     "estimatedCost": null,
+    "loading": false,
     "outOfStock": 0,
+    "projectRoot": null,
+    "target": null,
     "totalQuantity": 0,
     "uniqueParts": 0,
     "version": null
+  },
+  "buildsByProjectData": {
+    "builds": [],
+    "limit": 0,
+    "loading": false,
+    "projectRoot": null,
+    "target": null
   },
   "coreStatus": {
     "atoBinary": "",
@@ -968,12 +1146,38 @@ export const DEFAULT_UiStore: UiStore = {
     "version": ""
   },
   "currentBuilds": [],
+  "entryCheck": {
+    "entry": "",
+    "fileExists": false,
+    "loading": false,
+    "moduleExists": false,
+    "projectRoot": null,
+    "targetExists": false
+  },
   "extensionSettings": {
     "autoInstall": true,
     "devPath": ""
   },
+  "fileAction": {
+    "action": "none",
+    "isFolder": false,
+    "path": null
+  },
   "installedParts": {
     "parts": []
+  },
+  "layoutData": {
+    "error": null,
+    "loading": false,
+    "path": null,
+    "projectRoot": null,
+    "target": null
+  },
+  "lcscPartsData": {
+    "loadingIds": [],
+    "parts": {},
+    "projectRoot": null,
+    "target": null
   },
   "packagesSummary": {
     "installedCount": 0,

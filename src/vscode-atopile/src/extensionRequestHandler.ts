@@ -48,7 +48,7 @@ export class ExtensionRequestHandler {
             error: "panel-logs is not a panel; use vscode.showLogsView",
           };
         }
-        this._logger.info(`openPanel requested panelId=${panelId}`);
+        this._logger.debug(`openPanel requested panelId=${panelId}`);
         try {
           this._openPanel(panelId);
         } catch (error) {
@@ -56,7 +56,7 @@ export class ExtensionRequestHandler {
           this._logger.error(`openPanel failed panelId=${panelId}\n${detail}`);
           throw error;
         }
-        this._logger.info(`openPanel completed panelId=${panelId}`);
+        this._logger.debug(`openPanel completed panelId=${panelId}`);
         return { ok: true };
       }
 
@@ -136,6 +136,11 @@ export class ExtensionRequestHandler {
         };
       }
 
+      case "vscode.restartExtensionHost": {
+        void vscode.commands.executeCommand("workbench.action.restartExtensionHost");
+        return { ok: true };
+      }
+
       case "vscode.log": {
         const level = typeof message.level === "string" ? message.level : "log";
         const text = typeof message.message === "string" ? message.message : "";
@@ -143,8 +148,6 @@ export class ExtensionRequestHandler {
           this._logger.error(`[Webview] ${text}`);
         } else if (level === "warn") {
           this._logger.warn(`[Webview] ${text}`);
-        } else {
-          this._logger.info(`[Webview] ${text}`);
         }
         return { ok: true };
       }

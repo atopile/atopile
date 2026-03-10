@@ -250,7 +250,7 @@ function App() {
         }
         return (
           <MigrateDialog
-            projectRoot={sidebarDetails.migration.projectRoot}
+            migration={sidebarDetails.migration}
             actualVersion={coreStatus.version}
             onClose={() => rpcClient?.sendAction("closeSidebarDetails")}
           />

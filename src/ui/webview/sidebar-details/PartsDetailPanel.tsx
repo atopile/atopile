@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Loader2, CheckCircle, AlertCircle, Download, Cuboid, Image, FileCode } from 'lucide-react'
 import type { UiPartDetail } from '../../shared/generated-types'
 import { CopyableCodeBlock, StepViewer } from '../shared/components'
@@ -6,13 +6,6 @@ import { rpcClient } from '../shared/rpcClient'
 import { useBlobAssetUrl } from '../shared/utils'
 import './PackageDetailPanel.css'
 import './PartsDetailPanel.css'
-
-async function requestAction<T>(action: string, payload: Record<string, unknown>): Promise<T> {
-  if (!rpcClient) {
-    throw new Error('RPC client unavailable')
-  }
-  return rpcClient.requestAction<T>(action, payload)
-}
 
 interface PartsDetailPanelProps {
   part: UiPartDetail
@@ -39,44 +32,13 @@ export function PartsDetailPanel({
   projectRoot,
   onClose,
 }: PartsDetailPanelProps) {
-  const [details, setDetails] = useState<UiPartDetail | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [isInstalling, setIsInstalling] = useState(false)
   const [isUninstalling, setIsUninstalling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   // Track local override of installed state: null = use part.installed, true/false = override
   const [installedOverride, setInstalledOverride] = useState<boolean | null>(null)
   const [activeVisualTab, setActiveVisualTab] = useState<'image' | '3d'>('image')
-
-  useEffect(() => {
-    let active = true
-    setIsLoading(true)
-    setError(null)
-    setDetails(null)
-    requestAction<{ part?: UiPartDetail | null }>('getPartDetails', {
-      lcsc: part.lcsc,
-      projectRoot,
-      identifier: part.identifier,
-      installed: part.installed,
-    })
-      .then((response) => {
-        if (!active) return
-        setDetails(response.part ?? null)
-      })
-      .catch((err) => {
-        if (!active) return
-        setError(err instanceof Error ? err.message : 'Failed to load part details')
-      })
-      .finally(() => {
-        if (!active) return
-        setIsLoading(false)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [part.identifier, part.installed, part.lcsc, projectRoot])
+  const details = part
 
   const attributes = useMemo(() => {
     if (!details?.attributes) return []
@@ -97,22 +59,13 @@ export function PartsDetailPanel({
 
     setIsInstalling(true)
     setActionError(null)
-    try {
-      const response = await requestAction<{ success?: boolean }>('installPart', {
-        lcsc: part.lcsc,
-        projectRoot,
-      })
-      if (!response.success) {
-        setActionError('Install failed')
-      } else {
-        setInstalledOverride(true)
-        cooldownUntil.current = Date.now() + COOLDOWN_MS
-      }
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Install failed')
-    } finally {
-      setIsInstalling(false)
-    }
+    rpcClient?.sendAction('installPart', {
+      lcsc: part.lcsc,
+      projectRoot,
+    })
+    setInstalledOverride(true)
+    cooldownUntil.current = Date.now() + COOLDOWN_MS
+    setIsInstalling(false)
   }
 
   const handleUninstall = async () => {
@@ -125,22 +78,13 @@ export function PartsDetailPanel({
 
     setIsUninstalling(true)
     setActionError(null)
-    try {
-      const response = await requestAction<{ success?: boolean }>('uninstallPart', {
-        lcsc: part.lcsc,
-        projectRoot,
-      })
-      if (!response.success) {
-        setActionError('Uninstall failed')
-      } else {
-        setInstalledOverride(false)
-        cooldownUntil.current = Date.now() + COOLDOWN_MS
-      }
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Uninstall failed')
-    } finally {
-      setIsUninstalling(false)
-    }
+    rpcClient?.sendAction('uninstallPart', {
+      lcsc: part.lcsc,
+      projectRoot,
+    })
+    setInstalledOverride(false)
+    cooldownUntil.current = Date.now() + COOLDOWN_MS
+    setIsUninstalling(false)
   }
 
   const description = details?.description || part.description || 'No description available.'
@@ -174,22 +118,7 @@ export function PartsDetailPanel({
         </div>
       </div>
 
-      {isLoading && (
-        <div className="detail-panel-loading">
-          <Loader2 size={24} className="spin" />
-          <span>Loading part details...</span>
-        </div>
-      )}
-
-      {!isLoading && error && (
-        <div className="detail-panel-error">
-          <AlertCircle size={18} />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {!isLoading && !error && (
-        <div className="detail-panel-content">
+      <div className="detail-panel-content">
           <div className="parts-detail-grid">
             <div className="parts-detail-section">
               <div className="detail-install-row">
@@ -353,7 +282,6 @@ export function PartsDetailPanel({
             </div>
           </div>
         </div>
-      )}
     </div>
   )
 }

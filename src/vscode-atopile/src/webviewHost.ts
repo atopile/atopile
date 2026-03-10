@@ -121,11 +121,11 @@ export class PanelHost implements vscode.Disposable {
     }
     try {
       const existing = this._panels.get(panelId);
-      this._logger.info(`openPanel panelId=${panelId} hasExisting=${Boolean(existing)}`);
+      this._logger.debug(`openPanel panelId=${panelId} hasExisting=${Boolean(existing)}`);
       if (existing?.isOpen()) {
         try {
           existing.reveal(this._panelColumn(panelId));
-          this._logger.info(
+          this._logger.debug(
             `revealed existing panelId=${panelId} targetColumn=${this._panelColumn(panelId)}`,
           );
           return;
@@ -140,7 +140,7 @@ export class PanelHost implements vscode.Disposable {
         this._panels.delete(panelId);
       }
 
-      this._logger.info(
+      this._logger.debug(
         `creating panelId=${panelId} targetColumn=${this._panelColumn(panelId)}`,
       );
       const panel = new HostedPanel(
@@ -150,12 +150,12 @@ export class PanelHost implements vscode.Disposable {
         this._layoutServerPort,
         this._panelColumn(panelId),
         () => {
-          this._logger.info(`onDidDispose panelId=${panelId}`);
+          this._logger.debug(`onDidDispose panelId=${panelId}`);
           this._panels.delete(panelId);
         },
       );
       this._panels.set(panelId, panel);
-      this._logger.info(`created panelId=${panelId}`);
+      this._logger.debug(`created panelId=${panelId}`);
     } catch (error) {
       const detail = error instanceof Error ? error.stack ?? error.message : String(error);
       this._logger.error(`openPanel exception panelId=${panelId}\n${detail}`);

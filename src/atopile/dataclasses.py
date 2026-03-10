@@ -1272,6 +1272,10 @@ class UiBOMComponent(CamelModel):
 class UiBOMData(CamelModel):
     """BOM panel data for the VS Code UI store."""
 
+    project_root: str | None = None
+    target: str | None = None
+    loading: bool = False
+    error: str | None = None
     version: str | None = None
     build_id: str | None = None
     components: list[UiBOMComponent] = Field(default_factory=list)
@@ -1279,6 +1283,80 @@ class UiBOMData(CamelModel):
     unique_parts: int = 0
     estimated_cost: float | None = None
     out_of_stock: int = 0
+
+
+class UiEntryCheckData(CamelModel):
+    """Entry validation state for the build target editor."""
+
+    project_root: str | None = None
+    entry: str = ""
+    file_exists: bool = False
+    module_exists: bool = False
+    target_exists: bool = False
+    loading: bool = False
+
+
+class UiLcscPartData(CamelModel):
+    """LCSC lookup data used to enrich BOM rows."""
+
+    manufacturer: str | None = None
+    mpn: str | None = None
+    description: str | None = None
+    stock: int | None = None
+    unit_cost: float | None = None
+    is_basic: bool | None = None
+    is_preferred: bool | None = None
+
+
+class UiLcscPartsData(CamelModel):
+    """State for BOM LCSC part enrichment requests."""
+
+    project_root: str | None = None
+    target: str | None = None
+    parts: dict[str, UiLcscPartData | None] = Field(default_factory=dict)
+    loading_ids: list[str] = Field(default_factory=list)
+
+
+class UiBuildsByProjectData(CamelModel):
+    """Recent builds query state for a selected project/target."""
+
+    project_root: str | None = None
+    target: str | None = None
+    limit: int = 0
+    builds: list[Build] = Field(default_factory=list)
+    loading: bool = False
+
+
+class UiLayoutData(CamelModel):
+    """Layout panel state for the active project selection."""
+
+    project_root: str | None = None
+    target: str | None = None
+    path: str | None = None
+    loading: bool = False
+    error: str | None = None
+
+
+class UiBlobAssetData(CamelModel):
+    """Generic binary asset fetch state for UI previews."""
+
+    action: str | None = None
+    request_key: str = ""
+    content_type: str | None = None
+    filename: str | None = None
+    data: str | None = None
+    loading: bool = False
+    error: str | None = None
+
+
+class UiFileActionData(CamelModel):
+    """Last file tree mutation emitted by the backend."""
+
+    action: Literal[
+        "none", "create_file", "create_folder", "rename", "duplicate", "delete"
+    ] = "none"
+    path: str | None = None
+    is_folder: bool = False
 
 
 class UiLogLevel(StrEnum):
