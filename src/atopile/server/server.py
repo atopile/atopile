@@ -124,9 +124,9 @@ class CoreServer:
             pass
 
         try:
-            from atopile.logging import BuildLogger
+            from atopile.logging import AtoLogger
 
-            BuildLogger.close_all()
+            AtoLogger.close_all()
         except Exception:
             pass
 

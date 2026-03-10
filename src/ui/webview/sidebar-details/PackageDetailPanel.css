@@ -136,6 +136,13 @@
   align-items: stretch;
 }
 
+.detail-install-split {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: stretch;
+  width: 100%;
+}
+
 .detail-version-select {
   flex: 1;
   max-width: 200px;
@@ -178,6 +185,17 @@
 
 .detail-install-btn.install:hover {
   background: var(--accent-hover);
+}
+
+.detail-install-btn.install-package {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.detail-install-btn.install-package:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
 }
 
 .detail-install-btn.update {

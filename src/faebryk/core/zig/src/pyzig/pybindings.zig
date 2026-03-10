@@ -353,6 +353,11 @@ pub fn Py_NotImplemented() *PyObject {
 
 // Exception types
 pub extern var PyExc_IndexError: *PyObject;
+pub extern var PyExc_RuntimeError: *PyObject;
+pub extern var PyExc_KeyError: *PyObject;
+
+// Dict API with PyObject key
+pub extern fn PyDict_GetItem(dict: ?*PyObject, key: ?*PyObject) ?*PyObject;
 
 // Rich comparison
 pub extern fn PyObject_RichCompareBool(o1: ?*PyObject, o2: ?*PyObject, opid: c_int) c_int;
