@@ -1,7 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
-import type { OpenLayoutRequest } from "../../shared/generated-types";
 
 declare global {
   interface Window {
@@ -14,24 +13,18 @@ const layoutServerUrl = window.__ATOPILE_LAYOUT_SERVER_URL__ ?? "";
 function App() {
   const projectState = WebviewRpcClient.useSubscribe("projectState");
   const layoutData = WebviewRpcClient.useSubscribe("layoutData");
-
-  const selection = useMemo<OpenLayoutRequest | null>(
-    () =>
-      projectState.selectedProject && projectState.selectedTarget
-        ? {
-            projectRoot: projectState.selectedProject,
-            target: projectState.selectedTarget,
-          }
-        : null,
-    [projectState.selectedProject, projectState.selectedTarget],
-  );
+  const projectRoot = projectState.selectedProjectRoot;
+  const selectedTarget = projectState.selectedTarget;
 
   useEffect(() => {
-    if (!layoutServerUrl || !selection) {
+    if (!layoutServerUrl || !projectRoot || !selectedTarget) {
       return;
     }
-    rpcClient?.sendAction("openLayout", selection);
-  }, [selection]);
+    rpcClient?.sendAction("openLayout", {
+      projectRoot,
+      target: selectedTarget,
+    });
+  }, [projectRoot, selectedTarget]);
 
   const { path: layoutPath, error, loading: isLoading } = layoutData;
 
@@ -44,7 +37,7 @@ function App() {
     );
   }
 
-  if (!selection) {
+  if (!projectRoot || !selectedTarget) {
     return (
       <div className="panel">
         <h2>Layout</h2>

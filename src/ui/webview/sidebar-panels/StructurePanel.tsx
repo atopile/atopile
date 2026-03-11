@@ -113,7 +113,7 @@ function ModuleNode({
 }
 
 export function StructurePanel() {
-  const { selectedProject: projectRoot, activeFilePath: activeFile } = WebviewRpcClient.useSubscribe("projectState");
+  const { selectedProjectRoot: projectRoot, activeFilePath: activeFile } = WebviewRpcClient.useSubscribe("projectState");
   const structureData = WebviewRpcClient.useSubscribe("structureData");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);

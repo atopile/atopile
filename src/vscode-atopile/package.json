@@ -83,6 +83,12 @@
                     "default": true,
                     "scope": "machine",
                     "description": "Auto-download uv if not found on PATH."
+                },
+                "atopile.enableChat": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "machine",
+                    "description": "Show the AI chat dock in the atopile sidebar."
                 }
             }
         },

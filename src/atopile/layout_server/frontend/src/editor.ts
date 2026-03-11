@@ -174,6 +174,7 @@ export class Editor {
             this.renderLoop.stop();
             this.client.disconnect();
         });
+        this.canvas.style.backgroundColor = "var(--vscode-editor-background)";
         this.renderer.setup();
         this.renderLoop.start();
     }

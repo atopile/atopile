@@ -270,13 +270,15 @@ function TreeNode({
 
 export function FilesPanel() {
   const projectState = WebviewRpcClient.useSubscribe("projectState");
-  const { selectedProject: projectRoot, activeFilePath } = projectState;
-  const projectFiles = WebviewRpcClient.useSubscribe("projectFiles");
+  const { selectedProjectRoot: projectRoot, activeFilePath } = projectState;
+  const projectFilesState = WebviewRpcClient.useSubscribe("projectFiles");
   const fileAction = WebviewRpcClient.useSubscribe("fileAction");
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [dialog, setDialog] = useState<FileDialogState | null>(null);
+  const projectFiles =
+    projectFilesState.projectRoot === projectRoot ? projectFilesState.files : [];
 
   const activeRelativePath =
     projectRoot && activeFilePath ? relativeToProject(projectRoot, activeFilePath) : null;

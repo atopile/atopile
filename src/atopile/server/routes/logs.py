@@ -12,28 +12,18 @@ Supports two modes:
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from atopile.dataclasses import Log
-from atopile.logging import get_logger
+from atopile.logging import get_logger, read_build_logs
 
 log = get_logger(__name__)
 
 router = APIRouter(tags=["logs"])
 
 STREAM_POLL_INTERVAL = 0.25
-_MAX_COUNT = 5000
-
-
-def _clamp(count: int) -> int:
-    return max(1, min(count, _MAX_COUNT))
-
-
-def _strip_id(row: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in row.items() if k != "id"}
 
 
 def _parse_filter_params(
@@ -49,17 +39,16 @@ async def _push_build_stream(
     query: Log.BuildStreamQuery,
     after_id: int,
 ) -> int:
-    from atopile.model.sqlite import Logs
-
     levels, audience = _parse_filter_params(query)
-    logs, new_last_id = Logs.fetch_chunk(
-        query.build_id,
+    logs, new_last_id = read_build_logs(
+        build_id=query.build_id,
         stage=query.stage,
-        levels=levels,
+        log_levels=levels,
         audience=audience,
         after_id=after_id,
-        count=_clamp(query.count),
+        count=query.count,
         order="ASC",
+        include_id=True,
     )
     if not logs:
         return after_id
@@ -91,7 +80,7 @@ async def _push_test_stream(
         levels=levels,
         audience=audience,
         after_id=after_id,
-        count=_clamp(query.count),
+        count=query.count,
         order="ASC",
     )
     if not logs:
@@ -199,7 +188,7 @@ async def websocket_logs(websocket: WebSocket) -> None:
                     levels=levels,
                     audience=audience,
                     after_id=0,
-                    count=_clamp(query.count),
+                    count=query.count,
                     order="DESC",
                 )
                 await websocket.send_json(
@@ -209,7 +198,9 @@ async def websocket_logs(websocket: WebSocket) -> None:
                         test_run_id=query.test_run_id,
                         test_name=query.test_name,
                         logs=[
-                            Log.EntryPydantic.model_validate(_strip_id(row))
+                            Log.EntryPydantic.model_validate(
+                                {k: v for k, v in row.items() if k != "id"}
+                            )
                             for row in rows
                         ],
                     ).model_dump()
@@ -240,17 +231,13 @@ async def websocket_logs(websocket: WebSocket) -> None:
                 await websocket.send_json(Log.Error(error=str(exc)).model_dump())
                 continue
 
-            from atopile.model.sqlite import Logs
-
             levels, audience = _parse_filter_params(query)
-            rows, _ = Logs.fetch_chunk(
-                query.build_id,
+            rows, _ = read_build_logs(
+                build_id=query.build_id,
                 stage=query.stage,
-                levels=levels,
+                log_levels=levels,
                 audience=audience,
-                after_id=0,
-                count=_clamp(query.count),
-                order="DESC",
+                count=query.count,
             )
             await websocket.send_json(
                 Log.Result(
@@ -258,9 +245,7 @@ async def websocket_logs(websocket: WebSocket) -> None:
                     build_id=query.build_id,
                     test_run_id="",
                     stage=query.stage,
-                    logs=[
-                        Log.EntryPydantic.model_validate(_strip_id(row)) for row in rows
-                    ],
+                    logs=[Log.EntryPydantic.model_validate(row) for row in rows],
                 ).model_dump()
             )
     except WebSocketDisconnect:

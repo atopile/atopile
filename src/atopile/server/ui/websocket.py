@@ -12,28 +12,61 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import time
 from pathlib import Path
 from typing import Any, cast
 
 import websockets
 from websockets.asyncio.server import ServerConnection
 
+from atopile.agent import AgentService
+from atopile.agent.api_models import (
+    AgentServiceError,
+)
+from atopile.agent.api_models import (
+    CreateRunRequest as AgentCreateRunRequest,
+)
+from atopile.agent.api_models import (
+    CreateSessionRequest as AgentCreateSessionRequest,
+)
+from atopile.agent.api_models import (
+    InterruptRunRequest as AgentInterruptRunRequest,
+)
+from atopile.agent.api_models import (
+    SteerRunRequest as AgentSteerRunRequest,
+)
+from atopile.agent.session_store import (
+    normalize_running_run_state,
+    persist_sessions_state,
+    record_agent_action_error,
+    runs_by_id,
+    runs_lock,
+    sessions_by_id,
+    sessions_lock,
+)
 from atopile.dataclasses import (
     AddBuildTargetRequest,
+    AppContext,
     BuildRequest,
     CreateProjectRequest,
     DeleteBuildTargetRequest,
     OpenLayoutRequest,
-    PackagesSummaryData,
     Project,
+    UiAgentData,
+    UiAgentMutation,
+    UiAgentSessionData,
+    UiBOMData,
     UiBuildLogRequest,
-    UiInstalledPartsData,
+    UiBuildsByProjectData,
+    UiLayoutData,
+    UiLcscPartsData,
     UiLogEntry,
     UiLogsErrorMessage,
     UiLogsStreamMessage,
-    UiPartDetail,
-    UiPartsSearchData,
+    UiProjectFilesData,
+    UiProjectState,
     UiSidebarDetails,
+    UiVariablesData,
     UpdateBuildTargetRequest,
 )
 from atopile.logging import get_logger
@@ -82,12 +115,15 @@ class CoreSocket:
         self._vscode_bridge = VscodeBridge()
         self._store = Store()
         self._store.on_change = self._on_store_change
+        self._agent_last_mutation: UiAgentMutation | None = None
+        self._agent = AgentService(
+            self._build_agent_context,
+            emit_progress=self._emit_agent_progress,
+        )
         self._project_files = FileWatcher(
             "project-files",
             paths=[],
-            on_change=lambda result: self._store.set(
-                "project_files", result.tree or []
-            ),
+            on_change=self._handle_project_files_change,
             glob="**/*",
             debounce_s=0.1,
             mode="tree",
@@ -95,6 +131,7 @@ class CoreSocket:
         self._store.set("current_builds", get_active_builds())
         self._store.set("previous_builds", get_finished_builds())
         self._store.set("queue_builds", get_queue_builds())
+        self._push_agent_state()
         self.bind_build_queue(_build_queue)
 
     # -- Client lifecycle --------------------------------------------------
@@ -156,18 +193,8 @@ class CoreSocket:
                 ws, session_id, field_name, self._store.dump(field_name)
             )
 
-    def _sidebar_details_state(self) -> UiSidebarDetails:
-        return cast(UiSidebarDetails, self._store.get("sidebar_details"))
-
-    def _projects_state(self) -> list[Project]:
-        return cast(list[Project], self._store.get("projects"))
-
-    def _sync_selected_build(self) -> None:
-        project_state = self._store.get("project_state")
-        self._store.set(
-            "selected_build",
-            builds.get_selected_build(project_state.selected_target),
-        )
+    def _build_agent_context(self) -> AppContext:
+        return AppContext(workspace_paths=list(self._discovery_paths))
 
     @staticmethod
     def _request_key(msg: dict[str, Any]) -> str:
@@ -189,109 +216,87 @@ class CoreSocket:
             return
         log.info("WebSocket %s", event)
 
-    async def _show_package_details(
+    def _build_agent_state(self) -> UiAgentData:
+        with sessions_lock:
+            sessions = list(sessions_by_id.values())
+        with runs_lock:
+            runs = dict(runs_by_id)
+
+        session_items: list[UiAgentSessionData] = []
+        for session in sessions:
+            active_run = runs.get(session.active_run_id or "")
+            if active_run is not None:
+                active_run = normalize_running_run_state(active_run)
+                if active_run.status != "running":
+                    active_run = None
+
+            session_items.append(
+                UiAgentSessionData(
+                    session_id=session.session_id,
+                    project_root=session.project_root,
+                    messages=list(session.messages),
+                    history=list(session.history),
+                    recent_selected_targets=list(session.recent_selected_targets),
+                    active_run_id=active_run.run_id if active_run else None,
+                    active_run_status=active_run.status if active_run else None,
+                    active_run_stop_requested=bool(
+                        active_run and active_run.stop_requested
+                    ),
+                    active_run_error=active_run.error if active_run else None,
+                    activity_label=session.activity_label,
+                    error=session.error,
+                    run_started_at=session.run_started_at,
+                    created_at=float(session.created_at),
+                    updated_at=float(session.updated_at),
+                )
+            )
+
+        session_items.sort(key=lambda session: session.updated_at, reverse=True)
+        return UiAgentData(
+            loaded=True,
+            sessions=session_items,
+            last_mutation=self._agent_last_mutation,
+        )
+
+    def _push_agent_state(
         self,
-        project_root: str | None,
-        package_id: str,
         *,
-        action_error: str | None = None,
+        action: str | None = None,
+        session_id: str | None = None,
+        run_id: str | None = None,
+        error: str | None = None,
     ) -> None:
-        packages_summary = cast(
-            PackagesSummaryData, self._store.get("packages_summary")
-        )
-        state = sidebar.package_details_loading(
-            self._sidebar_details_state(),
-            packages_summary,
-            project_root,
-            package_id,
-            action_error=action_error,
-        )
-        self._store.set("sidebar_details", state)
-        self._store.set(
-            "sidebar_details",
-            await sidebar.load_package_details(
-                state,
-                packages_summary,
-                project_root,
-                package_id,
-                action_error=action_error,
-            ),
-        )
+        if action is not None:
+            self._agent_last_mutation = UiAgentMutation(
+                action=action,
+                session_id=session_id,
+                run_id=run_id,
+                error=error,
+                updated_at=time.time(),
+            )
+        self._store.set("agent_data", self._build_agent_state())
 
-    async def _show_part_details(
-        self,
-        *,
-        project_root: str | None,
-        lcsc: str | None,
-        identifier: str | None = None,
-        installed: bool = False,
-        seed: UiPartDetail | None = None,
-        action_error: str | None = None,
-    ) -> None:
-        state = sidebar.part_details_loading(
-            self._sidebar_details_state(),
-            cast(UiInstalledPartsData, self._store.get("installed_parts")),
-            cast(UiPartsSearchData, self._store.get("parts_search")),
-            project_root=project_root,
-            lcsc=lcsc,
-            identifier=identifier,
-            installed=installed,
-            seed=seed,
-            action_error=action_error,
-        )
-        self._store.set("sidebar_details", state)
-        self._store.set(
-            "sidebar_details",
-            await sidebar.load_part_details(
-                state,
-                project_root=project_root,
-                lcsc=lcsc,
-                identifier=identifier,
-                installed=installed,
-                seed=seed,
-                action_error=action_error,
-            ),
-        )
+    async def _emit_agent_progress(self, payload: dict[str, object]) -> None:
+        await self._broadcast_agent_message(payload)
+        self._push_agent_state()
 
-    async def _show_migration_details(self, project_root: str) -> None:
-        state = sidebar.migration_details_loading(
-            self._sidebar_details_state(),
-            self._projects_state(),
-            project_root,
+    def _handle_project_files_change(self, result: UiProjectFilesData) -> None:
+        project_state = cast(UiProjectState, self._store.get("project_state"))
+        selected_project = projects.find_project(
+            cast(list[Project], self._store.get("projects")),
+            project_state.selected_project_root,
         )
-        self._store.set("sidebar_details", state)
-        self._store.set(
-            "sidebar_details",
-            await sidebar.load_migration_details(
-                state,
-                self._projects_state(),
-                project_root,
-            ),
-        )
-
-    async def _refresh_projects(self) -> list[Project]:
-        result = await asyncio.to_thread(
-            projects.handle_get_projects, self._discovery_paths
-        )
-        self._store.set("projects", result.projects)
-        return result.projects
-
-    async def _refresh_project_entry(self, project_root: str) -> Project | None:
-        project_list, replacement = await asyncio.to_thread(
-            projects.refresh_project,
-            self._projects_state(),
-            project_root,
-        )
-        if replacement is None:
-            return None
-        self._store.set("projects", project_list)
-        return replacement
+        if result.project_root == (selected_project.root if selected_project else None):
+            self._store.set("project_files", result)
 
     # -- Action dispatch ---------------------------------------------------
 
     async def _dispatch(self, ws: ServerConnection, msg: dict) -> None:
         session_id = self._session_id(msg)
         action = str(msg.get("action", ""))
+        if action.startswith("agent."):
+            await self._handle_agent_action(session_id, msg)
+            return
         if self._vscode_bridge.handles(action):
             await self._send_message(
                 ws, self._vscode_bridge.forward_request(ws, session_id, msg)
@@ -339,29 +344,40 @@ class CoreSocket:
 
             case "selectProject":
                 project_root = msg.get("projectRoot") or None
-                self._store.merge(
+                self._store.set(
                     "project_state",
-                    {
-                        "selectedProject": project_root,
-                        "selectedTarget": None,
-                    },
+                    self._store.get("project_state").model_copy(
+                        update={
+                            "selected_project_root": project_root,
+                            "selected_target": None,
+                        }
+                    ),
                 )
-                self._sync_selected_build()
-                if project_root:
-                    await self._project_files.watch([Path(project_root)])
-                else:
-                    self._store.set("project_files", [])
                 return
 
             case "selectTarget":
                 target = projects.parse_target(msg.get("target"))
-                self._store.merge(
+                project_root = cast(
+                    UiProjectState, self._store.get("project_state")
+                ).selected_project_root
+                resolved_target = target
+                if target is not None:
+                    for owner in cast(list[Project], self._store.get("projects")):
+                        resolved = projects.find_target(owner, target)
+                        if resolved is None:
+                            continue
+                        project_root = owner.root
+                        resolved_target = resolved
+                        break
+                self._store.set(
                     "project_state",
-                    {
-                        "selectedTarget": target.model_dump() if target else None,
-                    },
+                    self._store.get("project_state").model_copy(
+                        update={
+                            "selected_project_root": project_root,
+                            "selected_target": resolved_target,
+                        }
+                    ),
                 )
-                self._sync_selected_build()
                 return
 
             case "setLogViewCurrentId":
@@ -398,6 +414,7 @@ class CoreSocket:
                     {
                         "devPath": msg.get("devPath", ""),
                         "autoInstall": msg.get("autoInstall", True),
+                        "enableChat": msg.get("enableChat", True),
                     },
                 )
                 return
@@ -419,8 +436,10 @@ class CoreSocket:
 
             case "discoverProjects":
                 self._discovery_paths = [Path(p) for p in msg.get("paths", []) if p]
-                projects_result = projects.handle_get_projects(self._discovery_paths)
-                self._store.set("projects", projects_result.projects)
+                project_list = projects.handle_get_projects(
+                    self._discovery_paths
+                ).projects
+                self._store.set("projects", project_list)
                 return
 
             case "createProject":
@@ -435,15 +454,21 @@ class CoreSocket:
                 create_result = await asyncio.to_thread(
                     projects.handle_create_project, request
                 )
-                await self._refresh_projects()
-                self._store.merge(
+                project_list = (
+                    await asyncio.to_thread(
+                        projects.handle_get_projects, self._discovery_paths
+                    )
+                ).projects
+                self._store.set("projects", project_list)
+                self._store.set(
                     "project_state",
-                    {
-                        "selectedProject": create_result.project_root,
-                        "selectedTarget": None,
-                    },
+                    self._store.get("project_state").model_copy(
+                        update={
+                            "selected_project_root": create_result.project_root,
+                            "selected_target": None,
+                        }
+                    ),
                 )
-                self._sync_selected_build()
                 return
 
             case "addBuildTarget":
@@ -455,22 +480,27 @@ class CoreSocket:
                 add_result = await asyncio.to_thread(
                     projects.handle_add_build_target, request
                 )
-                project = await self._refresh_project_entry(request.project_root)
+                project_list, project = await asyncio.to_thread(
+                    projects.refresh_project,
+                    cast(list[Project], self._store.get("projects")),
+                    request.project_root,
+                )
+                if project is not None:
+                    self._store.set("projects", project_list)
                 selected_target = projects.find_target(
                     project,
                     add_result.target,
                     request.project_root,
                 )
-                self._store.merge(
+                self._store.set(
                     "project_state",
-                    {
-                        "selectedProject": request.project_root,
-                        "selectedTarget": selected_target.model_dump()
-                        if selected_target
-                        else None,
-                    },
+                    self._store.get("project_state").model_copy(
+                        update={
+                            "selected_project_root": request.project_root,
+                            "selected_target": selected_target,
+                        }
+                    ),
                 )
-                self._sync_selected_build()
                 return
 
             case "updateBuildTarget":
@@ -491,27 +521,37 @@ class CoreSocket:
                 update_result = await asyncio.to_thread(
                     projects.handle_update_build_target, request
                 )
-                project = await self._refresh_project_entry(request.project_root)
-                project_state = self._store.get("project_state")
-                if projects.is_selected_target(
-                    project_state,
+                current_project_state = cast(
+                    UiProjectState, self._store.get("project_state")
+                )
+                was_selected = projects.is_selected_target(
+                    current_project_state,
                     request.project_root,
                     request.old_name,
-                ):
+                )
+                project_list, project = await asyncio.to_thread(
+                    projects.refresh_project,
+                    cast(list[Project], self._store.get("projects")),
+                    request.project_root,
+                )
+                replacement = None
+                if was_selected:
                     replacement = projects.find_target(
                         project,
                         update_result.target or request.old_name,
                         request.project_root,
                     )
-                    self._store.merge(
+                if project is not None:
+                    self._store.set("projects", project_list)
+                if was_selected:
+                    self._store.set(
                         "project_state",
-                        {
-                            "selectedTarget": (
-                                replacement.model_dump() if replacement else None
-                            ),
-                        },
+                        current_project_state.model_copy(
+                            update={
+                                "selected_target": replacement,
+                            }
+                        ),
                     )
-                    self._sync_selected_build()
                 return
 
             case "deleteBuildTarget":
@@ -520,30 +560,41 @@ class CoreSocket:
                     name=str(msg.get("name") or ""),
                 )
                 await asyncio.to_thread(projects.handle_delete_build_target, request)
-                project = await self._refresh_project_entry(request.project_root)
-                project_state = self._store.get("project_state")
+                project_list, project = await asyncio.to_thread(
+                    projects.refresh_project,
+                    cast(list[Project], self._store.get("projects")),
+                    request.project_root,
+                )
+                if project is not None:
+                    self._store.set("projects", project_list)
+                current_project_state = cast(
+                    UiProjectState, self._store.get("project_state")
+                )
                 if projects.is_selected_target(
-                    project_state,
+                    current_project_state,
                     request.project_root,
                     request.name,
                 ):
-                    self._store.merge(
-                        "project_state",
-                        {
-                            "selectedTarget": (
-                                project.targets[0].model_dump()
-                                if project and project.targets
-                                else None
-                            ),
-                        },
+                    replacement = (
+                        project.targets[0] if project and project.targets else None
                     )
-                    self._sync_selected_build()
+                    self._store.set(
+                        "project_state",
+                        current_project_state.model_copy(
+                            update={
+                                "selected_target": replacement,
+                            }
+                        ),
+                    )
                 return
 
             case "checkEntry":
                 project_root = str(msg.get("projectRoot") or "")
                 entry = str(msg.get("entry") or "").strip()
-                project = projects.find_project(self._projects_state(), project_root)
+                project = projects.find_project(
+                    cast(list[Project], self._store.get("projects")),
+                    project_root,
+                )
                 result = await asyncio.to_thread(
                     projects.handle_check_entry,
                     project_root,
@@ -558,14 +609,6 @@ class CoreSocket:
                         **result,
                     },
                 )
-                return
-
-            case "listFiles":
-                project_root = msg.get("projectRoot", "")
-                if project_root:
-                    await self._project_files.watch([Path(project_root)])
-                else:
-                    self._store.set("project_files", [])
                 return
 
             case "createFile":
@@ -663,6 +706,7 @@ class CoreSocket:
                             "logViewStage": None,
                         },
                     )
+                await self._push_builds()
                 return
 
             case "cancelBuild":
@@ -673,6 +717,14 @@ class CoreSocket:
             case "openLayout":
                 request = OpenLayoutRequest.model_validate(msg)
                 layout_path = await self._open_layout(request)
+                project_state = cast(UiProjectState, self._store.get("project_state"))
+                if not projects.same_selection(
+                    request.project_root,
+                    request.target,
+                    project_state.selected_project_root,
+                    project_state.selected_target,
+                ):
+                    return
                 self._store.set(
                     "layout_data",
                     {
@@ -693,7 +745,8 @@ class CoreSocket:
                 return
 
             case "showPackageDetails":
-                await self._show_package_details(
+                await sidebar.show_package_details(
+                    self._store,
                     msg.get("projectRoot") or None,
                     str(msg.get("packageId", "")),
                 )
@@ -717,14 +770,15 @@ class CoreSocket:
                     packages.handle_packages_summary, project_root
                 )
                 self._store.set("packages_summary", packages_result)
-                current = self._sidebar_details_state()
+                current = cast(UiSidebarDetails, self._store.get("sidebar_details"))
                 package_state = current.package
                 if (
                     current.view == "package"
                     and package_state.package_id == pkg_id
                     and package_state.project_root == str(project_root)
                 ):
-                    await self._show_package_details(
+                    await sidebar.show_package_details(
+                        self._store,
                         str(project_root),
                         str(pkg_id),
                     )
@@ -742,14 +796,15 @@ class CoreSocket:
                     packages.handle_packages_summary, project_root
                 )
                 self._store.set("packages_summary", packages_result)
-                current = self._sidebar_details_state()
+                current = cast(UiSidebarDetails, self._store.get("sidebar_details"))
                 package_state = current.package
                 if (
                     current.view == "package"
                     and package_state.package_id == pkg_id
                     and package_state.project_root == str(project_root)
                 ):
-                    await self._show_package_details(
+                    await sidebar.show_package_details(
+                        self._store,
                         str(project_root),
                         str(pkg_id),
                     )
@@ -811,7 +866,8 @@ class CoreSocket:
                 return
 
             case "showPartDetails":
-                await self._show_part_details(
+                await sidebar.show_part_details(
+                    self._store,
                     project_root=msg.get("projectRoot") or None,
                     identifier=msg.get("identifier"),
                     lcsc=msg.get("lcsc"),
@@ -831,13 +887,19 @@ class CoreSocket:
                     project_root,
                 )
                 if create_package:
-                    await self._refresh_project_entry(project_root)
+                    project_list, project = await asyncio.to_thread(
+                        projects.refresh_project,
+                        cast(list[Project], self._store.get("projects")),
+                        project_root,
+                    )
+                    if project is not None:
+                        self._store.set("projects", project_list)
                 installed_parts = await asyncio.to_thread(
                     parts_search.handle_list_installed_parts,
                     project_root,
                 )
                 self._store.set("installed_parts", {"parts": installed_parts})
-                current = self._sidebar_details_state()
+                current = cast(UiSidebarDetails, self._store.get("sidebar_details"))
                 part_state = current.part
                 if (
                     current.view == "part"
@@ -857,7 +919,8 @@ class CoreSocket:
                         if part
                         else None
                     )
-                    await self._show_part_details(
+                    await sidebar.show_part_details(
+                        self._store,
                         project_root=project_root,
                         identifier=part.identifier if part else None,
                         lcsc=lcsc,
@@ -879,7 +942,7 @@ class CoreSocket:
                     project_root,
                 )
                 self._store.set("installed_parts", {"parts": installed_parts})
-                current = self._sidebar_details_state()
+                current = cast(UiSidebarDetails, self._store.get("sidebar_details"))
                 part_state = current.part
                 if (
                     current.view == "part"
@@ -887,7 +950,8 @@ class CoreSocket:
                     and part_state.project_root == project_root
                 ):
                     part = part_state.part
-                    await self._show_part_details(
+                    await sidebar.show_part_details(
+                        self._store,
                         project_root=project_root,
                         identifier=part.identifier if part else None,
                         lcsc=lcsc,
@@ -901,7 +965,7 @@ class CoreSocket:
             case "showMigrationDetails":
                 project_root = str(msg.get("projectRoot", ""))
                 if project_root:
-                    await self._show_migration_details(project_root)
+                    await sidebar.show_migration_details(self._store, project_root)
                 return
 
             case "runMigration" | "migrateProjectSteps":
@@ -912,7 +976,7 @@ class CoreSocket:
                 self._store.set(
                     "sidebar_details",
                     sidebar.start_migration_run(
-                        self._sidebar_details_state(),
+                        self._store.get("sidebar_details"),
                         selected_steps,
                     ),
                 )
@@ -921,21 +985,27 @@ class CoreSocket:
                     self._store.set(
                         "sidebar_details",
                         sidebar.finish_migration_step(
-                            self._sidebar_details_state(),
+                            self._store.get("sidebar_details"),
                             step_id,
                             error=None,
                         ),
                     )
                 final_state, success = sidebar.complete_migration_run(
-                    self._sidebar_details_state()
+                    self._store.get("sidebar_details")
                 )
                 self._store.set("sidebar_details", final_state)
-                await self._refresh_project_entry(project_root)
+                project_list, project = await asyncio.to_thread(
+                    projects.refresh_project,
+                    cast(list[Project], self._store.get("projects")),
+                    project_root,
+                )
+                if project is not None:
+                    self._store.set("projects", project_list)
                 self._store.set(
                     "sidebar_details",
                     sidebar.update_migration_project_state(
-                        self._sidebar_details_state(),
-                        self._projects_state(),
+                        self._store.get("sidebar_details"),
+                        cast(list[Project], self._store.get("projects")),
                         project_root,
                     ),
                 )
@@ -949,6 +1019,14 @@ class CoreSocket:
                     project_root,
                     target,
                 )
+                project_state = cast(UiProjectState, self._store.get("project_state"))
+                if not projects.same_selection(
+                    project_root or None,
+                    target,
+                    project_state.selected_project_root,
+                    project_state.selected_target,
+                ):
+                    return
                 self._store.set("variables_data", variables or {"nodes": []})
                 return
 
@@ -960,6 +1038,14 @@ class CoreSocket:
                     project_root,
                     target,
                 )
+                project_state = cast(UiProjectState, self._store.get("project_state"))
+                if not projects.same_selection(
+                    project_root or None,
+                    target,
+                    project_state.selected_project_root,
+                    project_state.selected_target,
+                ):
+                    return
                 self._store.set(
                     "bom_data",
                     {
@@ -989,6 +1075,14 @@ class CoreSocket:
                     target,
                     limit,
                 )
+                project_state = cast(UiProjectState, self._store.get("project_state"))
+                if not projects.same_selection(
+                    project_root,
+                    target,
+                    project_state.selected_project_root,
+                    project_state.selected_target,
+                ):
+                    return
                 self._store.set(
                     "builds_by_project_data",
                     {
@@ -1003,27 +1097,36 @@ class CoreSocket:
             case "fetchLcscParts":
                 lcsc_ids = [str(value) for value in msg.get("lcscIds", []) if value]
                 project_root = msg.get("projectRoot") or None
-                target = msg.get("target") or None
+                target = projects.parse_target(msg.get("target"))
                 current_lcsc_parts = cast(
                     dict[str, Any], self._store.dump("lcsc_parts_data")
                 )
                 current_parts = current_lcsc_parts.get("parts", {})
-                if (
-                    current_lcsc_parts.get("projectRoot") != project_root
-                    or current_lcsc_parts.get("target") != target
+                current_target = projects.parse_target(current_lcsc_parts.get("target"))
+                if not projects.same_selection(
+                    current_lcsc_parts.get("projectRoot"),
+                    current_target,
+                    project_root,
+                    target,
                 ):
                     current_parts = {}
                 result = await asyncio.to_thread(
                     parts.handle_get_lcsc_parts,
                     lcsc_ids,
-                    project_root=project_root,
-                    target=target,
                 )
+                project_state = cast(UiProjectState, self._store.get("project_state"))
+                if not projects.same_selection(
+                    project_root,
+                    target,
+                    project_state.selected_project_root,
+                    project_state.selected_target,
+                ):
+                    return
                 self._store.set(
                     "lcsc_parts_data",
                     {
                         "projectRoot": project_root,
-                        "target": target,
+                        "target": target.model_dump() if target else None,
                         "parts": {**current_parts, **result.get("parts", {})},
                         "loadingIds": [],
                     },
@@ -1129,19 +1232,138 @@ class CoreSocket:
         def _on_change(build_id: str, event_type: str) -> None:
             asyncio.run_coroutine_threadsafe(self._push_builds(), loop)
 
+        def _on_completed(build: Any) -> None:
+            payload = {
+                "project_root": build.project_root or "",
+                "build_id": build.build_id or "",
+                "target": (
+                    build.target.name
+                    if getattr(build, "target", None) is not None
+                    and getattr(build.target, "name", None)
+                    else str(getattr(build, "target", "") or "default")
+                ),
+                "status": (
+                    build.status.value
+                    if hasattr(build.status, "value")
+                    else str(build.status)
+                ),
+                "warnings": build.warnings or 0,
+                "errors": build.errors or 0,
+                "error": build.error,
+                "elapsed_seconds": build.elapsed_seconds or 0.0,
+            }
+            self._agent.handle_build_completed(payload)
+
         build_queue.on_change = _on_change
+        build_queue.on_completed = _on_completed
         build_queue.start()
 
     async def _push_builds(self) -> None:
         self._store.set("current_builds", get_active_builds())
         self._store.set("previous_builds", get_finished_builds())
         self._store.set("queue_builds", get_queue_builds())
-        self._sync_selected_build()
+        _, selected_target = projects.resolve_selection(
+            cast(list[Project], self._store.get("projects")),
+            cast(UiProjectState, self._store.get("project_state")),
+        )
+        self._store.set(
+            "selected_build",
+            builds.get_selected_build(selected_target),
+        )
 
     # -- Broadcasting ------------------------------------------------------
 
     def _on_store_change(self, field_name: str, value: Any, prev: Any) -> None:
-        del prev
+        if field_name in {"projects", "project_state"}:
+            project_list = cast(list[Project], self._store.get("projects"))
+            project_state = cast(UiProjectState, self._store.get("project_state"))
+            selected_project, selected_target = projects.resolve_selection(
+                project_list,
+                project_state,
+            )
+            canonical_state = project_state.model_copy(
+                update={
+                    "selected_project_root": (
+                        selected_project.root if selected_project else None
+                    ),
+                    "selected_target": selected_target,
+                }
+            )
+            if canonical_state != project_state:
+                if field_name == "projects":
+                    asyncio.run_coroutine_threadsafe(
+                        self._broadcast_state(field_name, value),
+                        self._loop,
+                    )
+                self._store.set("project_state", canonical_state)
+                return
+            if field_name == "projects":
+                previous_project, previous_target = projects.resolve_selection(
+                    cast(list[Project], prev),
+                    project_state,
+                )
+            else:
+                previous_project, previous_target = projects.resolve_selection(
+                    project_list,
+                    UiProjectState.model_validate(prev),
+                )
+            previous_project_root = previous_project.root if previous_project else None
+            selected_project_root = selected_project.root if selected_project else None
+            selection_changed = not projects.same_selection(
+                previous_project_root,
+                previous_target,
+                selected_project_root,
+                selected_target,
+            )
+            if selection_changed:
+                self._store.set(
+                    "selected_build",
+                    builds.get_selected_build(selected_target),
+                )
+                self._store.set("variables_data", UiVariablesData())
+                self._store.set(
+                    "bom_data",
+                    UiBOMData(
+                        project_root=selected_project_root,
+                        target=selected_target,
+                    ),
+                )
+                self._store.set(
+                    "lcsc_parts_data",
+                    UiLcscPartsData(
+                        project_root=selected_project_root,
+                        target=selected_target,
+                    ),
+                )
+                self._store.set(
+                    "builds_by_project_data",
+                    UiBuildsByProjectData(
+                        project_root=selected_project_root,
+                        target=selected_target,
+                    ),
+                )
+                self._store.set(
+                    "layout_data",
+                    UiLayoutData(
+                        project_root=selected_project_root,
+                        target=selected_target,
+                    ),
+                )
+
+                async def sync_project_files_selection() -> None:
+                    self._store.set(
+                        "project_files",
+                        UiProjectFilesData(project_root=selected_project_root),
+                    )
+                    if selected_project_root:
+                        await self._project_files.watch([Path(selected_project_root)])
+                        return
+                    self._project_files.stop()
+
+                asyncio.run_coroutine_threadsafe(
+                    sync_project_files_selection(),
+                    self._loop,
+                )
         asyncio.run_coroutine_threadsafe(
             self._broadcast_state(field_name, value), self._loop
         )
@@ -1221,3 +1443,105 @@ class CoreSocket:
         if isinstance(session_id, str) and session_id:
             return session_id
         return EXTENSION_SESSION_ID
+
+    async def _broadcast_agent_message(self, payload: dict[str, object]) -> None:
+        dead: list[ServerConnection] = []
+        for ws, sessions in list(self._subscriptions.items()):
+            for session_id in sessions:
+                if session_id == EXTENSION_SESSION_ID:
+                    continue
+                try:
+                    await self._send_message(
+                        ws,
+                        {
+                            **payload,
+                            "sessionId": session_id,
+                        },
+                    )
+                except websockets.ConnectionClosed:
+                    dead.append(ws)
+                    break
+        for ws in dead:
+            self._clients.discard(ws)
+            self._subscriptions.pop(ws, None)
+            for task in self._log_tasks.pop(ws, {}).values():
+                task.cancel()
+
+    async def _handle_agent_action(
+        self,
+        session_id: str,
+        msg: dict[str, Any],
+    ) -> None:
+        action = str(msg.get("action", ""))
+        agent_session_id = str(
+            msg.get("agentSessionId") or msg.get("sessionIdValue") or ""
+        )
+        mutation_session_id = agent_session_id or None
+        mutation_run_id = str(msg.get("runId") or "") or None
+        try:
+            match action:
+                case "agent.createSession":
+                    result = await self._agent.create_session(
+                        AgentCreateSessionRequest.model_validate(msg)
+                    )
+                    mutation_session_id = result.session_id
+                case "agent.createRun":
+                    result = await self._agent.create_run(
+                        agent_session_id,
+                        AgentCreateRunRequest.model_validate(msg),
+                    )
+                    mutation_run_id = result.run_id
+                case "agent.cancelRun":
+                    await self._agent.cancel_run(
+                        agent_session_id,
+                        str(msg.get("runId") or ""),
+                    )
+                case "agent.steerRun":
+                    await self._agent.steer_run(
+                        agent_session_id,
+                        str(msg.get("runId") or ""),
+                        AgentSteerRunRequest.model_validate(msg),
+                    )
+                case "agent.interruptRun":
+                    await self._agent.interrupt_run(
+                        agent_session_id,
+                        str(msg.get("runId") or ""),
+                        AgentInterruptRunRequest.model_validate(msg),
+                    )
+                case _:
+                    raise AgentServiceError(400, f"Unknown agent action: {action}")
+            self._push_agent_state(
+                action=action,
+                session_id=mutation_session_id,
+                run_id=mutation_run_id,
+            )
+        except AgentServiceError as exc:
+            if mutation_session_id:
+                with sessions_lock:
+                    session = sessions_by_id.get(mutation_session_id)
+                    if session is not None:
+                        record_agent_action_error(
+                            session,
+                            action=action,
+                            error=exc.message,
+                            run_id=mutation_run_id,
+                            request_message=(
+                                str(msg.get("message"))
+                                if isinstance(msg.get("message"), str)
+                                else None
+                            ),
+                        )
+                persist_sessions_state()
+            self._push_agent_state(
+                action=action,
+                session_id=mutation_session_id,
+                run_id=mutation_run_id,
+                error=exc.message,
+            )
+            log.warning(
+                "Agent action failed action=%s session_id=%s run_id=%s error=%s",
+                action,
+                mutation_session_id,
+                mutation_run_id,
+                exc.message,
+            )

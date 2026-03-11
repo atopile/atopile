@@ -114,7 +114,7 @@ function PackageRow({
 }
 
 export function PackagesPanel() {
-  const { selectedProject: projectRoot } = WebviewRpcClient.useSubscribe("projectState");
+  const { selectedProjectRoot: projectRoot } = WebviewRpcClient.useSubscribe("projectState");
   const packagesSummary = WebviewRpcClient.useSubscribe("packagesSummary");
   const [tab, setTab] = useState<Tab>("browse");
   const [search, setSearch] = useState("");

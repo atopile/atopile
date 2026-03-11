@@ -656,13 +656,18 @@ def replace_project(projects: list[Project], replacement: Project) -> list[Proje
 
 def find_target(
     project: Project | None,
-    target_name: str | None,
+    target_or_name: ResolvedBuildTarget | str | None,
     target_root: str | None = None,
 ) -> ResolvedBuildTarget | None:
     """Find a resolved target on a project by name and root."""
-    if project is None or not target_name:
+    if project is None or target_or_name is None:
         return None
-    resolved_root = target_root or project.root
+    if isinstance(target_or_name, ResolvedBuildTarget):
+        target_name = target_or_name.name
+        resolved_root = target_or_name.root
+    else:
+        target_name = target_or_name
+        resolved_root = target_root or project.root
     return next(
         (
             target
@@ -670,6 +675,18 @@ def find_target(
             if target.name == target_name and target.root == resolved_root
         ),
         None,
+    )
+
+
+def resolve_selection(
+    project_list: list[Project],
+    project_state: UiProjectState,
+) -> tuple[Project | None, ResolvedBuildTarget | None]:
+    """Resolve the current UI selection against the discovered project list."""
+    selected_project = find_project(project_list, project_state.selected_project_root)
+    return (
+        selected_project,
+        find_target(selected_project, project_state.selected_target),
     )
 
 
@@ -684,13 +701,26 @@ def same_target(
     left: ResolvedBuildTarget | None,
     right: ResolvedBuildTarget | None,
 ) -> bool:
-    """Compare targets by resolved identity."""
+    """Compare optional targets by resolved identity."""
     if left is None or right is None:
-        return False
+        return left is None and right is None
     return (
         left.name == right.name
         and Path(left.root) == Path(right.root)
         and left.entry == right.entry
+    )
+
+
+def same_selection(
+    left_project_root: str | None,
+    left_target: ResolvedBuildTarget | None,
+    right_project_root: str | None,
+    right_target: ResolvedBuildTarget | None,
+) -> bool:
+    """Compare project/target selections by canonical identity."""
+    return left_project_root == right_project_root and same_target(
+        left_target,
+        right_target,
     )
 
 
@@ -700,11 +730,11 @@ def is_selected_target(
     target_name: str,
 ) -> bool:
     """Check whether the UI currently has the target selected."""
-    target = project_state.selected_target
-    return (
-        target is not None
-        and target.name == target_name
-        and Path(target.root) == Path(target_root)
+    selected_target = project_state.selected_target
+    return bool(
+        selected_target
+        and selected_target.name == target_name
+        and Path(selected_target.root) == Path(target_root)
     )
 
 

@@ -3,21 +3,13 @@
 from __future__ import annotations
 
 import re
-import time
 from collections.abc import Callable
-from typing import Iterable, Optional
+from typing import Iterable
 
-from atopile.dataclasses import Log
-from atopile.logging import get_logger
-from atopile.model import build_history
 from faebryk.libs.picker.api.api import get_api_client
 from faebryk.libs.picker.api.models import Component, LCSCParams
 
-log = get_logger(__name__)
-
 _LCSC_RE = re.compile(r"^C\d+$", re.IGNORECASE)
-_OUT_OF_STOCK_TTL_S = 24 * 60 * 60
-_out_of_stock_cache: dict[tuple[str, str], float] = {}
 
 
 def _normalize_lcsc_id(lcsc_id: str) -> tuple[str, int]:
@@ -78,65 +70,8 @@ def serialize_component(
     return result
 
 
-# Alias for backward compatibility
-_serialize_component = serialize_component
-
-
-def _latest_build_for(
-    project_root: Optional[str],
-    target: Optional[str],
-) -> dict | None:
-    if not project_root:
-        return None
-    builds = build_history.get_builds_by_project_target(
-        project_root=project_root,
-        target=target,
-        limit=1,
-    )
-    return builds[0] if builds else None
-
-
-def _log_out_of_stock(
-    *,
-    build_id: str,
-    project_root: str,
-    target: str | None,
-    component: Component,
-) -> bool:
-    if component.stock != 0:
-        return False
-
-    cache_key = (build_id, component.lcsc_display)
-    now = time.time()
-    last_logged = _out_of_stock_cache.get(cache_key)
-    if last_logged and now - last_logged < _OUT_OF_STOCK_TTL_S:
-        return False
-
-    log.warning(
-        "Out of stock: %s (%s)",
-        component.lcsc_display,
-        component.part_number,
-        audience=Log.Audience.USER,
-        objects={
-            "project_root": project_root,
-            "target": target,
-            "lcsc": component.lcsc_display,
-            "mpn": component.part_number,
-            "manufacturer": component.manufacturer_name,
-            "stock": component.stock,
-            "description": component.description,
-        },
-    )
-
-    _out_of_stock_cache[cache_key] = now
-    return True
-
-
 def handle_get_lcsc_parts(
     lcsc_ids: Iterable[str],
-    *,
-    project_root: str | None = None,
-    target: str | None = None,
 ) -> dict:
     normalized: list[tuple[str, int]] = []
     seen: set[str] = set()
@@ -157,7 +92,7 @@ def handle_get_lcsc_parts(
     parts: dict[str, dict | None] = {}
     for (display, _numeric), components in zip(normalized, results, strict=False):
         if components:
-            parts[display] = _serialize_component(components[0])
+            parts[display] = serialize_component(components[0])
         else:
             parts[display] = None
 

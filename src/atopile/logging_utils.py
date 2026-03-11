@@ -809,7 +809,7 @@ class BuildPrinter:
         """Print a single build's summary in a box with logs from database."""
         from rich.console import Group
 
-        from atopile.model.sqlite import Logs
+        from atopile.logging import read_build_logs
 
         icon, color = get_status_style(build.status)
         display_name = build.name
@@ -819,10 +819,16 @@ class BuildPrinter:
         errors_list: list[dict] = []
         warnings_list: list[dict] = []
         if build_id:
-            errors_list, _ = Logs.fetch_chunk(
-                build_id, levels=["ERROR", "CRITICAL"], count=50
+            errors_list, _ = read_build_logs(
+                build_id=build_id,
+                log_levels=["ERROR"],
+                count=50,
             )
-            warnings_list, _ = Logs.fetch_chunk(build_id, levels=["WARNING"], count=50)
+            warnings_list, _ = read_build_logs(
+                build_id=build_id,
+                log_levels=["WARNING"],
+                count=50,
+            )
 
         # Build content as a list of renderables
         renderables: list = []

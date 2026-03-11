@@ -12,10 +12,10 @@ from pydantic import Field, TypeAdapter
 from atopile.dataclasses import (
     Build,
     CamelModel,
-    FileNode,
     PackagesSummaryData,
     Project,
     StdLibData,
+    UiAgentData,
     UiBlobAssetData,
     UiBOMData,
     UiBuildsByProjectData,
@@ -27,6 +27,7 @@ from atopile.dataclasses import (
     UiLayoutData,
     UiLcscPartsData,
     UiPartsSearchData,
+    UiProjectFilesData,
     UiProjectState,
     UiSidebarDetails,
     UiStructureData,
@@ -53,7 +54,7 @@ class UiStore(CamelModel):
         default_factory=UiProjectState, json_schema_extra={"mergeable": True}
     )
     projects: list[Project] = Field(default_factory=list)
-    project_files: list[FileNode] = Field(default_factory=list)
+    project_files: UiProjectFilesData = Field(default_factory=UiProjectFilesData)
     current_builds: list[Build] = Field(default_factory=list)
     previous_builds: list[Build] = Field(default_factory=list)
     queue_builds: list[Build] = Field(default_factory=list)
@@ -96,6 +97,7 @@ class UiStore(CamelModel):
     layout_data: UiLayoutData = Field(default_factory=UiLayoutData)
     blob_asset: UiBlobAssetData = Field(default_factory=UiBlobAssetData)
     file_action: UiFileActionData = Field(default_factory=UiFileActionData)
+    agent_data: UiAgentData = Field(default_factory=UiAgentData)
 
 
 @dataclass(frozen=True)

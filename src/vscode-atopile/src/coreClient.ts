@@ -42,7 +42,8 @@ export class CoreClient implements vscode.Disposable {
       const localSettings = this._getExtensionSettings();
       const matchesLocalSettings =
         settings.devPath === localSettings.devPath &&
-        settings.autoInstall === localSettings.autoInstall;
+        settings.autoInstall === localSettings.autoInstall &&
+        settings.enableChat === localSettings.enableChat;
 
       if (this._waitingForSettingsEcho) {
         if (matchesLocalSettings) {
@@ -63,6 +64,13 @@ export class CoreClient implements vscode.Disposable {
         void config.update(
           "autoInstall",
           settings.autoInstall,
+          vscode.ConfigurationTarget.Global,
+        );
+      }
+      if (settings.enableChat !== undefined) {
+        void config.update(
+          "enableChat",
+          settings.enableChat,
           vscode.ConfigurationTarget.Global,
         );
       }
@@ -109,6 +117,7 @@ export class CoreClient implements vscode.Disposable {
     return {
       devPath: config.get<string>("devPath", ""),
       autoInstall: config.get<boolean>("autoInstall", true),
+      enableChat: config.get<boolean>("enableChat", true),
     };
   }
 }

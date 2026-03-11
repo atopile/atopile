@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { ResolvedBuildTarget } from "../../shared/generated-types";
 import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import { createWebviewLogger } from "../shared/logger";
@@ -11,6 +10,8 @@ const logger = createWebviewLogger("Panel3D");
 function App() {
   const projectState = WebviewRpcClient.useSubscribe("projectState");
   const selectedBuild = WebviewRpcClient.useSubscribe("selectedBuild");
+  const projectRoot = projectState.selectedProjectRoot;
+  const selectedTarget = projectState.selectedTarget;
 
   const [model, setModel] = useState<{
     exists: boolean;
@@ -18,23 +19,6 @@ function App() {
     modelUri: string;
     version: number | null;
   } | null>(null);
-
-  const isSelected = Boolean(projectState.selectedProject && projectState.selectedTarget);
-  const isBuilding =
-    selectedBuild?.status === "queued" || selectedBuild?.status === "building";
-  const resolvedModel = model?.exists && model.modelUri ? model : null;
-
-  const startBuild = () => {
-    if (!projectState.selectedProject || !projectState.selectedTarget) {
-      return;
-    }
-    rpcClient?.sendAction("startBuild", {
-      projectRoot: projectState.selectedProject,
-      targets: [projectState.selectedTarget],
-      includeTargets: ["glb-only"],
-      excludeTargets: ["default"],
-    });
-  };
 
   const resolveModel = async () => {
     if (!selectedBuild?.projectRoot || !selectedBuild.target) {
@@ -69,14 +53,24 @@ function App() {
   }, [selectedBuild?.projectRoot, selectedBuild?.target]);
 
   useEffect(() => {
-    if (!isSelected) {
+    if (!projectRoot || !selectedTarget) {
       return;
     }
-    startBuild();
-  }, [projectState.selectedProject, projectState.selectedTarget]);
+    rpcClient?.sendAction("startBuild", {
+      projectRoot,
+      targets: [selectedTarget],
+      includeTargets: ["glb-only"],
+      excludeTargets: ["default"],
+    });
+  }, [projectRoot, selectedTarget]);
 
   useEffect(() => {
-    if (!isSelected || isBuilding) {
+    if (
+      !projectRoot
+      || !selectedTarget
+      || selectedBuild?.status === "queued"
+      || selectedBuild?.status === "building"
+    ) {
       return;
     }
     void resolveModel();
@@ -85,11 +79,11 @@ function App() {
     selectedBuild?.status,
     selectedBuild?.projectRoot,
     selectedBuild?.target,
-    isBuilding,
-    isSelected,
+    projectRoot,
+    selectedTarget,
   ]);
 
-  if (!isSelected) {
+  if (!projectRoot || !selectedTarget) {
     return (
       <div className="panel-3d-state">
         <div className="panel-3d-state-title">3D Model</div>
@@ -98,7 +92,7 @@ function App() {
     );
   }
 
-  if (!resolvedModel) {
+  if (!model?.exists || !model.modelUri) {
     return (
       <div className="panel-3d-state">
         <div className="panel-3d-spinner" aria-label="Loading" />
@@ -110,10 +104,10 @@ function App() {
   return (
     <div className="panel-3d-container">
       <ThreeDPreview
-        key={`${resolvedModel.modelPath}:${resolvedModel.version ?? "missing"}`}
-        modelUri={resolvedModel.modelUri}
+        key={`${model.modelPath}:${model.version ?? "missing"}`}
+        modelUri={model.modelUri}
       />
-      {isBuilding && (
+      {(selectedBuild?.status === "queued" || selectedBuild?.status === "building") && (
         <div className="panel-3d-badge">
           <span className="panel-3d-badge-spinner" />
           <span>Building...</span>

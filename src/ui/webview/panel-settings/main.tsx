@@ -70,6 +70,19 @@ function App() {
         </div>
       </Field>
 
+      <Field>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--spacing-sm)" }}>
+          <Checkbox
+            id="enableChat"
+            checked={settings.enableChat}
+            onCheckedChange={(checked) => updateSetting("enableChat", checked)}
+          />
+          <FieldLabel htmlFor="enableChat" style={{ margin: 0 }}>
+            Show agent chat
+          </FieldLabel>
+        </div>
+      </Field>
+
       <Separator />
 
       <h3>Status</h3>

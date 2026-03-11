@@ -10,13 +10,13 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from watchdog.events import FileSystemEvent, PatternMatchingEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
-from atopile.dataclasses import FileNode
+from atopile.dataclasses import FileNode, UiProjectFilesData
 
 log = logging.getLogger(__name__)
 
@@ -94,15 +94,16 @@ class FileChangeResult:
     created: list[Path] = field(default_factory=list)
     deleted: list[Path] = field(default_factory=list)
     changed: list[Path] = field(default_factory=list)
-    tree: list[dict] | None = None
 
     def __bool__(self) -> bool:
-        return bool(self.created or self.deleted or self.changed or self.tree)
+        return bool(self.created or self.deleted or self.changed)
 
 
 _HandlerInfo = tuple[
     str, Callable[[FileChangeResult], None], float, asyncio.AbstractEventLoop
 ]
+_ChangeCallback = Callable[[FileChangeResult], Awaitable[None] | None]
+_TreeCallback = Callable[[UiProjectFilesData], Awaitable[None] | None]
 
 
 class _EventDispatcher(PatternMatchingEventHandler):
@@ -381,17 +382,15 @@ class FileWatcher:
         self,
         name: str,
         *,
+        on_change: _ChangeCallback | _TreeCallback,
         paths: Sequence[Path] | None = None,
         paths_provider: Callable[[], Sequence[Path]] | None = None,
-        on_change: Callable[[FileChangeResult], Awaitable[None] | None] | None = None,
         glob: str = "**/*",
         debounce_s: float = 0.5,
         mode: Literal["changes", "tree"] = "changes",
     ) -> None:
         if paths is None and paths_provider is None:
             raise ValueError("paths or paths_provider must be provided")
-        if on_change is None:
-            raise ValueError("on_change must be provided")
 
         with FileWatcher._id_lock:
             FileWatcher._id_counter += 1
@@ -448,11 +447,6 @@ class FileWatcher:
         FileWatcher._sort_tree(nodes)
         return nodes
 
-    @staticmethod
-    def _serialize_tree(nodes: list[FileNode]) -> list[dict]:
-        return [node.model_dump(by_alias=True) for node in nodes]
-
-    @staticmethod
     def _sort_tree(nodes: list[FileNode]) -> None:
         nodes.sort(
             key=lambda node: (0 if node.children is not None else 1, node.name.lower())
@@ -582,7 +576,7 @@ class FileWatcher:
                     if self._apply_tree_changes(result):
                         await self._emit_tree()
                 else:
-                    response = self._on_change(result)
+                    response = cast(_ChangeCallback, self._on_change)(result)
                     if isinstance(response, Awaitable):
                         await response
                 log.info(
@@ -647,8 +641,12 @@ class FileWatcher:
             self._name,
             len(self._tree or []),
         )
-        response = self._on_change(
-            FileChangeResult(tree=FileWatcher._serialize_tree(self._tree or []))
+        project_root = self._get_tree_root()
+        response = cast(_TreeCallback, self._on_change)(
+            UiProjectFilesData(
+                project_root=str(project_root) if project_root else None,
+                files=self._tree or [],
+            )
         )
         if isinstance(response, Awaitable):
             await response

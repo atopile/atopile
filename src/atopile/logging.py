@@ -657,6 +657,37 @@ def scope(msg: str | None = None):
         _log_scope_level.set(current)
 
 
+LOGS_DEFAULT_COUNT = 500
+
+
+def read_build_logs(
+    *,
+    build_id: str,
+    stage: str | None = None,
+    log_levels: list[str] | None = None,
+    audience: str | None = None,
+    after_id: int = 0,
+    count: int = LOGS_DEFAULT_COUNT,
+    order: str = "DESC",
+    include_id: bool = False,
+) -> tuple[list[dict[str, Any]], int]:
+    """Read build logs with shared filtering and id handling."""
+    from atopile.model.sqlite import Logs
+
+    rows, last_id = Logs.fetch_chunk(
+        build_id,
+        stage=stage,
+        levels=log_levels,
+        audience=audience,
+        after_id=after_id,
+        count=max(1, count),
+        order=order,
+    )
+    if include_id:
+        return rows, last_id
+    return [{k: v for k, v in row.items() if k != "id"} for row in rows], last_id
+
+
 # =============================================================================
 # Rich Log Handler
 # =============================================================================

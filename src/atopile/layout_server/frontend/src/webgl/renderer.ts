@@ -279,7 +279,7 @@ export class Renderer {
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
-        const gl = canvas.getContext("webgl2", { alpha: false });
+        const gl = canvas.getContext("webgl2");
         if (!gl) throw new Error("WebGL2 not available");
         this.gl = gl;
     }
@@ -290,7 +290,7 @@ export class Renderer {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.DEPTH_TEST);
         gl.depthFunc(gl.GREATER);
-        gl.clearColor(0.03, 0.05, 0.08, 1);
+        gl.clearColor(0, 0, 0, 0);
         gl.clearDepth(0);
 
         this.polylineShader = new ShaderProgram(gl, polyline_vert, polyline_frag);

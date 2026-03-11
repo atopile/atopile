@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { sameTarget } from "../../shared/types";
 import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import {
@@ -22,10 +21,12 @@ function LogViewer() {
     return createLogClient({ mode: "vscode", rpcClient });
   });
   const projectState = WebviewRpcClient.useSubscribe("projectState");
-  const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
-  const previousBuilds = WebviewRpcClient.useSubscribe("previousBuilds");
+  const selectedBuild = WebviewRpcClient.useSubscribe("selectedBuild");
+  const buildsByProjectData = WebviewRpcClient.useSubscribe("buildsByProjectData");
   const [buildId, setBuildId] = useState("");
   const [stage, setStage] = useState("");
+  const projectRoot = projectState.selectedProjectRoot;
+  const selectedTarget = projectState.selectedTarget;
 
   useEffect(() => {
     return () => {
@@ -33,22 +34,35 @@ function LogViewer() {
     };
   }, [client]);
 
+  useEffect(() => {
+    if (!projectRoot) {
+      return;
+    }
+    rpcClient?.sendAction("getBuildsByProject", {
+      projectRoot,
+      target: selectedTarget,
+      limit: 100,
+    });
+  }, [projectRoot, selectedTarget]);
+
   const projectBuilds = useMemo(() => {
-    const project = projectState.selectedProject;
-    if (!project) return [];
-    return [...(currentBuilds || []), ...(previousBuilds || [])]
-      .filter(
-        (build) =>
-          build.projectRoot === project &&
-          (!projectState.selectedTarget ||
-            sameTarget(build.target, projectState.selectedTarget)),
+    if (!projectRoot || buildsByProjectData.projectRoot !== projectRoot) {
+      return [];
+    }
+    const builds = [...buildsByProjectData.builds];
+    if (selectedBuild?.projectRoot === projectRoot && selectedBuild.buildId) {
+      builds.unshift(selectedBuild);
+    }
+    return builds
+      .filter((build, index, entries) =>
+        index === entries.findIndex((entry) => entry.buildId === build.buildId),
       )
       .sort((left, right) => (right.startedAt ?? 0) - (left.startedAt ?? 0));
   }, [
-    currentBuilds,
-    previousBuilds,
-    projectState.selectedProject,
-    projectState.selectedTarget,
+    buildsByProjectData.builds,
+    buildsByProjectData.projectRoot,
+    projectRoot,
+    selectedBuild,
   ]);
 
   useEffect(() => {

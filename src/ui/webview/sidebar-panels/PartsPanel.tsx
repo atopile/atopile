@@ -156,7 +156,7 @@ function InstalledPartRow({
 }
 
 export function PartsPanel() {
-  const { selectedProject: projectRoot } = WebviewRpcClient.useSubscribe("projectState");
+  const { selectedProjectRoot: projectRoot } = WebviewRpcClient.useSubscribe("projectState");
   const partsSearch = WebviewRpcClient.useSubscribe("partsSearch");
   const installedParts = WebviewRpcClient.useSubscribe("installedParts");
   const [tab, setTab] = useState<Tab>("find");

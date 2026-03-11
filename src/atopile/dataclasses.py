@@ -150,6 +150,37 @@ class TestLogRow:
     objects: str | None = None
 
 
+@dataclass
+class AgentEventRow:
+    """Database model for agent event log entries."""
+
+    session_id: str = ""
+    run_id: str | None = None
+    timestamp: str = ""
+    event: str = ""
+    level: str = "INFO"
+    phase: str | None = None
+    tool_name: str | None = None
+    project_root: str | None = None
+    summary: str | None = None
+    step_kind: str | None = None
+    loop: int | None = None
+    tool_index: int | None = None
+    tool_count: int | None = None
+    call_id: str | None = None
+    item_id: str | None = None
+    model: str | None = None
+    response_id: str | None = None
+    previous_response_id: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    duration_ms: int | None = None
+    payload: str | None = None  # JSON string
+
+
 # =============================================================================
 # Log-related Data Structures
 # =============================================================================
@@ -848,48 +879,6 @@ class PackageInfoVeryBrief(CamelModel):
     summary: str
 
 
-# =============================================================================
-# Problem-related Pydantic Models
-# =============================================================================
-
-
-class Problem(CamelModel):
-    """A problem (error or warning) from a build log."""
-
-    id: str
-    level: Literal["error", "warning"]
-    message: str
-    file: Optional[str] = None
-    line: Optional[int] = None
-    column: Optional[int] = None
-    stage: Optional[str] = None
-    logger: Optional[str] = None
-    build_name: Optional[str] = None
-    project_name: Optional[str] = None
-    timestamp: Optional[str] = None
-    ato_traceback: Optional[str] = None
-    exc_info: Optional[str] = None
-
-
-class ProblemFilter(CamelModel):
-    """Filter settings for problems."""
-
-    levels: list[Literal["error", "warning"]] = Field(
-        default_factory=lambda: ["error", "warning"]
-    )
-    build_names: list[str] = Field(default_factory=list)
-    stage_ids: list[str] = Field(default_factory=list)
-
-
-class ProblemsResponse(CamelModel):
-    """Response for /api/problems endpoint."""
-
-    problems: list[Problem]
-    total: int
-    error_count: int
-    warning_count: int
-
-
 # Log-related models are now in the Log class above
 
 
@@ -1043,16 +1032,24 @@ class UiExtensionSettings(CamelModel):
 
     dev_path: str = ""
     auto_install: bool = True
+    enable_chat: bool = True
 
 
 class UiProjectState(CamelModel):
     """UI selection state for the active project/target/file."""
 
-    selected_project: str | None = None
+    selected_project_root: str | None = None
     selected_target: ResolvedBuildTarget | None = None
     active_file_path: str | None = None
     log_view_build_id: str | None = None
     log_view_stage: str | None = None
+
+
+class UiProjectFilesData(CamelModel):
+    """File tree for the currently selected project."""
+
+    project_root: str | None = None
+    files: list[FileNode] = Field(default_factory=list)
 
 
 class UiPartSearchItem(CamelModel):
@@ -1328,6 +1325,88 @@ class UiLayoutData(CamelModel):
     error: str | None = None
 
 
+class UiAgentToolTraceData(CamelModel):
+    name: str = ""
+    args: dict[str, Any] = Field(default_factory=dict)
+    ok: bool = True
+    result: dict[str, Any] = Field(default_factory=dict)
+    call_id: str | None = None
+    running: bool = False
+
+
+class UiAgentChecklistItemData(CamelModel):
+    id: str = ""
+    description: str = ""
+    criteria: str = ""
+    status: Literal["not_started", "doing", "done", "blocked"] = "not_started"
+    requirement_id: str | None = None
+
+
+class UiAgentChecklistData(CamelModel):
+    items: list[UiAgentChecklistItemData] = Field(default_factory=list)
+    created_at: float = 0.0
+
+
+class UiAgentDesignQuestionData(CamelModel):
+    id: str = ""
+    question: str = ""
+    options: list[str] = Field(default_factory=list)
+    default: str | None = None
+
+
+class UiAgentDesignQuestionsData(CamelModel):
+    context: str = ""
+    questions: list[UiAgentDesignQuestionData] = Field(default_factory=list)
+
+
+class UiAgentMessageData(CamelModel):
+    id: str = ""
+    role: Literal["user", "assistant", "system"] = "system"
+    content: str = ""
+    pending: bool = False
+    activity: str | None = None
+    tool_traces: list[UiAgentToolTraceData] = Field(default_factory=list)
+    checklist: UiAgentChecklistData | None = None
+    design_questions: UiAgentDesignQuestionsData | None = None
+
+
+class UiAgentSessionData(CamelModel):
+    """Canonical agent session summary mirrored into the UI store."""
+
+    session_id: str = ""
+    project_root: str = ""
+    messages: list[UiAgentMessageData] = Field(default_factory=list)
+    history: list[dict[str, str]] = Field(default_factory=list)
+    recent_selected_targets: list[str] = Field(default_factory=list)
+    active_run_id: str | None = None
+    active_run_status: str | None = None
+    active_run_stop_requested: bool = False
+    active_run_error: str | None = None
+    activity_label: str = "Ready"
+    error: str | None = None
+    run_started_at: float | None = None
+    created_at: float = 0.0
+    updated_at: float = 0.0
+
+
+class UiAgentMutation(CamelModel):
+    """Last acknowledged agent command or error."""
+
+    action: str | None = None
+    session_id: str | None = None
+    run_id: str | None = None
+    error: str | None = None
+    updated_at: float | None = None
+
+
+class UiAgentData(CamelModel):
+    """Canonical agent state for the VS Code UI store."""
+
+    loaded: bool = False
+    sessions: list[UiAgentSessionData] = Field(default_factory=list)
+    last_mutation: UiAgentMutation | None = None
+
+
 class UiBlobAssetData(CamelModel):
     """Generic binary asset fetch state for UI previews."""
 
@@ -1517,6 +1596,8 @@ class BuildReport:
 
 @dataclass
 class AppContext:
+    workspace_paths: list[Path] = field(default_factory=list)
+    summary_file: Optional[Path] = None
     # 'explicit-path', 'from-setting', or 'default'
     ato_source: Optional[str] = None
     # User's configured path (for explicit-path mode)

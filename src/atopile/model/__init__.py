@@ -8,7 +8,6 @@ from typing import Any
 __all__ = [
     "artifacts",
     "atopile_install",
-    "build_history",
     "build_queue",
     "builds",
     "cost_estimation",
@@ -18,7 +17,6 @@ __all__ = [
     "parts",
     "parts_search",
     "parts_search_jlc",
-    "problems",
     "projects",
     "resolve",
     "stdlib",

@@ -81,6 +81,28 @@ export class ExtensionRequestHandler {
         return { ok: true };
       }
 
+      case "vscode.openDiff": {
+        const filePath = this._requireString(message.path, "path");
+        const beforeContent = typeof message.beforeContent === "string" ? message.beforeContent : "";
+        const afterContent = typeof message.afterContent === "string" ? message.afterContent : "";
+        const title = typeof message.title === "string" && message.title
+          ? message.title
+          : `Agent diff: ${path.basename(filePath)}`;
+
+        const left = vscode.Uri.parse(`untitled:${filePath}.before`);
+        const right = vscode.Uri.parse(`untitled:${filePath}.after`);
+        const leftEdit = new vscode.WorkspaceEdit();
+        leftEdit.insert(left, new vscode.Position(0, 0), beforeContent);
+        const rightEdit = new vscode.WorkspaceEdit();
+        rightEdit.insert(right, new vscode.Position(0, 0), afterContent);
+        await vscode.workspace.applyEdit(leftEdit);
+        await vscode.workspace.applyEdit(rightEdit);
+        await vscode.commands.executeCommand("vscode.diff", left, right, title, {
+          preview: true,
+        });
+        return { ok: true };
+      }
+
       case "vscode.browseFolder": {
         const result = await vscode.window.showOpenDialog({
           canSelectFiles: false,

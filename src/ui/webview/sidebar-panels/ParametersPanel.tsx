@@ -129,14 +129,15 @@ function filterNodes(nodes: UiVariableNode[], search: string): UiVariableNode[] 
 }
 
 export function ParametersPanel() {
-  const { selectedProject: projectRoot, selectedTarget } = WebviewRpcClient.useSubscribe("projectState");
+  const projectState = WebviewRpcClient.useSubscribe("projectState");
   const variablesData = WebviewRpcClient.useSubscribe("variablesData");
   const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
-  const target = selectedTarget;
+  const projectRoot = projectState.selectedProjectRoot;
+  const target = projectState.selectedTarget;
 
   useEffect(() => {
     if (projectRoot) {

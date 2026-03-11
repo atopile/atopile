@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import cast
 
 from atopile.dataclasses import (
     PackageDetails,
@@ -21,11 +22,97 @@ from atopile.dataclasses import (
     UiSidebarDetails,
 )
 from atopile.model import migrations, packages, parts_search, projects
+from atopile.server.ui.store import Store
 
 
 def clear() -> UiSidebarDetails:
     """Return the empty sidebar details state."""
     return UiSidebarDetails()
+
+
+async def show_package_details(
+    store: Store,
+    project_root: str | None,
+    package_id: str,
+    *,
+    action_error: str | None = None,
+) -> None:
+    """Set package details loading state and then resolve the details."""
+    packages_summary = cast(PackagesSummaryData, store.get("packages_summary"))
+    state = package_details_loading(
+        cast(UiSidebarDetails, store.get("sidebar_details")),
+        packages_summary,
+        project_root,
+        package_id,
+        action_error=action_error,
+    )
+    store.set("sidebar_details", state)
+    store.set(
+        "sidebar_details",
+        await load_package_details(
+            state,
+            packages_summary,
+            project_root,
+            package_id,
+            action_error=action_error,
+        ),
+    )
+
+
+async def show_part_details(
+    store: Store,
+    *,
+    project_root: str | None,
+    lcsc: str | None,
+    identifier: str | None = None,
+    installed: bool = False,
+    seed: UiPartDetail | None = None,
+    action_error: str | None = None,
+) -> None:
+    """Set part details loading state and then resolve the details."""
+    state = part_details_loading(
+        cast(UiSidebarDetails, store.get("sidebar_details")),
+        cast(UiInstalledPartsData, store.get("installed_parts")),
+        cast(UiPartsSearchData, store.get("parts_search")),
+        project_root=project_root,
+        lcsc=lcsc,
+        identifier=identifier,
+        installed=installed,
+        seed=seed,
+        action_error=action_error,
+    )
+    store.set("sidebar_details", state)
+    store.set(
+        "sidebar_details",
+        await load_part_details(
+            state,
+            project_root=project_root,
+            lcsc=lcsc,
+            identifier=identifier,
+            installed=installed,
+            seed=seed,
+            action_error=action_error,
+        ),
+    )
+
+
+async def show_migration_details(store: Store, project_root: str) -> None:
+    """Set migration details loading state and then resolve the details."""
+    projects_state = cast(list[Project], store.get("projects"))
+    state = migration_details_loading(
+        cast(UiSidebarDetails, store.get("sidebar_details")),
+        projects_state,
+        project_root,
+    )
+    store.set("sidebar_details", state)
+    store.set(
+        "sidebar_details",
+        await load_migration_details(
+            state,
+            projects_state,
+            project_root,
+        ),
+    )
 
 
 def package_details_loading(

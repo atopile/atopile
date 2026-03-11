@@ -18,7 +18,6 @@ import type {
   ResolvedBuildTarget,
   UiEntryCheckData,
 } from "../../shared/generated-types";
-import { sameTarget } from "../../shared/types";
 import { formatPath, relativeTargetRoot } from "../../shared/paths";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import "./ProjectTargetSelector.css";
@@ -26,7 +25,7 @@ import "./ProjectTargetSelector.css";
 interface ProjectTargetSelectorProps {
   projects: Project[];
   modules: ModuleDefinition[];
-  selectedProject: string | null;
+  selectedProjectRoot: string | null;
   onSelectProject: (root: string) => void;
   selectedTarget: ResolvedBuildTarget | null;
   onSelectTarget: (target: ResolvedBuildTarget) => void;
@@ -329,7 +328,7 @@ function TargetSelector({
         <div className="target-combobox-dropdown">
           <div className="target-combobox-list" role="listbox">
             {targets.map((target, index) => {
-              const isActive = sameTarget(target, activeTarget);
+              const isActive = target.name === activeTarget?.name;
               const isHighlighted = index === highlightedIndex;
               const scope = relativeTargetRoot(projectRoot, target.root);
               const entryLabel = targetEntryLabel(target);
@@ -763,7 +762,7 @@ function NewTargetForm({
 export function ProjectTargetSelector({
   projects,
   modules,
-  selectedProject,
+  selectedProjectRoot,
   onSelectProject,
   selectedTarget,
   onSelectTarget,
@@ -793,12 +792,12 @@ export function ProjectTargetSelector({
   }, [showEditTargetForm]);
 
   const activeProject = useMemo(
-    () => projects.find((project) => project.root === selectedProject) ?? null,
-    [projects, selectedProject],
+    () => projects.find((project) => project.root === selectedProjectRoot) ?? null,
+    [projects, selectedProjectRoot],
   );
 
   const activeTarget = useMemo(
-    () => activeProject?.targets.find((target) => sameTarget(target, selectedTarget)) ?? activeProject?.targets[0] ?? null,
+    () => activeProject?.targets.find((target) => target.name === selectedTarget?.name) ?? null,
     [activeProject, selectedTarget],
   );
 

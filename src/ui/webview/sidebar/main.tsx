@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { render } from "../shared/render";
 import { WebviewRpcClient, rpcClient } from "../shared/rpcClient";
 import { createWebviewLogger } from "../shared/logger";
-import type { Build } from "../../shared/generated-types";
-import { sameTarget } from "../../shared/types";
+import { AgentChatPanel } from "../agent/AgentChatPanel";
 import { Spinner, Alert, AlertTitle, AlertDescription } from "../shared/components";
 import { getCurrentStage } from "../shared/utils";
 import { BuildQueuePane } from "./BuildQueuePane";
@@ -97,8 +96,11 @@ function App() {
   const connected = WebviewRpcClient.useSubscribe("connected");
   const coreStatus = WebviewRpcClient.useSubscribe("coreStatus");
   const queueBuilds = WebviewRpcClient.useSubscribe("queueBuilds");
+  const selectedBuild = WebviewRpcClient.useSubscribe("selectedBuild");
+  const projectFiles = WebviewRpcClient.useSubscribe("projectFiles");
   const sidebarDetails = WebviewRpcClient.useSubscribe("sidebarDetails");
   const structureData = WebviewRpcClient.useSubscribe("structureData");
+  const extensionSettings = WebviewRpcClient.useSubscribe("extensionSettings");
 
   const [activeTab, setActiveTab] = useState<TabId>("files");
   const [isPackageInstalling, setIsPackageInstalling] = useState(false);
@@ -114,38 +116,28 @@ function App() {
   }, [isConnected]);
 
   const selectedProject = useMemo(
-    () => projects.find((project) => project.root === projectState.selectedProject) ?? null,
-    [projects, projectState.selectedProject],
+    () => projects.find((project) => project.root === projectState.selectedProjectRoot) ?? null,
+    [projects, projectState.selectedProjectRoot],
+  );
+  const selectedProjectRoot = selectedProject?.root ?? null;
+  const selectedTarget = projectState.selectedTarget;
+  const currentProjectFiles = useMemo(
+    () =>
+      projectFiles.projectRoot === selectedProjectRoot
+        ? projectFiles.files
+        : [],
+    [projectFiles.files, projectFiles.projectRoot, selectedProjectRoot],
   );
 
-  // Auto-select first project/target when nothing is selected or selection becomes invalid
   useEffect(() => {
-    if (!projects.length) return;
-
-    // No project selected → pick the first one
-    if (!selectedProject) {
-      rpcClient?.sendAction("selectProject", { projectRoot: projects[0].root });
+    if (!selectedProjectRoot) {
       return;
     }
-
-    // Project selected but target is missing/invalid → pick the first target
-    const targetValid = selectedProject.targets.some(
-      (t) => sameTarget(t, projectState.selectedTarget),
-    );
-    if (!targetValid && selectedProject.targets[0]) {
-      rpcClient?.sendAction("selectTarget", { target: selectedProject.targets[0] });
-    }
-  }, [projects, projectState.selectedTarget, selectedProject]);
-
-  useEffect(() => {
-    if (!projectState.selectedProject) {
-      return;
-    }
-    rpcClient?.sendAction("getStructure", { projectRoot: projectState.selectedProject });
-  }, [projectState.selectedProject]);
+    rpcClient?.sendAction("getStructure", { projectRoot: selectedProjectRoot });
+  }, [selectedProjectRoot]);
 
   const projectBuilds = useMemo(() => {
-    const project = projectState.selectedProject;
+    const project = selectedProjectRoot;
     if (!project) return [];
 
     return queueBuilds
@@ -154,17 +146,10 @@ function App() {
         ...b,
         currentStage: getCurrentStage(b),
       }));
-  }, [projectState.selectedProject, queueBuilds]);
+  }, [queueBuilds, selectedProjectRoot]);
 
-  const isBuilding = useMemo(
-    () =>
-      projectBuilds.some(
-        (b) =>
-          (b.status === "queued" || b.status === "building") &&
-          sameTarget(b.target, projectState.selectedTarget),
-      ),
-    [projectBuilds, projectState.selectedTarget],
-  );
+  const isBuilding =
+    selectedBuild?.status === "queued" || selectedBuild?.status === "building";
 
   const panelMap: Record<TabId, React.ReactNode> = {
     files: <FilesPanel />,
@@ -272,11 +257,11 @@ function App() {
             <ProjectTargetSelector
               projects={projects}
               modules={structureData.modules}
-              selectedProject={projectState.selectedProject}
+              selectedProjectRoot={selectedProjectRoot}
               onSelectProject={(root) =>
                 rpcClient?.sendAction("selectProject", { projectRoot: root })
               }
-              selectedTarget={projectState.selectedTarget}
+              selectedTarget={selectedTarget}
               onSelectTarget={(target) =>
                 rpcClient?.sendAction("selectTarget", { target })
               }
@@ -284,14 +269,14 @@ function App() {
             <ActionBar
               onBuild={() =>
                 rpcClient?.sendAction("startBuild", {
-                  projectRoot: projectState.selectedProject,
-                  targets: projectState.selectedTarget ? [projectState.selectedTarget] : [],
+                  projectRoot: selectedProjectRoot,
+                  targets: selectedTarget ? [selectedTarget] : [],
                 })
               }
               onOpenKicad={() =>
                 void rpcClient?.requestAction("vscode.openKicad", {
-                  projectRoot: projectState.selectedProject,
-                  target: projectState.selectedTarget,
+                  projectRoot: selectedProjectRoot,
+                  target: selectedTarget,
                 })
               }
               onOpenManufacture={() => {
@@ -301,16 +286,16 @@ function App() {
                 });
               }}
               buildDisabled={
-                !projectState.selectedProject ||
-                !projectState.selectedTarget ||
+                !selectedProjectRoot ||
+                !selectedTarget ||
                 Boolean(selectedProject?.needsMigration)
               }
               isBuilding={isBuilding}
-              showMigration={Boolean(selectedProject?.needsMigration && projectState.selectedProject)}
+              showMigration={Boolean(selectedProject?.needsMigration && selectedProjectRoot)}
               onOpenMigration={() => {
-                if (!projectState.selectedProject) return;
+                if (!selectedProjectRoot) return;
                 rpcClient?.sendAction("showMigrationDetails", {
-                  projectRoot: projectState.selectedProject,
+                  projectRoot: selectedProjectRoot,
                 });
               }}
             />
@@ -327,6 +312,16 @@ function App() {
                 {panelMap[activeTab]}
               </div>
             </>
+          )}
+
+          {extensionSettings.enableChat && (
+            <AgentChatPanel
+              projectRoot={selectedProjectRoot}
+              selectedTargets={selectedTarget ? [selectedTarget.name] : []}
+              projectModules={structureData.modules}
+              projectFileNodes={currentProjectFiles}
+              projectBuilds={projectBuilds}
+            />
           )}
 
           {/* Resizable builds pane at bottom */}

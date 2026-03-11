@@ -276,35 +276,6 @@ export interface PackagesSummaryData {
   installedCount: number;
 }
 
-export interface Problem {
-  id: string;
-  level: "error" | "warning";
-  message: string;
-  file: string | null;
-  line: number | null;
-  column: number | null;
-  stage: string | null;
-  logger: string | null;
-  buildName: string | null;
-  projectName: string | null;
-  timestamp: string | null;
-  atoTraceback: string | null;
-  excInfo: string | null;
-}
-
-export interface ProblemFilter {
-  levels: ("error" | "warning")[];
-  buildNames: string[];
-  stageIds: string[];
-}
-
-export interface ProblemsResponse {
-  problems: Problem[];
-  total: number;
-  errorCount: number;
-  warningCount: number;
-}
-
 export interface Project {
   root: string;
   name: string;
@@ -392,6 +363,82 @@ export interface UiActionResultMessage {
   result: unknown;
   error: string | null;
   [key: string]: unknown;
+}
+
+export interface UiAgentChecklistData {
+  items: UiAgentChecklistItemData[];
+  createdAt: number;
+}
+
+export interface UiAgentChecklistItemData {
+  id: string;
+  description: string;
+  criteria: string;
+  status: "not_started" | "doing" | "done" | "blocked";
+  requirementId: string | null;
+}
+
+export interface UiAgentData {
+  loaded: boolean;
+  sessions: UiAgentSessionData[];
+  lastMutation: UiAgentMutation | null;
+}
+
+export interface UiAgentDesignQuestionData {
+  id: string;
+  question: string;
+  options: string[];
+  default: string | null;
+}
+
+export interface UiAgentDesignQuestionsData {
+  context: string;
+  questions: UiAgentDesignQuestionData[];
+}
+
+export interface UiAgentMessageData {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  pending: boolean;
+  activity: string | null;
+  toolTraces: UiAgentToolTraceData[];
+  checklist: UiAgentChecklistData | null;
+  designQuestions: UiAgentDesignQuestionsData | null;
+}
+
+export interface UiAgentMutation {
+  action: string | null;
+  sessionId: string | null;
+  runId: string | null;
+  error: string | null;
+  updatedAt: number | null;
+}
+
+export interface UiAgentSessionData {
+  sessionId: string;
+  projectRoot: string;
+  messages: UiAgentMessageData[];
+  history: Record<string, string>[];
+  recentSelectedTargets: string[];
+  activeRunId: string | null;
+  activeRunStatus: string | null;
+  activeRunStopRequested: boolean;
+  activeRunError: string | null;
+  activityLabel: string;
+  error: string | null;
+  runStartedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface UiAgentToolTraceData {
+  name: string;
+  args: Record<string, unknown>;
+  ok: boolean;
+  result: Record<string, unknown>;
+  callId: string | null;
+  running: boolean;
 }
 
 export interface UiBOMComponent {
@@ -486,6 +533,7 @@ export interface UiEntryCheckData {
 export interface UiExtensionSettings {
   devPath: string;
   autoInstall: boolean;
+  enableChat: boolean;
 }
 
 export interface UiFileActionData {
@@ -654,8 +702,13 @@ export interface UiPartsSearchData {
   error: string | null;
 }
 
+export interface UiProjectFilesData {
+  projectRoot: string | null;
+  files: FileNode[];
+}
+
 export interface UiProjectState {
-  selectedProject: string | null;
+  selectedProjectRoot: string | null;
   selectedTarget: ResolvedBuildTarget | null;
   activeFilePath: string | null;
   logViewBuildId: string | null;
@@ -680,7 +733,7 @@ export interface UiStore {
   extensionSettings: UiExtensionSettings;
   projectState: UiProjectState;
   projects: Project[];
-  projectFiles: FileNode[];
+  projectFiles: UiProjectFilesData;
   currentBuilds: Build[];
   previousBuilds: Build[];
   queueBuilds: Build[];
@@ -699,6 +752,7 @@ export interface UiStore {
   layoutData: UiLayoutData;
   blobAsset: UiBlobAssetData;
   fileAction: UiFileActionData;
+  agentData: UiAgentData;
 }
 
 export interface UiStructureData {
@@ -750,7 +804,7 @@ export interface UpdateBuildTargetResponse {
   target: string | null;
 }
 
-export const STORE_KEYS = ["blobAsset", "bomData", "buildsByProjectData", "coreStatus", "currentBuilds", "entryCheck", "extensionSettings", "fileAction", "installedParts", "layoutData", "lcscPartsData", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "queueBuilds", "selectedBuild", "sidebarDetails", "stdlibData", "structureData", "variablesData"] as const;
+export const STORE_KEYS = ["agentData", "blobAsset", "bomData", "buildsByProjectData", "coreStatus", "currentBuilds", "entryCheck", "extensionSettings", "fileAction", "installedParts", "layoutData", "lcscPartsData", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "queueBuilds", "selectedBuild", "sidebarDetails", "stdlibData", "structureData", "variablesData"] as const;
 export type StoreKey = typeof STORE_KEYS[number];
 
 export const DEFAULT_Build: Build = {
@@ -776,17 +830,116 @@ export function createBuild(): Build {
   return cloneGenerated(DEFAULT_Build);
 }
 
-export const DEFAULT_ProblemFilter: ProblemFilter = {
-  "buildNames": [],
-  "levels": [
-    "error",
-    "warning"
-  ],
-  "stageIds": []
+export const DEFAULT_UiAgentChecklistData: UiAgentChecklistData = {
+  "createdAt": 0.0,
+  "items": []
 };
 
-export function createProblemFilter(): ProblemFilter {
-  return cloneGenerated(DEFAULT_ProblemFilter);
+export function createUiAgentChecklistData(): UiAgentChecklistData {
+  return cloneGenerated(DEFAULT_UiAgentChecklistData);
+}
+
+export const DEFAULT_UiAgentChecklistItemData: UiAgentChecklistItemData = {
+  "criteria": "",
+  "description": "",
+  "id": "",
+  "requirementId": null,
+  "status": "not_started"
+};
+
+export function createUiAgentChecklistItemData(): UiAgentChecklistItemData {
+  return cloneGenerated(DEFAULT_UiAgentChecklistItemData);
+}
+
+export const DEFAULT_UiAgentData: UiAgentData = {
+  "lastMutation": null,
+  "loaded": false,
+  "sessions": []
+};
+
+export function createUiAgentData(): UiAgentData {
+  return cloneGenerated(DEFAULT_UiAgentData);
+}
+
+export const DEFAULT_UiAgentDesignQuestionData: UiAgentDesignQuestionData = {
+  "default": null,
+  "id": "",
+  "options": [],
+  "question": ""
+};
+
+export function createUiAgentDesignQuestionData(): UiAgentDesignQuestionData {
+  return cloneGenerated(DEFAULT_UiAgentDesignQuestionData);
+}
+
+export const DEFAULT_UiAgentDesignQuestionsData: UiAgentDesignQuestionsData = {
+  "context": "",
+  "questions": []
+};
+
+export function createUiAgentDesignQuestionsData(): UiAgentDesignQuestionsData {
+  return cloneGenerated(DEFAULT_UiAgentDesignQuestionsData);
+}
+
+export const DEFAULT_UiAgentMessageData: UiAgentMessageData = {
+  "activity": null,
+  "checklist": null,
+  "content": "",
+  "designQuestions": null,
+  "id": "",
+  "pending": false,
+  "role": "system",
+  "toolTraces": []
+};
+
+export function createUiAgentMessageData(): UiAgentMessageData {
+  return cloneGenerated(DEFAULT_UiAgentMessageData);
+}
+
+export const DEFAULT_UiAgentMutation: UiAgentMutation = {
+  "action": null,
+  "error": null,
+  "runId": null,
+  "sessionId": null,
+  "updatedAt": null
+};
+
+export function createUiAgentMutation(): UiAgentMutation {
+  return cloneGenerated(DEFAULT_UiAgentMutation);
+}
+
+export const DEFAULT_UiAgentSessionData: UiAgentSessionData = {
+  "activeRunError": null,
+  "activeRunId": null,
+  "activeRunStatus": null,
+  "activeRunStopRequested": false,
+  "activityLabel": "Ready",
+  "createdAt": 0.0,
+  "error": null,
+  "history": [],
+  "messages": [],
+  "projectRoot": "",
+  "recentSelectedTargets": [],
+  "runStartedAt": null,
+  "sessionId": "",
+  "updatedAt": 0.0
+};
+
+export function createUiAgentSessionData(): UiAgentSessionData {
+  return cloneGenerated(DEFAULT_UiAgentSessionData);
+}
+
+export const DEFAULT_UiAgentToolTraceData: UiAgentToolTraceData = {
+  "args": {},
+  "callId": null,
+  "name": "",
+  "ok": true,
+  "result": {},
+  "running": false
+};
+
+export function createUiAgentToolTraceData(): UiAgentToolTraceData {
+  return cloneGenerated(DEFAULT_UiAgentToolTraceData);
 }
 
 export const DEFAULT_UiBOMComponent: UiBOMComponent = {
@@ -916,7 +1069,8 @@ export function createUiEntryCheckData(): UiEntryCheckData {
 
 export const DEFAULT_UiExtensionSettings: UiExtensionSettings = {
   "autoInstall": true,
-  "devPath": ""
+  "devPath": "",
+  "enableChat": true
 };
 
 export function createUiExtensionSettings(): UiExtensionSettings {
@@ -1119,11 +1273,20 @@ export function createUiPartsSearchData(): UiPartsSearchData {
   return cloneGenerated(DEFAULT_UiPartsSearchData);
 }
 
+export const DEFAULT_UiProjectFilesData: UiProjectFilesData = {
+  "files": [],
+  "projectRoot": null
+};
+
+export function createUiProjectFilesData(): UiProjectFilesData {
+  return cloneGenerated(DEFAULT_UiProjectFilesData);
+}
+
 export const DEFAULT_UiProjectState: UiProjectState = {
   "activeFilePath": null,
   "logViewBuildId": null,
   "logViewStage": null,
-  "selectedProject": null,
+  "selectedProjectRoot": null,
   "selectedTarget": null
 };
 
@@ -1169,6 +1332,11 @@ export function createUiSidebarDetails(): UiSidebarDetails {
 }
 
 export const DEFAULT_UiStore: UiStore = {
+  "agentData": {
+    "lastMutation": null,
+    "loaded": false,
+    "sessions": []
+  },
   "blobAsset": {
     "action": null,
     "contentType": null,
@@ -1217,7 +1385,8 @@ export const DEFAULT_UiStore: UiStore = {
   },
   "extensionSettings": {
     "autoInstall": true,
-    "devPath": ""
+    "devPath": "",
+    "enableChat": true
   },
   "fileAction": {
     "action": "none",
@@ -1250,12 +1419,15 @@ export const DEFAULT_UiStore: UiStore = {
     "parts": []
   },
   "previousBuilds": [],
-  "projectFiles": [],
+  "projectFiles": {
+    "files": [],
+    "projectRoot": null
+  },
   "projectState": {
     "activeFilePath": null,
     "logViewBuildId": null,
     "logViewStage": null,
-    "selectedProject": null,
+    "selectedProjectRoot": null,
     "selectedTarget": null
   },
   "projects": [],
