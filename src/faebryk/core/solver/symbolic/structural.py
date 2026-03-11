@@ -5,6 +5,7 @@ from typing import Callable
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
+from faebryk.core.solver.facts import IsUniversalEnclosure
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.symbolic.invariants import AliasClass
 from faebryk.core.solver.symbolic.pure_literal import (
@@ -241,8 +242,12 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
             )
 
 
-_Interval = tuple[float, float] | list[float]
+_Interval = tuple[float, float]
 _UncertaintyResult = tuple[F.Literals.Numbers, _Interval, bool]
+
+
+def _as_enclosure(lit: F.Literals.Numbers) -> _Interval:
+    return lit.get_min_value(), lit.get_max_value()
 
 
 class _QuantifiedEnclosureEval:
@@ -272,7 +277,7 @@ class _QuantifiedEnclosureEval:
         universal_enclosure = (
             (1 / base_enclosure_max, 1 / base_enclosure_min)
             if base_depends_on_uncertainty
-            else existential_enclosure.get_values()
+            else _as_enclosure(existential_enclosure)
         )
 
         return existential_enclosure, universal_enclosure, base_depends_on_uncertainty
@@ -326,7 +331,7 @@ class _QuantifiedEnclosureEval:
         if not uncertain_results:
             return (
                 existential_enclosure_out,
-                existential_enclosure_out.get_values(),
+                _as_enclosure(existential_enclosure_out),
                 False,
             )
 
@@ -410,26 +415,40 @@ def _eval_uncertainty_expression(
 
     def eval_operand(operand: F.Parameters.can_be_operand) -> _UncertaintyResult:
         if lit := MutatorUtils.is_numeric_literal(operand):
-            # Literals are exact and do not introduce uncertainty by themselves.
-            return lit, lit.get_values(), False
+            # Literals are exact and do not introduce uncertainty by themselves
+            return lit, _as_enclosure(lit), False
+
+        if nested_expr := operand.try_get_sibling_trait(F.Expressions.is_expression):
+            if result := _eval_uncertainty_expression(mutator, nested_expr, source_po):
+                return result
+            raise _UnsupportedOperand
 
         po = operand.as_parameter_operatable.force_get()
         if lower_bound := mutator.utils.try_extract_numeric_subset(po):
             if not po.is_same(source_po):
                 raise _UnsupportedOperand
-            return (lower_bound, list(reversed(lower_bound.get_values())), True)
+
+            return (
+                lower_bound,
+                # Carry as (max, min) until a surrounding monotone operator converts to
+                # a real interval
+                (lower_bound.get_max_value(), lower_bound.get_min_value()),
+                True,
+            )
 
         if (
             existential_enclosure := mutator.utils.try_extract_numeric_superset(po)
         ) is None:
             raise _UnsupportedOperand
 
-        if universal_enclosure := mutator.utils.try_extract_numeric_universal_enclosure(
-            po, source_po
+        if universal_enclosure := (
+            mutator.utils.try_extract_numeric_universal_enclosure_for_source(
+                po, source_po
+            )
         ):
             return existential_enclosure, universal_enclosure, True
 
-        return existential_enclosure, existential_enclosure.get_values(), False
+        return existential_enclosure, _as_enclosure(existential_enclosure), False
 
     try:
         operand_results = [eval_operand(operand) for operand in expr.get_operands()]
@@ -457,82 +476,65 @@ def uncertainty_estimation_single_source(mutator: Mutator):
     where Y is the universal enclosure for all values of B in L, restricted to
     certain monotone expression cases
     """
-    numeric_pos = list(
+    numeric_pos = OrderedSet(
         mutator.get_parameter_operatables_of_type(F.Parameters.NumericParameter)
     )
-    params_by_has_subset = groupby(
-        numeric_pos,
-        key=lambda po: po.try_extract_subset() is not None,
+    sources = OrderedSet(
+        po for po in numeric_pos if po.try_extract_subset() is not None
     )
-    sources = params_by_has_subset.get(True) or []
+    targets = numeric_pos.difference(sources)
 
     for source_po in sources:
         source_op = source_po.as_operand.get()
-        dependent_pos = {
-            po
-            for po in numeric_pos
-            if po.is_same(source_po)
-            or mutator.utils.try_extract_numeric_universal_enclosure(po, source_po)
-            is not None
-        }
-
-        dependent_exprs = {
-            expr
-            for dependent_po in dependent_pos
-            for op in dependent_po.as_operand.get().get_operations(recursive=False)
-            if (expr := op.try_get_trait(F.Expressions.is_expression))
-            if expr.try_get_sibling_trait(F.Expressions.is_predicate) is None
-            if expr.try_get_sibling_trait(F.Expressions.is_setic) is None
-        }
-
-        for expr in dependent_exprs:
-            target_po = (
-                AliasClass.of(expr.as_operand.get())
-                .representative()
-                .as_parameter_operatable.force_get()
-            )
-            if target_po.try_extract_subset() is not None:
-                # Lower-bounded quantities are already uncertainty sources.
-                continue
-
-            if target_po in expr.get_operand_leaves_operatable():
-                continue
-
-            if not (result := _eval_uncertainty_expression(mutator, expr, source_po)):
-                continue
-
-            existential_enclosure, universal_enclosure, depends_on_uncertainty = result
-
-            if not depends_on_uncertainty:
-                continue
-
-            universal_min, universal_max = universal_enclosure
+        for target_po in targets:
             target_op = target_po.as_operand.get()
+            for expr in AliasClass.of(target_op).expressions(
+                excluded_traits=(
+                    F.Expressions.is_predicate,
+                    F.Expressions.is_setic,
+                ),
+                exclude_operand=target_po,
+            ):
+                if not (
+                    result := _eval_uncertainty_expression(mutator, expr, source_po)
+                ):
+                    continue
 
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                target_op,
-                existential_enclosure.is_literal.get().as_operand.get(),
-                from_ops=[target_po, source_po],
-                assert_=True,
-            )
+                _, universal_enclosure, depends_on_uncertainty = result
 
-            universal_min_lit = mutator.utils.make_number_literal_from_range(
-                universal_min, universal_min
-            )
-            universal_max_lit = mutator.utils.make_number_literal_from_range(
-                universal_max, universal_max
-            )
+                if not depends_on_uncertainty:
+                    continue
 
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsUniversalEnclosure,
-                target_op,
-                source_op,
-                universal_min_lit.is_literal.get().as_operand.get(),
-                universal_max_lit.is_literal.get().as_operand.get(),
-                from_ops=[target_po, source_po],
-                assert_=True,
-            )
+                existential_enclosure, _, _ = result
+                universal_min, universal_max = universal_enclosure
+                existential_enclosure_op = (
+                    existential_enclosure.is_literal.get().as_operand.get()
+                )
+
+                mutator.create_check_and_insert_expression(
+                    F.Expressions.IsSubset,
+                    target_op,
+                    existential_enclosure_op,
+                    from_ops=[target_po, source_po],
+                    assert_=True,
+                )
+
+                universal_min_lit = mutator.utils.make_number_literal_from_range(
+                    universal_min, universal_min
+                )
+                universal_max_lit = mutator.utils.make_number_literal_from_range(
+                    universal_max, universal_max
+                )
+
+                mutator.create_check_and_insert_expression(
+                    IsUniversalEnclosure,
+                    target_op,
+                    source_op,
+                    universal_min_lit.is_literal.get().as_operand.get(),
+                    universal_max_lit.is_literal.get().as_operand.get(),
+                    from_ops=[target_po, source_po],
+                    assert_=True,
+                )
 
 
 @algorithm("Correlated contradiction", terminal=False)

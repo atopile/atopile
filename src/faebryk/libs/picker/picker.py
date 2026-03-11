@@ -345,6 +345,8 @@ def _collect_relevant_params(
         )
         for p in pbt.get_params()
     ]
+
+
 def _format_pcb_contradiction_error(
     contradiction: Contradiction, tg: fbrk.TypeGraph
 ) -> str:

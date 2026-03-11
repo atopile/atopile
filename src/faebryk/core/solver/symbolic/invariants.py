@@ -15,6 +15,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.logging import scope
 from faebryk.core.solver.algorithm import SolverAlgorithm
+from faebryk.core.solver.facts import IsUniversalEnclosure
 from faebryk.core.solver.mutator import (
     ExpressionBuilder,
     MutationMap,
@@ -26,6 +27,7 @@ from faebryk.core.solver.utils import (
     S_LOG,
     Contradiction,
     ContradictionByLiteral,
+    MutatorUtils,
 )
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import ConfigFlag, OrderedSet, indented_container, not_none
@@ -336,6 +338,70 @@ class SubsumptionCheck:
         assert False, "Unreachable"
 
     @staticmethod
+    def universal_enclosure(mutator: Mutator, builder: "ExpressionBuilder") -> Result:
+        """
+        A ss!∀[S] X, A ss!∀[S] Y -> A ss!∀[S] X ∩ Y
+        """
+
+        assert builder.assert_, f"unasserted universal enclosure builder: {builder}"
+
+        target_operand, source_operand, new_min_op, new_max_op = builder.operands
+        target_po = target_operand.as_parameter_operatable.force_get()
+        source_po = source_operand.as_parameter_operatable.force_get()
+        new_min = not_none(MutatorUtils.is_numeric_literal(new_min_op)).get_single()
+        new_max = not_none(MutatorUtils.is_numeric_literal(new_max_op)).get_single()
+
+        if not (
+            existing_exprs := [
+                expr
+                for expr in mutator.get_operations(
+                    target_po, types=IsUniversalEnclosure, predicates_only=True
+                )
+                if (
+                    expr.get_source_operand()
+                    .as_parameter_operatable.force_get()
+                    .is_same(source_po)
+                )
+            ]
+        ):
+            return SubsumptionCheck.Result()
+
+        assert len(existing_exprs) == 1, "multiple extant universal enclosures"
+
+        [existing_expr] = existing_exprs
+        existing_min, existing_max = existing_expr.get_universal_enclosure()
+        merged_min = max(new_min, existing_min)
+        merged_max = min(new_max, existing_max)
+
+        if existing_min == merged_min and existing_max == merged_max:
+            return SubsumptionCheck.Result(existing_expr.is_expression.get())
+
+        new_min = (
+            mutator.utils.make_number_literal_from_range(merged_min, merged_min)
+            .is_literal.get()
+            .as_operand.get()
+        )
+        new_max = (
+            mutator.utils.make_number_literal_from_range(merged_max, merged_max)
+            .is_literal.get()
+            .as_operand.get()
+        )
+
+        merged_builder = ExpressionBuilder(
+            IsUniversalEnclosure,
+            [target_operand, source_operand, new_min, new_max],
+            assert_=True,
+            terminate=False,
+            traits=[
+                t for t in builder.traits if t is not None and t.has_trait(is_monotone)
+            ],
+        )
+
+        return SubsumptionCheck.Result(
+            merged_builder, subsumed=[existing_expr.is_expression.get()]
+        )
+
+    @staticmethod
     def or_(
         mutator: Mutator,
         builder: "ExpressionBuilder",
@@ -508,6 +574,8 @@ def find_subsuming_expression(
     match builder.factory:
         case F.Expressions.IsSubset:
             return SubsumptionCheck.subset(mutator, builder)
+        case _ if builder.factory is IsUniversalEnclosure:
+            return SubsumptionCheck.universal_enclosure(mutator, builder)
         case F.Expressions.Or:
             return SubsumptionCheck.or_(mutator, builder)
         case F.Expressions.Is:
@@ -610,43 +678,35 @@ def _no_inconsistent_bounds(
     if builder.factory is not IsSubset or not builder.assert_:
         return
 
-    ops = builder.indexed_pos()
-    if len(ops) != 1:
+    # Same-direction bounds have already been canonicalized by subset subsumption, so
+    # we only need to compare the new literal against the existing opposite bound
+    pos = builder.indexed_pos()
+
+    if (param_op := pos.get(0)) and (
+        superset_lit := builder.operands[1].try_get_sibling_trait(F.Literals.is_literal)
+    ):
+        subset_lit = param_op.try_extract_subset()
+    elif (param_op := pos.get(1)) and (
+        subset_lit := builder.operands[0].try_get_sibling_trait(F.Literals.is_literal)
+    ):
+        superset_lit = param_op.try_extract_superset()
+    else:
         return
 
-    if param_op := ops.get(0):
-        superset_lit = builder.operands[1].try_get_sibling_trait(F.Literals.is_literal)
-        lower_lit = None if superset_lit is None else param_op.try_extract_subset()
-        if lower_lit is None:
-            return
-
-        if not lower_lit.op_setic_is_subset_of(
+    if (
+        subset_lit is not None
+        and superset_lit is not None
+        and not subset_lit.op_setic_is_subset_of(
             superset_lit, g=mutator.G_transient, tg=mutator.tg_in
-        ):
-            raise ContradictionByLiteral(
-                "Lower bound not contained in upper bound",
-                involved=[param_op],
-                literals=[lower_lit, superset_lit],
-                mutator=mutator,
-                constraint_sources=[param_op],
-            )
-
-    elif param_op := ops.get(1):
-        subset_lit = builder.operands[0].try_get_sibling_trait(F.Literals.is_literal)
-        upper_lit = None if subset_lit is None else param_op.try_extract_superset()
-        if upper_lit is None:
-            return
-
-        if not subset_lit.op_setic_is_subset_of(
-            upper_lit, g=mutator.G_transient, tg=mutator.tg_in
-        ):
-            raise ContradictionByLiteral(
-                "Lower bound not contained in upper bound",
-                involved=[param_op],
-                literals=[subset_lit, upper_lit],
-                mutator=mutator,
-                constraint_sources=[param_op],
-            )
+        )
+    ):
+        raise ContradictionByLiteral(
+            "Lower bound not contained in upper bound",
+            involved=[param_op],
+            literals=[subset_lit, superset_lit],
+            mutator=mutator,
+            constraint_sources=[param_op],
+        )
 
 
 def _no_predicate_literals(
@@ -1033,7 +1093,7 @@ def _no_singleton_supersets(
     - X ss! A{⊆|{X]}
     in general not terminated
     """
-    if builder.terminate:
+    if builder.terminate or builder.factory is IsUniversalEnclosure:
         return builder
 
     mapped_operands = [
@@ -1246,8 +1306,10 @@ def insert_expression(
     * ✓ no congruence
     * ✓ minimal subsumption
     * ✓ - intersected supersets (single superset)
+    * ✓ - intersected universal enclosures (single enclosure per target/source)
     * ✓ no empty supersets
     * ✓ no A is! X(single) => A ss! X
+    * ✓ A ss!∀[S] [l, u], l <= u => A ss! [l, u]
     * ✓ fold literal expressions: E(X, Y) -> E{S/P|...}(X, Y)
     * ✓ terminate ss lit: A ss! X -> A ss!$ X; X ss! A -> X ss!$ A TODO rethink/expand
     * ✓ terminate is!
@@ -1565,6 +1627,26 @@ def insert_expression(
                 traits=[],
             )
         )
+
+    if universal_enclosure := expr.try_cast(IsUniversalEnclosure):
+        universal_min, universal_max = universal_enclosure.get_universal_enclosure()
+        if universal_min <= universal_max:
+            universal_lit = (
+                mutator.utils.make_number_literal_from_range(
+                    universal_min, universal_max
+                )
+                .is_literal.get()
+                .as_operand.get()
+            )
+            mutator.create_check_and_insert_expression_from_builder(
+                ExpressionBuilder(
+                    F.Expressions.IsSubset,
+                    [universal_enclosure.get_superset_operand(), universal_lit],
+                    assert_=True,
+                    terminate=False,
+                    traits=[],
+                )
+            )
 
     return InsertExpressionResult(expr.is_expression.get(), True)
 

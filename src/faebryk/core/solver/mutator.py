@@ -30,6 +30,7 @@ import faebryk.library._F as F
 from atopile.logging import scope
 from atopile.logging_utils import rich_to_string
 from faebryk.core.solver.algorithm import SolverAlgorithm
+from faebryk.core.solver.facts import IsUniversalEnclosure
 from faebryk.core.solver.utils import (
     S_LOG,
     SHOW_SS_IS,
@@ -55,6 +56,8 @@ if S_LOG:
 
 Is = F.Expressions.Is
 IsSubset = F.Expressions.IsSubset
+
+ExpressionNodes = F.Expressions.ExpressionNodes | IsUniversalEnclosure
 
 
 class is_monotone(fabll.Node):
@@ -1451,9 +1454,7 @@ _EXPRESSION_BUILDER_TRAIT_ALLOWLIST: list[type[fabll.NodeT]] = [
 ]
 
 
-class ExpressionBuilder[
-    T: F.Expressions.ExpressionNodes = F.Expressions.ExpressionNodes
-](NamedTuple):
+class ExpressionBuilder[T: ExpressionNodes = ExpressionNodes](NamedTuple):
     factory: type[T]
     operands: list[F.Parameters.can_be_operand]
     assert_: bool
@@ -1721,7 +1722,7 @@ class Mutator:
             new_param,
         ).as_parameter.force_get()
 
-    def _create_and_insert_expression[T: F.Expressions.ExpressionNodes](
+    def _create_and_insert_expression[T: ExpressionNodes](
         self,
         builder: ExpressionBuilder[T],
     ) -> T:
@@ -1777,7 +1778,7 @@ class Mutator:
             self.G_out.get_self_node().node().get_uuid()
         }, f"Graph mismatch: {op_graphs} != {self.G_out}"
 
-        return cast(T, new_expr)
+        return new_expr
 
     def create_check_and_insert_expression_from_builder(
         self,
@@ -1825,7 +1826,7 @@ class Mutator:
 
     def create_check_and_insert_expression(
         self,
-        expr_factory: type[F.Expressions.ExpressionNodes],
+        expr_factory: type[ExpressionNodes],
         *operands: F.Parameters.can_be_operand,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         assert_: bool = False,
@@ -1849,7 +1850,7 @@ class Mutator:
         self,
         expr: F.Expressions.is_expression,
         operands: Iterable[F.Parameters.can_be_operand] | None = None,
-        expression_factory: type[F.Expressions.ExpressionNodes] | None = None,
+        expression_factory: type[ExpressionNodes] | None = None,
         traits: list[fabll.NodeT | None] | None = None,
     ) -> F.Parameters.can_be_operand:
         import faebryk.core.solver.symbolic.invariants as invariants

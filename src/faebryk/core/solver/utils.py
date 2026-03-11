@@ -17,6 +17,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.logging_utils import rich_to_string
 from faebryk.core import graph
+from faebryk.core.solver.facts import IsUniversalEnclosure
 from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagFloat,
@@ -28,6 +29,9 @@ from faebryk.libs.util import (
 
 if TYPE_CHECKING:
     from faebryk.core.solver.mutator import Mutator
+
+
+ExpressionNodes = F.Expressions.ExpressionNodes | IsUniversalEnclosure
 
 
 logger = logging.getLogger(__name__)
@@ -260,15 +264,56 @@ class MutatorUtils:
         except NotImplementedError:
             return None
 
+    def try_extract_numeric_superset(
+        self,
+        po: F.Parameters.is_parameter_operatable,
+        domain_default: bool = False,
+        finite_only: bool = True,
+    ) -> F.Literals.Numbers | None:
+        if lit := self.try_extract_superset(po, domain_default=domain_default):
+            if (numeric_lit := MutatorUtils.is_numeric_literal(lit)) is None:
+                return None
+
+            return numeric_lit if not finite_only or numeric_lit.is_finite() else None
+
     def try_extract_subset(
         self,
         po: F.Parameters.is_parameter_operatable,
     ) -> F.Literals.is_literal | None:
         return po.try_extract_subset()
 
+    def try_extract_numeric_subset(
+        self,
+        po: F.Parameters.is_parameter_operatable,
+    ) -> F.Literals.Numbers | None:
+        if lit := self.try_extract_subset(po):
+            return MutatorUtils.is_numeric_literal(lit)
+        return None
+
+    def try_extract_numeric_universal_enclosure_for_source(
+        self,
+        po: F.Parameters.is_parameter_operatable,
+        source: F.Parameters.is_parameter_operatable,
+    ) -> tuple[float, float] | None:
+        for expr in self.mutator.get_operations(
+            po, types=IsUniversalEnclosure, predicates_only=True
+        ):
+            if (
+                expr.get_superset_operand()
+                .as_parameter_operatable.force_get()
+                .is_same(po)
+            ) and (
+                expr.get_source_operand()
+                .as_parameter_operatable.force_get()
+                .is_same(source)
+            ):
+                return expr.get_universal_enclosure()
+
     def map_operands_extracted_supersets(
         self,
         expr: F.Expressions.is_expression,
+        *,
+        domain_default: bool = False,
     ) -> tuple[
         list[F.Parameters.can_be_operand], list[F.Parameters.is_parameter_operatable]
     ]:
@@ -286,7 +331,7 @@ class MutatorUtils:
                 out.append(op)
                 continue
             op_po = op.as_parameter_operatable.force_get()
-            lit = self.try_extract_superset(op_po)
+            lit = self.try_extract_superset(op_po, domain_default=domain_default)
             if lit is None:
                 out.append(op)
                 continue
@@ -613,7 +658,7 @@ class MutatorUtils:
     @staticmethod
     def hack_get_expr_type(
         expr: F.Expressions.is_expression,
-    ) -> type[F.Expressions.ExpressionNodes]:
+    ) -> type[ExpressionNodes]:
         # TODO this is a hack, we should not do it like this
         # better build something into is_expression trait that allows copying
         type_node = not_none(fabll.Traits(expr).get_obj_raw().get_type_node())
