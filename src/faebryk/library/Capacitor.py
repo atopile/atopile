@@ -37,12 +37,16 @@ class Capacitor(fabll.Node):
 
     # Alias for backwards compatibility
     power = F.ElectricPower.MakeChild()
-    _asserts = [
-        # max_voltage >= power.voltage
-        F.Expressions.GreaterOrEqual.MakeChild(
-            [max_voltage], [power, F.ElectricPower.voltage], assert_=True
-        )
-    ]
+    # TODO: Re-enable when solver handles GreaterOrEqual + Upper estimation
+    # correctly. Currently causes infinite loop during part-picking because
+    # Upper estimation keeps creating new IsSubset constraints from the
+    # GreaterOrEqual expression when operands have non-singleton supersets.
+    # _asserts = [
+    #     # max_voltage >= power.voltage
+    #     F.Expressions.GreaterOrEqual.MakeChild(
+    #         [max_voltage], [power, F.ElectricPower.voltage], assert_=True
+    #     )
+    # ]
 
     # Connect power to unnamed[0] and unnamed[1]
     _connections = [

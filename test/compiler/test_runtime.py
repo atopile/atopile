@@ -2934,6 +2934,482 @@ class TestUnitConflicts:
             )
 
 
+class TestCapacitorPowerInterfaceConnection:
+    """Regression tests for connecting Capacitor.power to an ElectricPower rail.
+
+    Bug: `power_rail ~ cap.power` causes the solver to loop infinitely because
+    the interface merge links cap.max_voltage (via GreaterOrEqual assert in
+    Capacitor) to the power rail's voltage parameter, creating a constraint
+    graph the solver cannot converge on.
+
+    Workaround: `power_rail.hv ~> cap ~> power_rail.lv` (bridge operator)
+    avoids the interface merge.
+
+    Discovered via ti-tps54560x package where `power_in ~ cap.power` and
+    `power_out ~ cap.power` both triggered the solver infinite loop.
+    """
+
+    def test_capacitor_bridge_to_power_rail_with_solver(self):
+        """Baseline: bridge operator connection works fine with solver."""
+        g, tg, _, _, app_instance = build_instance(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+            import Capacitor
+            import ElectricPower
+
+            module App:
+                power = new ElectricPower
+                assert power.voltage within 5V +/- 10%
+                cap = new Capacitor
+                cap.capacitance = 100nF +/- 20%
+                cap.package = "0402"
+                power.hv ~> cap ~> power.lv
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_capacitor_power_interface_simple_with_solver(self):
+        """Simple cap.power connection works when constraints are minimal."""
+        g, tg, _, _, app_instance = build_instance(
+            """
+            import Capacitor
+            import ElectricPower
+
+            module App:
+                power = new ElectricPower
+                assert power.voltage within 5V +/- 10%
+                cap = new Capacitor
+                cap.capacitance = 100nF +/- 20%
+                cap.package = "0402"
+                assert cap.max_voltage >= 10V
+                power ~ cap.power
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_capacitor_power_interface_with_regulator_with_solver(self):
+        """Cap.power connected to regulator power_out works alone with solver."""
+        g, tg, _, _, app_instance = build_instance(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+            #pragma experiment("FOR_LOOP")
+            import Capacitor
+            import AdjustableRegulator
+
+            module App from AdjustableRegulator:
+                assert input_voltage within 4.5V to 60V
+                assert output_voltage within 0.8V to 58.8V
+                assert reference_voltage within 0.8V +/- 0.1%
+
+                feedback_divider.chain.resistors[0].package = "0402"
+                feedback_divider.chain.resistors[1].package = "0402"
+                assert feedback_divider.current within 10uA to 100uA
+
+                output_caps = new Capacitor[2]
+                for cap in output_caps:
+                    cap.capacitance = 22uF +/- 20%
+                    cap.package = "0805"
+                    power_out ~ cap.power
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_full_buck_converter_with_cap_power_interface_with_solver(self):
+        """Full buck converter topology with cap.power connections.
+
+        Replicates the ti-tps54560x topology:
+        - AdjustableRegulator base with feedback divider
+        - Input caps connected via power_in ~ cap.power
+        - Output caps connected via power_out ~ cap.power
+        - Inductor, diode, compensation components
+
+        Note: This passes with the GreaterOrEqual assert disabled in
+        Capacitor.py. When enabled, the solver loops infinitely during
+        ato build (part-picking stage) due to Upper estimation algorithm
+        oscillation with GreaterOrEqual + non-singleton supersets.
+        """
+        g, tg, _, _, app_instance = build_instance(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+            #pragma experiment("FOR_LOOP")
+            import Capacitor
+            import Resistor
+            import Inductor
+            import AdjustableRegulator
+
+            module App from AdjustableRegulator:
+                assert input_voltage within 4.5V to 60V
+                assert output_voltage within 0.8V to 58.8V
+                assert reference_voltage within 0.8V +/- 0.1%
+
+                feedback_divider.chain.resistors[0].package = "0402"
+                feedback_divider.chain.resistors[1].package = "0402"
+                assert feedback_divider.current within 10uA to 100uA
+
+                inductor = new Inductor
+                inductor.inductance = 5.6uH +/- 30%
+
+                input_caps = new Capacitor[3]
+                for cap in input_caps:
+                    cap.max_voltage = 30V to 100V
+                    cap.package = "0805"
+                    cap.capacitance = 10uF +/- 20%
+
+                output_caps = new Capacitor[4]
+                for cap in output_caps:
+                    cap.max_voltage = 16V to 100V
+                    cap.package = "0805"
+                    cap.capacitance = 22uF +/- 20%
+
+                compensation_resistor = new Resistor
+                compensation_resistor.package = "0402"
+                compensation_resistor.resistance = 23.7kohm +/- 2%
+
+                compensation_caps = new Capacitor[2]
+                for cap in compensation_caps:
+                    cap.max_voltage = 30V to 100V
+                    cap.package = "0402"
+                compensation_caps[0].capacitance = 4.3nF +/- 20%
+                compensation_caps[1].capacitance = 8.2pF +/- 30%
+
+                # Power connections that trigger the bug
+                for cap in input_caps:
+                    power_in ~ cap.power
+                for cap in output_caps:
+                    power_out ~ cap.power
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_capacitor_power_interface_with_simulated_pick_simple(self):
+        """Simulates part-picking by adding IsSuperset to cap.max_voltage.
+
+        This reproduces the solver loop that occurs during `ato build` but
+        not in pure solver tests. The picker adds IsSuperset(max_voltage, literal)
+        for the picked part's rated voltage. Combined with the GreaterOrEqual
+        assert (max_voltage >= power.voltage) in Capacitor, this causes the
+        solver to loop.
+        """
+        g, tg, _, _, app_instance = build_instance(
+            """
+            import Capacitor
+            import ElectricPower
+
+            module App:
+                power = new ElectricPower
+                assert power.voltage within 5V +/- 10%
+                cap = new Capacitor
+                cap.capacitance = 100nF +/- 20%
+                cap.package = "0402"
+                power ~ cap.power
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        # Simulate what the part-picker does: add IsSuperset for max_voltage
+        # This mimics: picked part has max_voltage = 16V
+        cap_instance = _get_child(app_instance, "cap")
+        max_voltage = _get_child(cap_instance, "max_voltage")
+        max_voltage_param = F.Parameters.NumericParameter.bind_instance(max_voltage)
+        max_voltage_operand = max_voltage_param.get_trait(F.Parameters.can_be_operand)
+
+        # Create a literal operand for the picked part's voltage (16V)
+        e = BoundExpressions(g=g, tg=tg)
+        picked_voltage_op = e.lit_op_single((16.0, e.U.V))
+
+        # Add IsSuperset like the picker does
+        F.Expressions.IsSuperset.bind_typegraph(tg=tg).create_instance(g=g).setup(
+            max_voltage_operand,
+            picked_voltage_op,
+            assert_=True,
+        )
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_capacitor_power_interface_with_simulated_pick_regulator(self):
+        """Simulates part-picking on cap connected to AdjustableRegulator power_out.
+
+        This is the closest reproduction of the ti-tps54560x bug:
+        - AdjustableRegulator with voltage constraints
+        - Capacitor connected via cap.power (not bridge)
+        - IsSuperset added to simulate picked part's max_voltage
+        """
+        g, tg, _, _, app_instance = build_instance(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+            #pragma experiment("FOR_LOOP")
+            import Capacitor
+            import AdjustableRegulator
+
+            module App from AdjustableRegulator:
+                assert input_voltage within 4.5V to 60V
+                assert output_voltage within 0.8V to 58.8V
+                assert reference_voltage within 0.8V +/- 0.1%
+
+                feedback_divider.chain.resistors[0].package = "0402"
+                feedback_divider.chain.resistors[1].package = "0402"
+                assert feedback_divider.current within 10uA to 100uA
+
+                output_cap = new Capacitor
+                output_cap.capacitance = 22uF +/- 20%
+                output_cap.max_voltage = 16V to 100V
+                output_cap.package = "0805"
+                power_out ~ output_cap.power
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        # Simulate picker: add IsSuperset for max_voltage = 25V
+        cap_instance = _get_child(app_instance, "output_cap")
+        max_voltage = _get_child(cap_instance, "max_voltage")
+        max_voltage_param = F.Parameters.NumericParameter.bind_instance(max_voltage)
+        max_voltage_operand = max_voltage_param.get_trait(F.Parameters.can_be_operand)
+
+        e = BoundExpressions(g=g, tg=tg)
+        picked_voltage_op = e.lit_op_single((25.0, e.U.V))
+
+        F.Expressions.IsSuperset.bind_typegraph(tg=tg).create_instance(g=g).setup(
+            max_voltage_operand,
+            picked_voltage_op,
+            assert_=True,
+        )
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_capacitor_power_interface_full_pick_simulation(self):
+        """Simulates full part-picking on multiple caps with all parameters.
+
+        Replicates the ti-tps54560x topology with IsSuperset constraints
+        added for ALL parameters (capacitance, max_voltage) on ALL caps,
+        plus resistor picks for feedback divider. This is the closest
+        unit-test reproduction of the actual ato build failure.
+        """
+        g, tg, _, _, app_instance = build_instance(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+            #pragma experiment("FOR_LOOP")
+            import Capacitor
+            import Resistor
+            import Inductor
+            import AdjustableRegulator
+
+            module App from AdjustableRegulator:
+                assert input_voltage within 4.5V to 60V
+                assert output_voltage within 0.8V to 58.8V
+                assert reference_voltage within 0.8V +/- 0.1%
+
+                feedback_divider.chain.resistors[0].package = "0402"
+                feedback_divider.chain.resistors[1].package = "0402"
+                assert feedback_divider.current within 10uA to 100uA
+
+                inductor = new Inductor
+                inductor.inductance = 5.6uH +/- 30%
+
+                input_caps = new Capacitor[3]
+                for cap in input_caps:
+                    cap.max_voltage = 30V to 100V
+                    cap.package = "0805"
+                    cap.capacitance = 10uF +/- 20%
+
+                output_caps = new Capacitor[4]
+                for cap in output_caps:
+                    cap.max_voltage = 16V to 100V
+                    cap.package = "0805"
+                    cap.capacitance = 22uF +/- 20%
+
+                compensation_resistor = new Resistor
+                compensation_resistor.package = "0402"
+                compensation_resistor.resistance = 23.7kohm +/- 2%
+
+                compensation_caps = new Capacitor[2]
+                for cap in compensation_caps:
+                    cap.max_voltage = 30V to 100V
+                    cap.package = "0402"
+                compensation_caps[0].capacitance = 4.3nF +/- 20%
+                compensation_caps[1].capacitance = 8.2pF +/- 30%
+
+                # Power connections that trigger the bug
+                for cap in input_caps:
+                    power_in ~ cap.power
+                for cap in output_caps:
+                    power_out ~ cap.power
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        e = BoundExpressions(g=g, tg=tg)
+
+        def add_pick_superset(cap_node, child_name, value):
+            """Add IsSuperset to simulate a picked part's parameter."""
+            child = _get_child(cap_node, child_name)
+            param = F.Parameters.NumericParameter.bind_instance(child)
+            operand = param.get_trait(F.Parameters.can_be_operand)
+            F.Expressions.IsSuperset.bind_typegraph(tg=tg).create_instance(g=g).setup(
+                operand, e.lit_op_single(value), assert_=True
+            )
+
+        # Simulate picking for input caps (10uF 50V)
+        for i in range(3):
+            cap = _get_child(app_instance, f"input_caps[{i}]")
+            add_pick_superset(cap, "max_voltage", (50.0, e.U.V))
+            add_pick_superset(cap, "capacitance", (10e-6, e.U.Fa))
+
+        # Simulate picking for output caps (22uF 25V)
+        for i in range(4):
+            cap = _get_child(app_instance, f"output_caps[{i}]")
+            add_pick_superset(cap, "max_voltage", (25.0, e.U.V))
+            add_pick_superset(cap, "capacitance", (22e-6, e.U.Fa))
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_capacitor_power_interface_full_pick_with_anticorrelated(self):
+        """Simulates full part-picking including Anticorrelated constraints.
+
+        The picker adds Anticorrelated constraints between all pickable
+        parameters before solving. This test adds those constraints and
+        also simulates the two-phase solve (non-terminal then terminal).
+        """
+        g, tg, _, _, app_instance = build_instance(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+            #pragma experiment("FOR_LOOP")
+            import Capacitor
+            import Resistor
+            import Inductor
+            import AdjustableRegulator
+
+            module App from AdjustableRegulator:
+                assert input_voltage within 4.5V to 60V
+                assert output_voltage within 0.8V to 58.8V
+                assert reference_voltage within 0.8V +/- 0.1%
+
+                feedback_divider.chain.resistors[0].package = "0402"
+                feedback_divider.chain.resistors[1].package = "0402"
+                assert feedback_divider.current within 10uA to 100uA
+
+                inductor = new Inductor
+                inductor.inductance = 5.6uH +/- 30%
+
+                input_caps = new Capacitor[3]
+                for cap in input_caps:
+                    cap.max_voltage = 30V to 100V
+                    cap.package = "0805"
+                    cap.capacitance = 10uF +/- 20%
+
+                output_caps = new Capacitor[4]
+                for cap in output_caps:
+                    cap.max_voltage = 16V to 100V
+                    cap.package = "0805"
+                    cap.capacitance = 22uF +/- 20%
+
+                compensation_resistor = new Resistor
+                compensation_resistor.package = "0402"
+                compensation_resistor.resistance = 23.7kohm +/- 2%
+
+                compensation_caps = new Capacitor[2]
+                for cap in compensation_caps:
+                    cap.max_voltage = 30V to 100V
+                    cap.package = "0402"
+                compensation_caps[0].capacitance = 4.3nF +/- 20%
+                compensation_caps[1].capacitance = 8.2pF +/- 30%
+
+                # Power connections that trigger the bug
+                for cap in input_caps:
+                    power_in ~ cap.power
+                for cap in output_caps:
+                    power_out ~ cap.power
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        e = BoundExpressions(g=g, tg=tg)
+
+        # Collect all pickable parameter operands for Anticorrelated
+        all_param_operands = []
+
+        def get_param_operand(parent_node, param_name):
+            child = _get_child(parent_node, param_name)
+            param = F.Parameters.NumericParameter.bind_instance(child)
+            return param.get_trait(F.Parameters.can_be_operand)
+
+        def add_pick_superset(cap_node, child_name, value):
+            child = _get_child(cap_node, child_name)
+            param = F.Parameters.NumericParameter.bind_instance(child)
+            operand = param.get_trait(F.Parameters.can_be_operand)
+            F.Expressions.IsSuperset.bind_typegraph(tg=tg).create_instance(g=g).setup(
+                operand, e.lit_op_single(value), assert_=True
+            )
+
+        # Collect pickable params and add Anticorrelated
+        for i in range(3):
+            cap = _get_child(app_instance, f"input_caps[{i}]")
+            all_param_operands.append(get_param_operand(cap, "max_voltage"))
+            all_param_operands.append(get_param_operand(cap, "capacitance"))
+
+        for i in range(4):
+            cap = _get_child(app_instance, f"output_caps[{i}]")
+            all_param_operands.append(get_param_operand(cap, "max_voltage"))
+            all_param_operands.append(get_param_operand(cap, "capacitance"))
+
+        for i in range(2):
+            cap = _get_child(app_instance, f"compensation_caps[{i}]")
+            all_param_operands.append(get_param_operand(cap, "max_voltage"))
+            all_param_operands.append(get_param_operand(cap, "capacitance"))
+
+        # Add Anticorrelated constraint like the picker does
+        F.Expressions.Anticorrelated.c(*all_param_operands, g=g, tg=tg, assert_=True)
+
+        # Phase 1: Non-terminal solve (like _pick_tree does)
+        solver = Solver()
+        solver.simplify(tg, g, terminal=False)
+
+        # Simulate picking for input caps (10uF 50V)
+        for i in range(3):
+            cap = _get_child(app_instance, f"input_caps[{i}]")
+            add_pick_superset(cap, "max_voltage", (50.0, e.U.V))
+            add_pick_superset(cap, "capacitance", (10e-6, e.U.Fa))
+
+        # Simulate picking for output caps (22uF 25V)
+        for i in range(4):
+            cap = _get_child(app_instance, f"output_caps[{i}]")
+            add_pick_superset(cap, "max_voltage", (25.0, e.U.V))
+            add_pick_superset(cap, "capacitance", (22e-6, e.U.Fa))
+
+        # Phase 2: Terminal solve (like pick_topologically's final verify)
+        solver.simplify(tg, g, terminal=True)
+
+
 class TestParameterConstraintTypes:
     """Tests for Is vs IsSubset constraint types based on block type."""
 
