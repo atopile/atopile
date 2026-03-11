@@ -3010,11 +3010,6 @@ class TestAssertWithComputedVariableInArithmetic:
             "App",
         )
 
-    @pytest.mark.xfail(
-        reason="Solver infinite loop when assert uses computed variable in subtraction",
-        raises=TimeoutError,
-        strict=True,
-    )
     def test_assert_subtraction_computed_variable_with_solver(self):
         """Regression: solver should handle computed variable in assert subtraction.
 
@@ -3040,11 +3035,6 @@ class TestAssertWithComputedVariableInArithmetic:
         solver = Solver()
         solver.simplify(tg, g, terminal=True)
 
-    @pytest.mark.xfail(
-        reason="Solver infinite loop when assert uses computed variable in subtraction",
-        raises=TimeoutError,
-        strict=True,
-    )
     def test_assert_subtraction_computed_variable_child_module_with_solver(self):
         """Regression: solver should handle computed variable from child module params.
 
