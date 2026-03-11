@@ -461,6 +461,7 @@ export interface AppState {
   installingPackageIds: string[];  // Packages currently being installed
   installError: string | null;  // Error from last install attempt
   updatingDependencyIds: string[];  // Dependencies currently being updated (format: projectRoot:dependencyId)
+  packageSyncProgress: { stage: string; message: string; completed: number; total: number } | null;
 
   // Standard Library (from dashboard API)
   stdlibItems: StdLibItem[];

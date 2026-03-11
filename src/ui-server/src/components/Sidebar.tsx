@@ -76,6 +76,7 @@ export function Sidebar() {
   const activeEditorFile = useStore((s) => s.activeEditorFile);
   const lastAtoFile = useStore((s) => s.lastAtoFile);
   const packages = useStore((s) => s.packages);
+  const packageSyncProgress = useStore((s) => s.packageSyncProgress);
 
   // Reconstruct state object for hooks that still need it
   // TODO: Refactor useSidebarData/useSidebarHandlers to use granular selectors
@@ -517,6 +518,7 @@ export function Sidebar() {
                 installedDependencies={selectedProjectRoot ? (projectDependencies?.[selectedProjectRoot] || []) : []}
                 selectedProjectRoot={selectedProjectRoot}
                 installError={installError}
+                packageSyncProgress={packageSyncProgress}
                 onOpenPackageDetail={handlers.handleOpenPackageDetail}
                 isExpanded={activeTab === 'packages'}
               />
@@ -596,6 +598,7 @@ export function Sidebar() {
             isInstalling={installingPackageIds?.includes(selectedPackage.fullName) || false}
             installError={installError || null}
             error={packageDetailsError || null}
+            packageSyncProgress={packageSyncProgress}
             onClose={handlePackageClose}
             onInstall={handlePackageInstall}
             onUninstall={handlePackageUninstall}

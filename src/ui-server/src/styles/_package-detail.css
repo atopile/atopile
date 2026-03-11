@@ -278,6 +278,46 @@
   }
 }
 
+.detail-sync-progress {
+  padding: var(--spacing-xs) var(--spacing-md);
+  margin-top: var(--spacing-sm);
+}
+
+.detail-sync-progress-text {
+  font-size: var(--font-size-xs);
+  color: var(--ctp-blue);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-sync-progress-bar {
+  width: 100%;
+  height: 3px;
+  appearance: none;
+  border: none;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(137, 180, 250, 0.15);
+}
+
+.detail-sync-progress-bar::-webkit-progress-bar {
+  background: rgba(137, 180, 250, 0.15);
+  border-radius: 2px;
+}
+
+.detail-sync-progress-bar::-webkit-progress-value {
+  background: var(--ctp-blue);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+.detail-sync-progress-bar::-moz-progress-bar {
+  background: var(--ctp-blue);
+  border-radius: 2px;
+}
+
 .detail-install-error {
   display: flex;
   align-items: flex-start;

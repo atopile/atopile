@@ -102,6 +102,7 @@ const initialState: StoreState = {
   installingPackageIds: [],
   installError: null,
   updatingDependencyIds: [],
+  packageSyncProgress: null as { stage: string; message: string; completed: number; total: number } | null,
 
   // Standard Library
   stdlibItems: [],
@@ -249,6 +250,8 @@ interface StoreActions {
   removeInstallingPackage: (packageId: string) => void;
   clearInstallingPackages: () => void;
   setInstallError: (packageId: string, error: string | null) => void;
+  setPackageSyncProgress: (progress: { stage: string; message: string; completed: number; total: number } | null) => void;
+  clearPackageSyncProgress: () => void;
   addUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
   removeUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
 
@@ -726,6 +729,10 @@ export const useStore = create<Store>()(
           }, ERROR_TIMEOUT_MS);
         }
       },
+
+      setPackageSyncProgress: (progress) => set({ packageSyncProgress: progress }),
+
+      clearPackageSyncProgress: () => set({ packageSyncProgress: null }),
 
       addUpdatingDependency: (projectRoot, dependencyId) =>
         set((state) => {

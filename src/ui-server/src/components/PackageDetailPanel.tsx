@@ -17,6 +17,13 @@ import KiCanvasEmbed from './KiCanvasEmbed'
 import MarkdownRenderer from './MarkdownRenderer'
 import ModelViewer from './ModelViewer'
 
+interface PackageSyncProgress {
+  stage: string
+  message: string
+  completed: number
+  total: number
+}
+
 interface PackageDetailProps {
   package: {
     name: string
@@ -33,6 +40,7 @@ interface PackageDetailProps {
   isInstalling: boolean
   installError: string | null
   error: string | null
+  packageSyncProgress?: PackageSyncProgress | null
   onClose: () => void
   onInstall: (version: string) => void
   onUninstall: () => void
@@ -118,6 +126,7 @@ export function PackageDetailPanel({
   isInstalling,
   installError,
   error,
+  packageSyncProgress,
   onClose,
   onInstall,
   onUninstall,
@@ -339,6 +348,18 @@ export function PackageDetailPanel({
               )}
             </button>
           </div>
+
+          {/* Sync progress bar */}
+          {isInstalling && packageSyncProgress && (
+            <div className="detail-sync-progress">
+              <div className="detail-sync-progress-text">{packageSyncProgress.message}</div>
+              <progress
+                className="detail-sync-progress-bar"
+                value={packageSyncProgress.completed}
+                max={packageSyncProgress.total}
+              />
+            </div>
+          )}
 
           {/* Install error message */}
           {installError && (

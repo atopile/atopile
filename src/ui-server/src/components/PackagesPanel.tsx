@@ -16,6 +16,13 @@ import type { SelectedPackage } from './sidebar-modules'
 import { PanelSearchBox } from './shared/PanelSearchBox'
 import './PackagesPanel.css'
 
+interface PackageSyncProgress {
+  stage: string
+  message: string
+  completed: number
+  total: number
+}
+
 interface PackagesPanelProps {
   packages: PackageInfo[]
   installedDependencies: ProjectDependency[]
@@ -24,6 +31,7 @@ interface PackagesPanelProps {
   installingPackageIds?: string[]
   updatingDependencyIds?: string[]
   installError?: string | null
+  packageSyncProgress?: PackageSyncProgress | null
   onInstallPackage?: (packageId: string, projectRoot: string, version?: string) => void
   onOpenPackageDetail: (pkg: SelectedPackage) => void
   onDependencyVersionChange?: (projectRoot: string, identifier: string, newVersion: string) => void
@@ -141,6 +149,7 @@ export function PackagesPanel({
   installedDependencies,
   selectedProjectRoot,
   installError,
+  packageSyncProgress,
   onOpenPackageDetail,
   isExpanded = false,
 }: PackagesPanelProps) {
@@ -235,6 +244,17 @@ export function PackagesPanel({
           )}
         </button>
       </div>
+
+      {packageSyncProgress && (
+        <div className="packages-sync-progress">
+          <div className="packages-sync-progress-text">{packageSyncProgress.message}</div>
+          <progress
+            className="packages-sync-progress-bar"
+            value={packageSyncProgress.completed}
+            max={packageSyncProgress.total}
+          />
+        </div>
+      )}
 
       {activeTab === 'browse' && (
         <div className="packages-tab-content">

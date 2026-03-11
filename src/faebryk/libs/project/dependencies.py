@@ -4,7 +4,7 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import cast
+from typing import Callable, cast
 
 import atopile.config as config
 from atopile import errors, version
@@ -381,7 +381,10 @@ class ProjectDependencies:
         pin_versions: bool = False,
         update_versions: bool = False,
         force_sync: bool = False,
+        on_progress: Callable[[str, str, int, int], None] | None = None,
     ):
+        self._on_progress = on_progress
+
         if pcfg is None:
             if self.gcfg is None:
                 pcfg = config.config.project
@@ -424,6 +427,16 @@ class ProjectDependencies:
             self.pin_versions()
 
         _log_changes(self._changes)
+        self._emit_progress("done", "Package sync complete", 1, 1)
+
+    def _emit_progress(
+        self, stage: str, message: str, completed: int, total: int
+    ) -> None:
+        if self._on_progress is not None:
+            try:
+                self._on_progress(stage, message, completed, total)
+            except Exception:
+                pass
 
     @property
     def all_deps(self) -> set[ProjectDependency]:
@@ -436,6 +449,8 @@ class ProjectDependencies:
         ]
         if not to_fetch:
             return
+
+        self._emit_progress("downloading", "Downloading packages...", 0, len(to_fetch))
 
         from rich.progress import (
             Progress,
@@ -477,6 +492,12 @@ class ProjectDependencies:
                             task,
                             advance=1,
                             current=dep.identifier,
+                        )
+                        self._emit_progress(
+                            "downloading",
+                            f"Downloaded {dep.identifier}",
+                            int(progress.tasks[task].completed),
+                            len(to_fetch),
                         )
                     except Exception as e:
                         progress.update(task, advance=1)
@@ -525,6 +546,8 @@ class ProjectDependencies:
         if not missing:
             return
 
+        self._emit_progress("unpacking", "Unpacking packages...", 0, len(missing))
+
         from rich.progress import (
             Progress,
             SpinnerColumn,
@@ -566,6 +589,12 @@ class ProjectDependencies:
                     )
                 )
                 progress.advance(task)
+                self._emit_progress(
+                    "unpacking",
+                    f"Unpacked {dep.identifier}",
+                    int(progress.tasks[task].completed),
+                    len(missing),
+                )
 
         logger.info(
             "Unpacked %d %s",
@@ -687,6 +716,8 @@ class ProjectDependencies:
 
         acc_errors: list[BrokenDependencyError] = []
         resolved_count = 0
+        resolve_total = len(deps_to_process)
+        self._emit_progress("resolving", "Resolving dependencies...", 0, resolve_total)
 
         from rich.progress import (
             Progress,
@@ -743,12 +774,19 @@ class ProjectDependencies:
                         children = dep.direct_dependencies
                         to_add.extend((dep, child) for child in children)
                         # Grow total as we discover transitive deps
+                        resolve_total += len(children)
                         progress.update(
                             task,
                             advance=1,
                             total=progress.tasks[task].total + len(children),
                         )
                         all_deps.add(dep)
+                        self._emit_progress(
+                            "resolving",
+                            f"Resolved {dep.identifier}",
+                            len(all_deps),
+                            resolve_total,
+                        )
                         if parent is not None:
                             dag.add_edge(parent, dep)
                         else:

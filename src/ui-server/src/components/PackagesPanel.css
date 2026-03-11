@@ -106,6 +106,50 @@
   flex-shrink: 0;
 }
 
+/* Sync progress */
+.packages-sync-progress {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: rgba(137, 180, 250, 0.08);
+  border-bottom: 1px solid var(--ctp-blue);
+  flex-shrink: 0;
+}
+
+.packages-sync-progress-text {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--ctp-blue);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.packages-sync-progress-bar {
+  width: 100%;
+  height: 3px;
+  appearance: none;
+  border: none;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(137, 180, 250, 0.15);
+}
+
+.packages-sync-progress-bar::-webkit-progress-bar {
+  background: rgba(137, 180, 250, 0.15);
+  border-radius: 2px;
+}
+
+.packages-sync-progress-bar::-webkit-progress-value {
+  background: var(--ctp-blue);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+.packages-sync-progress-bar::-moz-progress-bar {
+  background: var(--ctp-blue);
+  border-radius: 2px;
+}
+
 /* Results container */
 .packages-results-container {
   flex: 1;

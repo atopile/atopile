@@ -626,11 +626,16 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 audience=Log.Audience.USER,
             )
 
+            _install_progress = packages_domain.make_progress_callback(project_root)
+
             def run_install():
                 try:
                     try:
                         packages_domain.install_package_to_project(
-                            project_path, package_id, version
+                            project_path,
+                            package_id,
+                            version,
+                            on_progress=_install_progress,
                         )
                         log.info(
                             f"Successfully installed {pkg_spec}",
@@ -771,13 +776,20 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 audience=Log.Audience.USER,
             )
 
+            _change_progress = packages_domain.make_progress_callback(project_root)
+
             def run_change():
                 try:
                     packages_domain.remove_package_from_project(
-                        project_path, package_id
+                        project_path,
+                        package_id,
+                        on_progress=_change_progress,
                     )
                     packages_domain.install_package_to_project(
-                        project_path, package_id, version
+                        project_path,
+                        package_id,
+                        version,
+                        on_progress=_change_progress,
                     )
                     log.info(
                         f"Successfully installed {package_id}@{version}",
@@ -889,11 +901,15 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     {"project_root": project_root},
                 )
 
+            _remove_progress = packages_domain.make_progress_callback(project_root)
+
             def run_remove():
                 try:
                     log.info(f"Removing {package_id} from {project_root}")
                     packages_domain.remove_package_from_project(
-                        project_path, package_id
+                        project_path,
+                        package_id,
+                        on_progress=_remove_progress,
                     )
                     log.info("ato remove completed successfully")
                     with packages_domain._package_op_lock:
@@ -1287,10 +1303,16 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
+            _sync_progress = packages_domain.make_progress_callback(project_root)
+
             def run_sync():
                 try:
                     log.info(f"Syncing packages for {project_root}, force={force}")
-                    packages_domain.sync_packages_for_project(project_path, force=force)
+                    packages_domain.sync_packages_for_project(
+                        project_path,
+                        force=force,
+                        on_progress=_sync_progress,
+                    )
                     log.info("Package sync completed successfully")
 
                     # Emit success event

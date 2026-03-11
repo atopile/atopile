@@ -612,6 +612,21 @@ function handleEventMessage(message: EventMessage): void {
     return;
   }
 
+  // Handle package sync progress event (not in EventType enum)
+  if (event === 'packages_progress') {
+    const stage = typeof data.stage === 'string' ? data.stage : null;
+    const message = typeof data.message === 'string' ? data.message : '';
+    const completed = typeof data.completed === 'number' ? data.completed : 0;
+    const total = typeof data.total === 'number' ? data.total : 0;
+
+    if (stage === 'done') {
+      useStore.getState().clearPackageSyncProgress();
+    } else if (stage) {
+      useStore.getState().setPackageSyncProgress({ stage, message, completed, total });
+    }
+    return;
+  }
+
   // Handle agent progress streaming event (not in EventType enum)
   if (event === 'agent_progress') {
     window.dispatchEvent(
@@ -705,6 +720,8 @@ function handleEventMessage(message: EventMessage): void {
       void refreshVariables();
       break;
     case EventType.PackagesChanged:
+      // Clear sync progress - packages_changed means the operation finished
+      useStore.getState().clearPackageSyncProgress();
       // Check if this is an install error event
       if (data.error && data.package_id) {
         const packageId = data.package_id as string;

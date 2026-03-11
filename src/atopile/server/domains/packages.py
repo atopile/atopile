@@ -8,7 +8,7 @@ import re
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import yaml
 from fastapi import BackgroundTasks, HTTPException
@@ -39,6 +39,7 @@ from atopile.dataclasses import (
 from atopile.errors import UserException as AtopileUserException
 from atopile.server.connections import server_state
 from atopile.server.domains import projects as projects_domain
+from atopile.server.events import event_bus
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 
 
@@ -95,6 +96,26 @@ def next_package_op_id(prefix: str) -> str:
         _package_op_counter += 1
         op_id = f"{prefix}-{_package_op_counter}-{int(time.time())}"
     return op_id
+
+
+def make_progress_callback(
+    project_root: str,
+) -> Callable[[str, str, int, int], None]:
+    """Create an on_progress callback that emits packages_progress events."""
+
+    def _on_progress(stage: str, message: str, completed: int, total: int) -> None:
+        event_bus.emit_sync(
+            "packages_progress",
+            {
+                "project_root": project_root,
+                "stage": stage,
+                "message": message,
+                "completed": completed,
+                "total": total,
+            },
+        )
+
+    return _on_progress
 
 
 def _format_install_error(exc: Exception) -> str:
@@ -202,25 +223,64 @@ def get_all_installed_packages_from_projects(
 
 
 def install_package_to_project(
-    project_root: Path, package_identifier: str, version: str | None = None
+    project_root: Path,
+    package_identifier: str,
+    version: str | None = None,
+    on_progress: Callable[[str, str, int, int], None] | None = None,
 ) -> None:
     """Install or update a package in a project via the internal CLI implementation."""
-    pkg_spec = f"{package_identifier}@{version}" if version else package_identifier
-    try:
-        cli_install.add([pkg_spec], path=project_root)
-    except Exception as exc:
-        raise RuntimeError(_format_install_error(exc)) from exc
+    if on_progress is not None:
+        # Bypass CLI layer to pass progress callback directly
+        from atopile.config import DependencySpec, config
+        from faebryk.libs.project.dependencies import ProjectDependencies
+
+        pkg_spec = f"{package_identifier}@{version}" if version else package_identifier
+        config.apply_options(None, working_dir=project_root)
+        try:
+            deps = ProjectDependencies(
+                install_missing=True,
+                clean_unmanaged_dirs=True,
+                on_progress=on_progress,
+            )
+            deps.add_dependencies(DependencySpec.from_str(pkg_spec))
+        except Exception as exc:
+            raise RuntimeError(_format_install_error(exc)) from exc
+    else:
+        pkg_spec = f"{package_identifier}@{version}" if version else package_identifier
+        try:
+            cli_install.add([pkg_spec], path=project_root)
+        except Exception as exc:
+            raise RuntimeError(_format_install_error(exc)) from exc
 
 
-def remove_package_from_project(project_root: Path, package_identifier: str) -> None:
+def remove_package_from_project(
+    project_root: Path,
+    package_identifier: str,
+    on_progress: Callable[[str, str, int, int], None] | None = None,
+) -> None:
     """Remove a package from a project via the internal CLI implementation."""
-    try:
-        cli_install.remove([package_identifier], path=project_root)
-    except Exception as exc:
-        raise RuntimeError(_format_install_error(exc)) from exc
+    if on_progress is not None:
+        from atopile.config import config
+        from faebryk.libs.project.dependencies import ProjectDependencies
+
+        config.apply_options(None, working_dir=project_root)
+        try:
+            deps = ProjectDependencies(on_progress=on_progress)
+            deps.remove_dependencies(package_identifier)
+        except Exception as exc:
+            raise RuntimeError(_format_install_error(exc)) from exc
+    else:
+        try:
+            cli_install.remove([package_identifier], path=project_root)
+        except Exception as exc:
+            raise RuntimeError(_format_install_error(exc)) from exc
 
 
-def sync_packages_for_project(project_root: Path, force: bool = False) -> None:
+def sync_packages_for_project(
+    project_root: Path,
+    force: bool = False,
+    on_progress: Callable[[str, str, int, int], None] | None = None,
+) -> None:
     """
     Sync packages for a project - ensure installed versions match manifest.
 
@@ -245,6 +305,7 @@ def sync_packages_for_project(project_root: Path, force: bool = False) -> None:
             install_missing=True,
             clean_unmanaged_dirs=True,
             force_sync=force,
+            on_progress=on_progress,
         )
     except PackageModifiedError:
         # Re-raise as-is so the caller can handle it specially
@@ -811,12 +872,17 @@ def handle_install_package(
             "error": None,
         }
 
+    _progress = make_progress_callback(request.project_root)
+
     def run_install():
         try:
             with _package_op_lock:
                 try:
                     install_package_to_project(
-                        project_path, request.package_identifier, request.version
+                        project_path,
+                        request.package_identifier,
+                        request.version,
+                        on_progress=_progress,
                     )
                     _active_package_ops[op_id]["status"] = "success"
                 except Exception as exc:
@@ -923,9 +989,15 @@ def handle_sync_packages(
             "modified_packages": None,
         }
 
+    _progress = make_progress_callback(request.project_root)
+
     def run_sync():
         try:
-            sync_packages_for_project(project_path, force=request.force)
+            sync_packages_for_project(
+                project_path,
+                force=request.force,
+                on_progress=_progress,
+            )
             with _package_op_lock:
                 _active_package_ops[op_id]["status"] = "success"
         except PackageModifiedError as exc:
