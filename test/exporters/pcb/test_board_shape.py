@@ -9,7 +9,9 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserBadParameterError, UserException
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer, get_all_geos
-from faebryk.exporters.pcb.rectangular_board_shape import apply_rectangular_board_shape
+from faebryk.exporters.pcb.rectangular_board_shape import (
+    register_rectangular_board_shape_footprint,
+)
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.test.fileformats import PCBFILE
 
@@ -32,17 +34,20 @@ def _new_test_transformer(
     board.x.get().set_superset(g=g, value=x_m)
     board.y.get().set_superset(g=g, value=y_m)
     board.corner_radius.get().set_superset(g=g, value=corner_radius_m)
+    register_rectangular_board_shape_footprint(board)
 
     pcb = kicad.copy(kicad.loads(kicad.pcb.PcbFile, PCBFILE)).kicad_pcb
     return PCB_Transformer(pcb=pcb, app=app), board
 
 
-def test_apply_rectangular_board_shape_creates_board_only_footprint() -> None:
+def test_apply_design_creates_board_only_footprint_for_rectangular_board_shape() -> (
+    None
+):
     transformer, board = _new_test_transformer(
         x_m=0.020, y_m=0.045, corner_radius_m=0.002
     )
 
-    apply_rectangular_board_shape(transformer, board)
+    transformer.apply_design()
 
     board_fp = next(
         fp
@@ -75,7 +80,7 @@ def test_apply_rectangular_board_shape_creates_board_only_footprint() -> None:
     assert max(point.y for point in edge_points) == pytest.approx(22.5)
 
 
-def test_apply_rectangular_board_shape_rejects_foreign_outline() -> None:
+def test_apply_design_rejects_foreign_outline_for_rectangular_board_shape() -> None:
     transformer, board = _new_test_transformer(x_m=0.020, y_m=0.045)
     transformer.insert_geo(
         kicad.pcb.Line(
@@ -92,10 +97,12 @@ def test_apply_rectangular_board_shape_rejects_foreign_outline() -> None:
     )
 
     with pytest.raises(UserException, match="already contains Edge.Cuts geometry"):
-        apply_rectangular_board_shape(transformer, board)
+        transformer.apply_design()
 
 
-def test_apply_rectangular_board_shape_rejects_invalid_corner_radius() -> None:
+def test_apply_design_rejects_invalid_corner_radius_for_rectangular_board_shape() -> (
+    None
+):
     transformer, board = _new_test_transformer(
         x_m=0.020,
         y_m=0.045,
@@ -103,4 +110,4 @@ def test_apply_rectangular_board_shape_rejects_invalid_corner_radius() -> None:
     )
 
     with pytest.raises(UserBadParameterError, match="corner_radius"):
-        apply_rectangular_board_shape(transformer, board)
+        transformer.apply_design()

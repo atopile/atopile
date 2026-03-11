@@ -550,6 +550,9 @@ class PartLifecycle:
 
             f_fp = associated_fp_trait.get_footprint()
             component = fabll.Traits(associated_fp_trait).get_obj_raw()
+            synthetic_fp_t = f_fp.try_get_trait(
+                F.KiCadFootprints.can_generate_kicad_footprint
+            )
 
             if atomic_part := component.try_get_trait(F.is_atomic_part):
                 k_lib_file_fp_t = atomic_part.get_kicad_library_footprint()
@@ -558,30 +561,37 @@ class PartLifecycle:
                     F.KiCadFootprints.has_associated_kicad_library_footprint
                 )
 
+            # This is the component which is being stuck on the board
+            address = component.get_full_name()
+
             # At this point, all footprints MUST have a KiCAD identifier
             # Prioritize library footprint (from picker) over PCB footprint (existing)
             # This ensures that when a part changes, we use the NEW footprint identifier
             k_pcb_fp_t = f_fp.try_get_trait(
                 F.KiCadFootprints.has_associated_kicad_pcb_footprint
             )
-            if k_lib_file_fp_t:
+            if synthetic_fp_t is not None:
+                fp_id = synthetic_fp_t.get_kicad_identifier()
+                logger.debug(f"Using synthetic footprint identifier: {fp_id}")
+            elif k_lib_file_fp_t is not None:
                 fp_id = k_lib_file_fp_t.get_kicad_identifier()
                 logger.debug(f"Using KiCAD-Library-File footprint identifier: {fp_id}")
-            elif k_pcb_fp_t:
+            elif k_pcb_fp_t is not None:
                 fp_id = k_pcb_fp_t.get_kicad_identifier()
                 logger.debug(f"Using KiCAD-PCB footprint identifier: {fp_id}")
             else:
                 raise IngestFootprintError(
                     f"Footprint {f_fp.get_name()} has no "
-                    "KiCAD-PCB or KiCAD-Library-File footprint associated"
+                    "KiCAD-PCB, KiCAD-Library-File, or synthetic footprint associated"
                 )
 
-            # This is the component which is being stuck on the board
-            address = component.get_full_name()
-
-            # All modules MUST have a designator by this point
             designator_t = component.try_get_trait(F.has_designator)
-            if not designator_t or not (ref := designator_t.get_designator()):
+            ref = None
+            if designator_t:
+                ref = designator_t.get_designator()
+            if ref is None and synthetic_fp_t is not None:
+                ref = synthetic_fp_t.get_reference()
+            if ref is None:
                 raise IngestFootprintError(f"Component {address} has no designator")
 
             pcb_fp_t = f_fp.try_get_trait(
@@ -594,11 +604,15 @@ class PartLifecycle:
                 assert pcb_fp_t is not None
                 pcb_fp = pcb_fp_t.get_footprint()
 
-                # Copy the data structure so if we later mutate it we don't
-                # end up w/ those changes everywhere
-                _, lib_fp = lifecycle.library.get_footprint_from_identifier(
-                    fp_id, component
-                )
+                if synthetic_fp_t is not None:
+                    lib_fp = synthetic_fp_t.generate(component, transformer)
+                else:
+                    # Copy the data structure so if we later mutate it we don't
+                    # end up w/ those changes everywhere
+                    _, lib_fp_file = lifecycle.library.get_footprint_from_identifier(
+                        fp_id, component
+                    )
+                    lib_fp = lib_fp_file.footprint
 
                 logger.info(
                     f"Updating `{pcb_fp.name}`->`{fp_id}` on `{address}` ({ref})",
@@ -606,8 +620,13 @@ class PartLifecycle:
                 )
                 # We need to manually override the name because the
                 # footprint's data could've ultimately come from anywhere
-                lib_fp.footprint.name = fp_id
-                transformer.update_footprint_from_lib(pcb_fp, lib_fp.footprint)
+                lib_fp.name = fp_id
+                transformer.update_footprint_from_lib(pcb_fp, lib_fp)
+                if (
+                    synthetic_fp_t is not None
+                    and (fixed_at := synthetic_fp_t.get_at()) is not None
+                ):
+                    PCB_Transformer.move_fp(pcb_fp, fixed_at, pcb_fp.layer)
                 transformer.bind_footprint(pcb_fp, component)
 
             ## Add new footprint
@@ -619,15 +638,24 @@ class PartLifecycle:
                 )
 
                 logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")
-                # Copy the data structure so if we later mutate it we don't
-                # end up w/ those changes everywhere
-                _, lib_fp = lifecycle.library.get_footprint_from_identifier(
-                    fp_id, component
-                )
+                if synthetic_fp_t is not None:
+                    lib_fp = synthetic_fp_t.generate(component, transformer)
+                else:
+                    # Copy the data structure so if we later mutate it we don't
+                    # end up w/ those changes everywhere
+                    _, lib_fp_file = lifecycle.library.get_footprint_from_identifier(
+                        fp_id, component
+                    )
+                    lib_fp = lib_fp_file.footprint
                 # We need to manually override the name because the
                 # footprint's data could've ultimately come from anywhere
-                lib_fp.footprint.name = fp_id
-                pcb_fp = transformer.insert_footprint(lib_fp.footprint, insert_point)
+                lib_fp.name = fp_id
+                pcb_fp = transformer.insert_footprint(
+                    lib_fp,
+                    synthetic_fp_t.get_at()
+                    if synthetic_fp_t is not None
+                    else insert_point,
+                )
                 transformer.bind_footprint(pcb_fp, component)
 
             def _prop_factory(prop_name: str, prop_value: str) -> kicad.pcb.Property:
@@ -659,7 +687,12 @@ class PartLifecycle:
 
             Property.set_property(pcb_fp, _prop_factory("Reference", ref))
 
-            if value_t := component.try_get_trait(F.has_simple_value_representation):
+            synthetic_value = (
+                synthetic_fp_t.get_value() if synthetic_fp_t is not None else None
+            )
+            if synthetic_value is not None:
+                Property.set_property(pcb_fp, _prop_factory("Value", synthetic_value))
+            elif value_t := component.try_get_trait(F.has_simple_value_representation):
                 # Get all specs and create separate properties for each
                 specs = value_t.get_specs()
                 if specs:

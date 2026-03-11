@@ -8,11 +8,9 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserBadParameterError, UserException
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer, get_all_geos
-from faebryk.libs.kicad.fileformats import Property, kicad
+from faebryk.libs.kicad.fileformats import kicad
 
 _BOARD_SHAPE_FOOTPRINT_NAME = "atopile:RectangularBoardShape"
-_BOARD_SHAPE_KIND_PROPERTY = "atopile_kind"
-_BOARD_SHAPE_KIND_VALUE = "RectangularBoardShape"
 _BOARD_SHAPE_REFERENCE = "BS1"
 _BOARD_SHAPE_VALUE = "RectangularBoardShape"
 _EDGE_CUTS_LAYER = "Edge.Cuts"
@@ -73,19 +71,6 @@ def _validate_spec(spec: _RectangularBoardShapeSpec) -> None:
             f"`corner_radius` ({spec.corner_radius_mm:.3f} mm) exceeds half of the "
             f"smallest board dimension ({max_corner_radius_mm:.3f} mm)."
         )
-
-
-def _make_property(name: str, value: str) -> kicad.pcb.Property:
-    return kicad.pcb.Property(
-        name=name,
-        value=value,
-        at=kicad.pcb.Xyr(x=0, y=0, r=0),
-        layer="User.9",
-        uuid=PCB_Transformer.gen_uuid(mark=True),
-        unlocked=None,
-        hide=True,
-        effects=None,
-    )
 
 
 def _edge_cuts_kwargs(transformer: PCB_Transformer) -> dict:
@@ -214,22 +199,15 @@ def _build_rounded_rectangular_outline(
 
 
 def _build_board_shape_footprint(
-    shape: F.RectangularBoardShape,
     geometry: list[kicad.pcb.Line | kicad.pcb.Arc],
-) -> kicad.pcb.Footprint:
-    properties = [
-        ("Reference", _BOARD_SHAPE_REFERENCE),
-        ("Value", _BOARD_SHAPE_VALUE),
-        ("atopile_address", shape.get_full_name(include_uuid=False)),
-        (_BOARD_SHAPE_KIND_PROPERTY, _BOARD_SHAPE_KIND_VALUE),
-    ]
-    return kicad.pcb.Footprint(
+    transformer: PCB_Transformer,
+) -> kicad.footprint.Footprint:
+    return kicad.footprint.Footprint(
         name=_BOARD_SHAPE_FOOTPRINT_NAME,
         layer="F.Cu",
-        uuid=PCB_Transformer.gen_uuid(mark=True),
-        at=kicad.pcb.Xyr(x=0, y=0, r=0),
+        uuid=transformer.gen_uuid(mark=True),
         path=None,
-        propertys=[_make_property(name, value) for name, value in properties],
+        propertys=[],
         attr=["board_only", "exclude_from_pos_files", "exclude_from_bom"],
         fp_lines=[geo for geo in geometry if isinstance(geo, kicad.pcb.Line)],
         fp_arcs=[geo for geo in geometry if isinstance(geo, kicad.pcb.Arc)],
@@ -243,28 +221,15 @@ def _build_board_shape_footprint(
     )
 
 
-def _is_board_shape_footprint(fp: kicad.pcb.Footprint) -> bool:
-    return (
-        Property.try_get_property(fp.propertys, _BOARD_SHAPE_KIND_PROPERTY)
-        == _BOARD_SHAPE_KIND_VALUE
-    )
-
-
 def _ensure_associated_footprint(
     shape: F.RectangularBoardShape,
 ) -> F.Footprints.has_associated_footprint:
     if associated := shape.try_get_trait(F.Footprints.has_associated_footprint):
         return associated
 
-    fp_node = fabll.Node.bind_typegraph_from_instance(shape.instance).create_instance(
-        g=shape.instance.g()
-    )
-    fp_trait = fabll.Traits.create_and_add_instance_to(
-        node=fp_node, trait=F.Footprints.is_footprint
-    )
     return fabll.Traits.create_and_add_instance_to(
         node=shape, trait=F.Footprints.has_associated_footprint
-    ).setup(fp_trait)
+    ).setup_from_pads_and_leads(component_node=shape, pads=[], leads=[])
 
 
 def _footprint_has_edge_cuts(fp: kicad.pcb.Footprint) -> bool:
@@ -273,13 +238,10 @@ def _footprint_has_edge_cuts(fp: kicad.pcb.Footprint) -> bool:
     )
 
 
-def _check_for_foreign_outline(transformer: PCB_Transformer) -> None:
-    existing_shape_fps = [
-        fp for fp in transformer.pcb.footprints if _is_board_shape_footprint(fp)
-    ]
-    if existing_shape_fps:
-        return
-
+def _check_for_foreign_outline(
+    transformer: PCB_Transformer,
+    owned_fp: kicad.pcb.Footprint | None,
+) -> None:
     board_edge_cuts = [
         geo
         for geo in get_all_geos(transformer.pcb)
@@ -288,7 +250,8 @@ def _check_for_foreign_outline(transformer: PCB_Transformer) -> None:
     footprint_edge_cuts = [
         fp
         for fp in transformer.pcb.footprints
-        if not _is_board_shape_footprint(fp) and _footprint_has_edge_cuts(fp)
+        if (owned_fp is None or fp.uuid != owned_fp.uuid)
+        and _footprint_has_edge_cuts(fp)
     ]
     if board_edge_cuts or footprint_edge_cuts:
         raise UserException(
@@ -298,29 +261,66 @@ def _check_for_foreign_outline(transformer: PCB_Transformer) -> None:
         )
 
 
-def _bind_inserted_footprint(
-    transformer: PCB_Transformer,
-    shape: F.RectangularBoardShape,
-    pcb_fp: kicad.pcb.Footprint,
-) -> None:
-    graph_fp = _ensure_associated_footprint(shape).get_footprint()
-    if existing := graph_fp.try_get_trait(
-        F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ):
-        existing.setup(pcb_fp, transformer)
+def register_rectangular_board_shape_footprint(shape: F.RectangularBoardShape) -> None:
+    board_shapes = F.RectangularBoardShape.bind_typegraph(shape.tg).get_instances(
+        shape.g
+    )
+    if len(board_shapes) > 1:
+        first_shape = min(
+            board_shapes,
+            key=lambda candidate: candidate.get_full_name(include_uuid=False),
+        )
+        if not shape.is_same(first_shape):
+            return
+        raise UserBadParameterError(
+            "Only one RectangularBoardShape is currently supported per design. Found: "
+            + ", ".join(
+                f"`{candidate.get_full_name(include_uuid=False)}`"
+                for candidate in board_shapes
+            )
+        )
+
+    associated_fp = _ensure_associated_footprint(shape)
+    footprint = associated_fp.get_footprint()
+    synthetic_trait = footprint.try_get_trait(
+        F.KiCadFootprints.can_generate_kicad_footprint
+    )
+    if synthetic_trait is not None:
+        synthetic_trait.setup(
+            generate_rectangular_board_shape_footprint,
+            _BOARD_SHAPE_FOOTPRINT_NAME,
+            reference=_BOARD_SHAPE_REFERENCE,
+            value=_BOARD_SHAPE_VALUE,
+            at=kicad.pcb.Xyr(x=0, y=0, r=0),
+        )
     else:
-        transformer.bind_footprint(pcb_fp, shape)
+        fabll.Traits.create_and_add_instance_to(
+            node=footprint,
+            trait=F.KiCadFootprints.can_generate_kicad_footprint,
+        ).setup(
+            generate_rectangular_board_shape_footprint,
+            _BOARD_SHAPE_FOOTPRINT_NAME,
+            reference=_BOARD_SHAPE_REFERENCE,
+            value=_BOARD_SHAPE_VALUE,
+            at=kicad.pcb.Xyr(x=0, y=0, r=0),
+        )
 
 
-def apply_rectangular_board_shape(
-    transformer: PCB_Transformer, shape: F.RectangularBoardShape
-) -> None:
+def generate_rectangular_board_shape_footprint(
+    component: fabll.Node, transformer: PCB_Transformer
+) -> kicad.footprint.Footprint:
+    shape = F.RectangularBoardShape.bind_instance(component.instance)
     spec = _read_shape_spec(shape)
-    _check_for_foreign_outline(transformer)
 
-    for existing in list(transformer.pcb.footprints):
-        if _is_board_shape_footprint(existing):
-            transformer.remove_footprint(existing)
+    owned_fp = None
+    if shape.has_trait(F.Footprints.has_associated_footprint):
+        fp = shape.get_trait(F.Footprints.has_associated_footprint).get_footprint()
+        if existing := fp.try_get_trait(
+            F.KiCadFootprints.has_associated_kicad_pcb_footprint
+        ):
+            owned_fp = existing.get_footprint()
+
+    _check_for_foreign_outline(transformer, owned_fp)
 
     geometry = (
         _build_rounded_rectangular_outline(
@@ -336,27 +336,4 @@ def apply_rectangular_board_shape(
             height_mm=spec.y_mm,
         )
     )
-    pcb_fp = kicad.insert(
-        transformer.pcb,
-        "footprints",
-        transformer.pcb.footprints,
-        _build_board_shape_footprint(shape, list(geometry)),
-    )
-    _bind_inserted_footprint(transformer, shape, pcb_fp)
-
-
-def apply_board_shapes(app: fabll.Node, transformer: PCB_Transformer) -> None:
-    board_shapes = app.get_children(
-        direct_only=False,
-        include_root=True,
-        types=F.RectangularBoardShape,
-    )
-    if len(board_shapes) > 1:
-        raise UserBadParameterError(
-            "Only one RectangularBoardShape is currently supported per design. Found: "
-            + ", ".join(
-                f"`{shape.get_full_name(include_uuid=False)}`" for shape in board_shapes
-            )
-        )
-    if board_shapes:
-        apply_rectangular_board_shape(transformer, board_shapes[0])
+    return _build_board_shape_footprint(list(geometry), transformer)

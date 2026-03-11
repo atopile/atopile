@@ -18,10 +18,19 @@ class RectangularBoardShape(fabll.Node):
     _can_attach_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
+    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
     x = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)
     y = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)
     corner_radius = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)
+
+    @F.implements_design_check.register_post_instantiation_setup_check
+    def __check_post_instantiation_setup__(self):
+        from faebryk.exporters.pcb.rectangular_board_shape import (
+            register_rectangular_board_shape_footprint,
+        )
+
+        register_rectangular_board_shape_footprint(self)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
