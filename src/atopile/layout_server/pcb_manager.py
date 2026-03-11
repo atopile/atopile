@@ -26,6 +26,7 @@ from atopile.layout_server.models import (
     PadModel,
     PadNameAnnotationModel,
     PadNumberAnnotationModel,
+    PadPrimitivePolygon,
     PointXY,
     PointXYR,
     PolygonDrawingModel,
@@ -847,6 +848,15 @@ class PcbManager:
             # are relative to the footprint. Convert rotation to be relative to
             # the footprint so the frontend can treat it as a sub-coordinate system.
             pad_relative_r = ((pad.at.r or 0) - fp_rotation) % 360
+            primitives = None
+            if pad.primitives is not None:
+                primitives = [
+                    PadPrimitivePolygon(
+                        points=[PointXY(x=pt.x, y=pt.y) for pt in poly.pts.xys]
+                    )
+                    for poly in pad.primitives.gr_polys
+                ]
+
             pads.append(
                 PadModel(
                     name=pad.name,
@@ -858,6 +868,7 @@ class PcbManager:
                     net=pad.net.number if pad.net else 0,
                     hole=self._extract_pad_hole(pad),
                     roundrect_rratio=pad.roundrect_rratio,
+                    primitives=primitives,
                 )
             )
 

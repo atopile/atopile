@@ -9,6 +9,7 @@ import pytest
 from atopile.layout_server.models import (
     FootprintSummary,
     HoleModel,
+    PadPrimitivePolygon,
     RenderModel,
 )
 from atopile.layout_server.pcb_manager import (
@@ -421,3 +422,189 @@ def test_pad_number_text_layers_track_pad_copper_layers():
     assert (
         _pad_number_text_layers(["F.Mask", "F.Paste"], all_copper_layers=copper) == []
     )
+
+
+# --- Custom pad (polygon primitives) tests ---
+
+# Minimal KiCad PCB with a footprint containing custom polygon pads,
+# modelled after the TI TPSM863257 QFN-7 package where pads 1-4 are
+# irregular polygon shapes defined via gr_poly primitives.
+CUSTOM_PAD_PCB = """\
+(kicad_pcb
+  (version 20240108)
+  (generator "test")
+  (generator_version "8.0")
+  (general (thickness 1.6) (legacy_teardrops no))
+  (paper "A4")
+  (layers
+    (0 "F.Cu" signal)
+    (31 "B.Cu" signal)
+    (36 "B.SilkS" user "B.Silkscreen")
+    (37 "F.SilkS" user "F.Silkscreen")
+    (38 "B.Mask" user "B.Mask")
+    (39 "F.Mask" user "F.Mask")
+    (44 "Edge.Cuts" user)
+    (46 "B.CrtYd" user "B.Courtyard")
+    (47 "F.CrtYd" user "F.Courtyard")
+    (48 "B.Fab" user "B.Fab")
+    (49 "F.Fab" user "F.Fab")
+  )
+  (setup (pad_to_mask_clearance 0))
+  (net 0 "")
+  (gr_line (start 90 90) (end 110 90) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))
+  (gr_line (start 110 90) (end 110 110) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))
+  (gr_line (start 110 110) (end 90 110) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))
+  (gr_line (start 90 110) (end 90 90) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))
+  (footprint "TestLib:TPSM863257_like"
+    (layer "F.Cu")
+    (uuid "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+    (at 100 100)
+    (property "Reference" "U1" (at 0 -3) (layer "F.SilkS") (uuid "11111111-2222-3333-4444-555555555555") (effects (font (size 1 1) (thickness 0.15))))
+    (property "Value" "TPSM863257" (at 0 3) (layer "F.Fab") (uuid "66666666-7777-8888-9999-aaaaaaaaaaaa") (effects (font (size 1 1) (thickness 0.15))))
+    (pad "1" smd custom
+      (at -0.97 -0.7)
+      (size 0.01 0.01)
+      (layers "F.Cu" "F.Paste" "F.Mask")
+      (options (clearance outline) (anchor circle))
+      (primitives
+        (gr_poly
+          (pts
+            (xy -0.83 -0.85) (xy 0.27 -0.85) (xy 0.27 -0.45)
+            (xy 0.47 -0.45) (xy 0.47 0.85) (xy -0.83 0.85)
+          )
+          (width 0.1)
+          (fill yes)
+        )
+      )
+      (uuid "cccccccc-dddd-eeee-ffff-000000000001")
+    )
+    (pad "2" smd custom
+      (at -1.05 1.29)
+      (size 0.01 0.01)
+      (layers "F.Cu" "F.Paste" "F.Mask")
+      (options (clearance outline) (anchor circle))
+      (primitives
+        (gr_poly
+          (pts
+            (xy -0.75 -0.69) (xy 0.75 -0.69) (xy 0.75 0.29)
+            (xy -0.75 0.29)
+          )
+          (width 0.1)
+          (fill yes)
+        )
+      )
+      (uuid "cccccccc-dddd-eeee-ffff-000000000002")
+    )
+    (pad "3" smd custom
+      (at 1.05 1.29)
+      (size 0.01 0.01)
+      (layers "F.Cu" "F.Paste" "F.Mask")
+      (options (clearance outline) (anchor circle))
+      (primitives
+        (gr_poly
+          (pts
+            (xy -0.75 -0.69) (xy 0.75 -0.69) (xy 0.75 0.29)
+            (xy -0.75 0.29)
+          )
+          (width 0.1)
+          (fill yes)
+        )
+      )
+      (uuid "cccccccc-dddd-eeee-ffff-000000000003")
+    )
+    (pad "4" smd custom
+      (at 0.98 -0.7)
+      (size 0.01 0.01)
+      (layers "F.Cu" "F.Paste" "F.Mask")
+      (options (clearance outline) (anchor circle))
+      (primitives
+        (gr_poly
+          (pts
+            (xy -0.48 -0.85) (xy 0.82 -0.85) (xy 0.82 0.85)
+            (xy -0.48 0.85) (xy -0.48 -0.45) (xy -0.28 -0.45)
+            (xy -0.28 -0.85)
+          )
+          (width 0.1)
+          (fill yes)
+        )
+      )
+      (uuid "cccccccc-dddd-eeee-ffff-000000000004")
+    )
+    (pad "5" smd rect
+      (at -0.5 -1.29)
+      (size 0.22 0.6)
+      (layers "F.Cu" "F.Paste" "F.Mask")
+      (uuid "cccccccc-dddd-eeee-ffff-000000000005")
+    )
+    (pad "6" smd rect
+      (at 0 -1.29)
+      (size 0.22 0.6)
+      (layers "F.Cu" "F.Paste" "F.Mask")
+      (uuid "cccccccc-dddd-eeee-ffff-000000000006")
+    )
+    (pad "7" smd rect
+      (at 0.5 -1.29)
+      (size 0.22 0.6)
+      (layers "F.Cu" "F.Paste" "F.Mask")
+      (uuid "cccccccc-dddd-eeee-ffff-000000000007")
+    )
+  )
+)
+"""  # noqa: E501
+
+
+@pytest.fixture
+def manager_custom_pads():
+    with tempfile.NamedTemporaryFile(suffix=".kicad_pcb", mode="w", delete=False) as f:
+        f.write(CUSTOM_PAD_PCB)
+        tmp_path = Path(f.name)
+    try:
+        mgr = PcbManager()
+        mgr.load(tmp_path)
+        yield mgr
+    finally:
+        tmp_path.unlink()
+
+
+def test_custom_pad_primitives_extracted(manager_custom_pads: PcbManager):
+    """Custom polygon pads (like TPSM863257 pads 1-4) should have primitives."""
+    model = manager_custom_pads.get_render_model()
+    assert len(model.footprints) == 1
+
+    fp = model.footprints[0]
+    assert len(fp.pads) == 7
+
+    # Pads 1-4 are custom with polygon primitives
+    for pad in fp.pads:
+        if pad.name in ("1", "2", "3", "4"):
+            assert pad.shape == "custom", f"Pad {pad.name} should be custom"
+            assert pad.primitives is not None, f"Pad {pad.name} should have primitives"
+            assert len(pad.primitives) >= 1, (
+                f"Pad {pad.name} should have at least one polygon"
+            )
+            for poly in pad.primitives:
+                assert isinstance(poly, PadPrimitivePolygon)
+                assert len(poly.points) >= 3, (
+                    f"Pad {pad.name} polygon should have >= 3 points"
+                )
+        else:
+            # Pads 5-7 are standard rect, no primitives
+            assert pad.shape == "rect", f"Pad {pad.name} should be rect"
+            assert pad.primitives is None
+
+
+def test_custom_pad_polygon_point_counts(manager_custom_pads: PcbManager):
+    """Verify correct number of polygon points for each custom pad."""
+    model = manager_custom_pads.get_render_model()
+    fp = model.footprints[0]
+
+    expected_point_counts = {"1": 6, "2": 4, "3": 4, "4": 7}
+
+    for pad in fp.pads:
+        if pad.name in expected_point_counts:
+            assert pad.primitives is not None
+            actual = len(pad.primitives[0].points)
+            expected = expected_point_counts[pad.name]
+            assert actual == expected, (
+                f"Pad {pad.name}: expected {expected} points, got {actual}"
+            )
