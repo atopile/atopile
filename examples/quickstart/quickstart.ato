@@ -5,7 +5,7 @@ module App:
     board = new RectangularBoardShape
     board.x = 20mm
     board.y = 45mm
-    board.corner_radius = 6mm
+    board.corner_radius = 2mm
 
     r1 = new Resistor  # Create a new resistor
     r1.resistance = 50 kohm +/- 10%  # Set the resistor value

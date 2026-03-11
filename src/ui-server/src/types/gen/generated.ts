@@ -268,16 +268,16 @@ export interface PackageVersion {
  * A project dependency with version info.
  */
 export interface DependencyInfo {
-    hasUpdate?:     boolean;
-    identifier:     string;
-    isDirect?:      boolean;
-    latestVersion?: null | string;
-    name:           string;
-    publisher:      string;
-    repository?:    null | string;
-    status?:        null | string;
-    version:        string;
-    via?:           string[] | null;
+    hasUpdate?:      boolean;
+    identifier:      string;
+    isDirect?:       boolean;
+    latestVersion?:  null | string;
+    name:            string;
+    publisher:       string;
+    repository?:     null | string;
+    status?:         null | string;
+    version:         string;
+    via?:            string[] | null;
     [property: string]: any;
 }
 
