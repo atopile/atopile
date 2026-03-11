@@ -426,10 +426,12 @@ def test_pad_number_text_layers_track_pad_copper_layers():
 
 # --- Custom pad (polygon primitives) tests ---
 
-# Minimal KiCad PCB with a footprint containing custom polygon pads,
-# modelled after the TI TPSM863257 QFN-7 package where pads 1-4 are
-# irregular polygon shapes defined via gr_poly primitives.
-CUSTOM_PAD_PCB = """\
+CUSTOM_PADS_FP = Path(
+    "test/common/resources/fileformats/kicad/v8/fp/custom_pads.kicad_mod"
+)
+
+# Minimal PCB shell used to wrap a standalone footprint for PcbManager.
+_PCB_WRAPPER = """\
 (kicad_pcb
   (version 20240108)
   (generator "test")
@@ -451,112 +453,27 @@ CUSTOM_PAD_PCB = """\
   )
   (setup (pad_to_mask_clearance 0))
   (net 0 "")
-  (gr_line (start 90 90) (end 110 90) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))
-  (gr_line (start 110 90) (end 110 110) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))
-  (gr_line (start 110 110) (end 90 110) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))
-  (gr_line (start 90 110) (end 90 90) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))
-  (footprint "TestLib:TPSM863257_like"
-    (layer "F.Cu")
-    (uuid "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-    (at 100 100)
-    (property "Reference" "U1" (at 0 -3) (layer "F.SilkS") (uuid "11111111-2222-3333-4444-555555555555") (effects (font (size 1 1) (thickness 0.15))))
-    (property "Value" "TPSM863257" (at 0 3) (layer "F.Fab") (uuid "66666666-7777-8888-9999-aaaaaaaaaaaa") (effects (font (size 1 1) (thickness 0.15))))
-    (pad "1" smd custom
-      (at -0.97 -0.7)
-      (size 0.01 0.01)
-      (layers "F.Cu" "F.Paste" "F.Mask")
-      (options (clearance outline) (anchor circle))
-      (primitives
-        (gr_poly
-          (pts
-            (xy -0.83 -0.85) (xy 0.27 -0.85) (xy 0.27 -0.45)
-            (xy 0.47 -0.45) (xy 0.47 0.85) (xy -0.83 0.85)
-          )
-          (width 0.1)
-          (fill yes)
-        )
-      )
-      (uuid "cccccccc-dddd-eeee-ffff-000000000001")
-    )
-    (pad "2" smd custom
-      (at -1.05 1.29)
-      (size 0.01 0.01)
-      (layers "F.Cu" "F.Paste" "F.Mask")
-      (options (clearance outline) (anchor circle))
-      (primitives
-        (gr_poly
-          (pts
-            (xy -0.75 -0.69) (xy 0.75 -0.69) (xy 0.75 0.29)
-            (xy -0.75 0.29)
-          )
-          (width 0.1)
-          (fill yes)
-        )
-      )
-      (uuid "cccccccc-dddd-eeee-ffff-000000000002")
-    )
-    (pad "3" smd custom
-      (at 1.05 1.29)
-      (size 0.01 0.01)
-      (layers "F.Cu" "F.Paste" "F.Mask")
-      (options (clearance outline) (anchor circle))
-      (primitives
-        (gr_poly
-          (pts
-            (xy -0.75 -0.69) (xy 0.75 -0.69) (xy 0.75 0.29)
-            (xy -0.75 0.29)
-          )
-          (width 0.1)
-          (fill yes)
-        )
-      )
-      (uuid "cccccccc-dddd-eeee-ffff-000000000003")
-    )
-    (pad "4" smd custom
-      (at 0.98 -0.7)
-      (size 0.01 0.01)
-      (layers "F.Cu" "F.Paste" "F.Mask")
-      (options (clearance outline) (anchor circle))
-      (primitives
-        (gr_poly
-          (pts
-            (xy -0.48 -0.85) (xy 0.82 -0.85) (xy 0.82 0.85)
-            (xy -0.48 0.85) (xy -0.48 -0.45) (xy -0.28 -0.45)
-            (xy -0.28 -0.85)
-          )
-          (width 0.1)
-          (fill yes)
-        )
-      )
-      (uuid "cccccccc-dddd-eeee-ffff-000000000004")
-    )
-    (pad "5" smd rect
-      (at -0.5 -1.29)
-      (size 0.22 0.6)
-      (layers "F.Cu" "F.Paste" "F.Mask")
-      (uuid "cccccccc-dddd-eeee-ffff-000000000005")
-    )
-    (pad "6" smd rect
-      (at 0 -1.29)
-      (size 0.22 0.6)
-      (layers "F.Cu" "F.Paste" "F.Mask")
-      (uuid "cccccccc-dddd-eeee-ffff-000000000006")
-    )
-    (pad "7" smd rect
-      (at 0.5 -1.29)
-      (size 0.22 0.6)
-      (layers "F.Cu" "F.Paste" "F.Mask")
-      (uuid "cccccccc-dddd-eeee-ffff-000000000007")
-    )
-  )
+  {footprint}
 )
-"""  # noqa: E501
+"""
+
+
+def _wrap_footprint_in_pcb(fp_path: Path) -> str:
+    """Read a .kicad_mod footprint and embed it in a minimal PCB."""
+    fp_text = fp_path.read_text()
+    # Add placement coordinates needed inside a PCB.
+    fp_text = fp_text.replace(
+        '(layer "F.Cu")',
+        '(layer "F.Cu")\n    (uuid "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")\n    (at 100 100)',
+        1,
+    )
+    return _PCB_WRAPPER.format(footprint=fp_text)
 
 
 @pytest.fixture
 def manager_custom_pads():
     with tempfile.NamedTemporaryFile(suffix=".kicad_pcb", mode="w", delete=False) as f:
-        f.write(CUSTOM_PAD_PCB)
+        f.write(_wrap_footprint_in_pcb(CUSTOM_PADS_FP))
         tmp_path = Path(f.name)
     try:
         mgr = PcbManager()
