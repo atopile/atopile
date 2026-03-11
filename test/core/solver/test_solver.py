@@ -3024,6 +3024,8 @@ def test_uncertainty_estimation_single_source_add_and_inverse():
     A = E.parameter_op(domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
     B = E.parameter_op()
     C = E.parameter_op()
+    D = E.parameter_op(domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+    E_ = E.parameter_op(domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
 
     E.is_superset(
         A,
@@ -3036,10 +3038,29 @@ def test_uncertainty_estimation_single_source_add_and_inverse():
         E.multiply(E.lit_op_range((1, 2)), E.power(A, E.lit_op_single(-1))),
         assert_=True,
     )
+    E.is_(D, E.multiply(A, E.lit_op_range((-2, -1))), assert_=True)
+    E.is_(E_, E.multiply(A, E.lit_op_range((-2, 2))), assert_=True)
 
     solver = Solver()
-    assert _extract_and_check(B, solver, E.lit_op_range((7, 7)))
-    assert _extract_and_check(C, solver, E.lit_op_range((1 / 4, 1 / 3)))
+    res = solver.simplify(g=E.g, tg=E.tg, terminal=True).data.mutation_map
+    for op, expected in (
+        (B, E.lit_op_range((7, 7))),
+        (C, E.lit_op_range((1 / 4, 1 / 3))),
+        (D, E.lit_op_range((-8, -6))),
+        (E_, E.lit_op_range((-8, 8))),
+    ):
+        extracted = _extract(op, res)
+        universal = res.try_extract_universal_enclosure(
+            op.as_parameter_operatable.force_get()
+        )
+        extracted_num = fabll.Traits(extracted).get_obj_raw().cast(F.Literals.Numbers)
+        if universal is not None:
+            extracted_num = extracted_num.op_intersect_intervals(
+                fabll.Traits(universal).get_obj_raw().cast(F.Literals.Numbers)
+            )
+        assert extracted_num.is_literal.get().op_setic_equals(
+            expected.as_literal.force_get()
+        )
 
 
 def test_uncertainty_estimation_does_not_contradict_valid_picked_divider():
@@ -3096,7 +3117,13 @@ def test_uncertainty_estimation_does_not_contradict_valid_picked_divider():
 
     solved_ratio = solver.extract_superset(
         rdiv.ratio.get().is_parameter_operatable.get().as_parameter.force_get()
-    )
+    ).switch_cast()
+    if universal := solver.extract_universal_enclosure(
+        rdiv.ratio.get().is_parameter_operatable.get().as_parameter.force_get()
+    ):
+        solved_ratio = solved_ratio.op_intersect_intervals(
+            fabll.Traits(universal).get_obj_raw().cast(F.Literals.Numbers)
+        )
     expected_ratio = not_none(
         fabll.Traits(E.lit_op_range(((0.188, E.U.dl), (0.213, E.U.dl))))
         .get_obj_raw()
