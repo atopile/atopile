@@ -2513,7 +2513,10 @@ class TreeRenderer:
                 if isinstance(value, str):
                     return f'"{TreeRenderer.truncate_text(value)}"'
                 return str(value)
-            case _ if type_name.endswith("Enums") or type_name == "AbstractEnums":
+            case _ if type_name == "AbstractEnums" or (
+                (seen := Node._seen_types.get(type_name)) is not None
+                and issubclass(seen, F.Literals.AbstractEnums)
+            ):
                 bound = F.Literals.AbstractEnums.bind_instance(node)
                 values = bound.get_values()
                 if len(values) == 1:
@@ -3430,6 +3433,144 @@ def test_tg_merge_copy():
     print(GraphRenderer().render(tg2.get_self_node()))
 
     assert dict(tg2.get_type_instance_overview())[_MyType2._type_identifier()] == 2
+
+
+def test_tree_renderer_extract_literal_value():
+    """Test TreeRenderer.extract_literal_value works for all literal types."""
+    from enum import StrEnum
+
+    import faebryk.library._F as F
+
+    g, tg = _make_graph_and_typegraph()
+
+    # --- Strings ---
+    singlestr = (
+        F.Literals.Strings.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_values("hello")
+    )
+    assert TreeRenderer.extract_literal_value(singlestr.instance, "Strings") == (
+        '"hello"'
+    )
+
+    str_multi = (
+        F.Literals.Strings.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_values("a", "b", "c")
+    )
+    result = TreeRenderer.extract_literal_value(str_multi.instance, "Strings")
+    assert result is not None
+    assert '"a"' in result
+    assert '"b"' in result
+    assert '"c"' in result
+
+    # --- Counts ---
+    counts_single = (
+        F.Literals.Counts.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_values([42])
+    )
+    assert TreeRenderer.extract_literal_value(counts_single.instance, "Counts") == "42"
+
+    counts_multi = (
+        F.Literals.Counts.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_values([1, 2, 3])
+    )
+    result = TreeRenderer.extract_literal_value(counts_multi.instance, "Counts")
+    assert result is not None
+    assert "1" in result
+    assert "2" in result
+    assert "3" in result
+
+    # --- Booleans ---
+    bool_single = (
+        F.Literals.Booleans.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_values(True)
+    )
+    assert (
+        TreeRenderer.extract_literal_value(bool_single.instance, "Booleans") == "True"
+    )
+
+    bool_multi = (
+        F.Literals.Booleans.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_values(True, False)
+    )
+    result = TreeRenderer.extract_literal_value(bool_multi.instance, "Booleans")
+    assert result is not None
+    assert "True" in result
+    assert "False" in result
+
+    # --- NumericSet ---
+    num_singleton = (
+        F.Literals.NumericSet.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_singleton(3.14)
+    )
+    result = TreeRenderer.extract_literal_value(num_singleton.instance, "NumericSet")
+    assert result is not None
+    assert "3.14" in result
+
+    num_interval = (
+        F.Literals.NumericSet.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_interval((1.0, 10.0))
+    )
+    result = TreeRenderer.extract_literal_value(num_interval.instance, "NumericSet")
+    assert result is not None
+    assert "1" in result
+    assert "10" in result
+
+    # --- Enums: concrete type (setup path) ---
+    class TempCoeff(StrEnum):
+        X5R = "X5R"
+        X7R = "X7R"
+        C0G = "C0G"
+
+    ConcreteT = F.Literals.EnumsFactory(TempCoeff)
+
+    setup_lit = (
+        ConcreteT.bind_typegraph(tg=tg).create_instance(g=g).setup(TempCoeff.X7R)
+    )
+    setup_type_name = setup_lit.get_type_name()
+    assert setup_type_name is not None
+    assert setup_type_name != "AbstractEnums"
+    assert (
+        TreeRenderer.extract_literal_value(setup_lit.instance, setup_type_name)
+        == "'X7R'"
+    )
+
+    # --- Enums: base AbstractEnums (MakeChild path) ---
+    base_lit = F.Literals.AbstractEnums.bind_typegraph(tg=tg).create_instance(g=g)
+    concrete_type_node = ConcreteT.bind_typegraph(tg=tg).as_type_node()
+    x7r_value = F.Literals.AbstractEnums.get_enum_value(
+        s=concrete_type_node, tg=tg, name="X7R"
+    )
+    base_lit.values.get().append(x7r_value)
+    assert base_lit.get_type_name() == "AbstractEnums"
+    assert (
+        TreeRenderer.extract_literal_value(base_lit.instance, "AbstractEnums")
+        == "'X7R'"
+    )
+
+    # --- Enums: multiple values ---
+    multi_lit = (
+        ConcreteT.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(TempCoeff.X5R, TempCoeff.X7R, TempCoeff.C0G)
+    )
+    multi_type_name = multi_lit.get_type_name()
+    assert multi_type_name is not None
+    result = TreeRenderer.extract_literal_value(multi_lit.instance, multi_type_name)
+    assert result is not None
+    assert "X5R" in result
+    assert "X7R" in result
+    assert "C0G" in result
+
+    # --- Unknown type returns None ---
+    assert TreeRenderer.extract_literal_value(singlestr.instance, "UnknownType") is None
 
 
 if __name__ == "__main__":

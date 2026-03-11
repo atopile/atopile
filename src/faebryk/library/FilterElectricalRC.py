@@ -293,11 +293,7 @@ class TestFilterElectricalRC:
             .as_parameter.force_get()
         )
         assert response_result is not None, "Solver should find response"
-        response_enum = (
-            fabll.Traits(response_result)
-            .get_obj_raw()
-            .try_cast(F.Literals.AbstractEnums)
-        )
+        response_enum = F.Literals.AbstractEnums.try_cast_to_enum(response_result)
         assert response_enum is not None, "Response should be an enum literal"
         assert response_enum.get_values() == [F.Filter.Response.LOWPASS.value], (
             f"Expected LOWPASS, got {response_enum.get_values()}"

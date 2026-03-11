@@ -61,6 +61,7 @@ def test_ato_pick_capacitor():
                 r1 = new Capacitor
                 r1.package = "C0402"
                 r1.capacitance = 100nF +/- 20%
+                r1.temperature_coefficient = "X7R"
             """,
         "A",
     )
@@ -71,6 +72,14 @@ def test_ato_pick_capacitor():
         .size.get()
         .force_extract_singleton_typed(SMDSize)
         == SMDSize.I0402
+    )
+
+    # Verify temperature_coefficient constraint was set
+    temp_coeff = r1.temperature_coefficient.get().try_extract_superset()
+    assert temp_coeff is not None
+    assert (
+        temp_coeff.get_single_value_typed(F.Capacitor.TemperatureCoefficient)
+        == F.Capacitor.TemperatureCoefficient.X7R
     )
 
     pick_parts_recursively(r1, Solver())

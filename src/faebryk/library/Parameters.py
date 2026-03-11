@@ -341,7 +341,10 @@ class is_parameter_operatable(fabll.Node):
 
         if lit_type is None or lit_type is is_literal:
             return cast(T, lit_merged)
-        return fabll.Traits(lit_merged).get_obj(lit_type)
+        # Use check=False because concrete enum types (from EnumsFactory)
+        # are _copy_type subtypes of AbstractEnums that don't match
+        # the base type in graph-level isinstance checks.
+        return fabll.Traits(lit_merged).get_obj_raw().cast(lit_type, check=False)
 
     # new
     def try_extract_superset[T: "Literals.LiteralNodes"](

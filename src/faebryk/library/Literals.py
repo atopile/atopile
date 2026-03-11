@@ -7601,8 +7601,11 @@ class AbstractEnums(fabll.Node):
         """
         Get all possible enum values for a given enum literal.
         """
+        type_node = self.get_type_node()
+        if type_node is None:
+            return []
         return AbstractEnums.get_all_members_of_enum_type(
-            node=AbstractEnums.bind_instance(instance=not_none(self.get_type_node())),
+            node=AbstractEnums.bind_instance(instance=type_node),
             tg=self.tg,
         )
 
@@ -7639,7 +7642,7 @@ class AbstractEnums(fabll.Node):
             raise ValueError("At least one enum member is required")
         atype = EnumsFactory(type(enum_members[0]))
         cls_n = cast(type[fabll.NodeT], atype)
-        out = fabll._ChildField(cls)
+        out = fabll._ChildField(atype)
 
         for value in enum_members:
             out.add_dependant(
@@ -7687,15 +7690,17 @@ class AbstractEnums(fabll.Node):
         ]
 
     def serialize(self) -> dict:
+        type_name_raw = self.get_type_name()
+        type_name = type_name_raw.split("<")[0] if type_name_raw else "UnknownEnum"
+        enum_dict = self.get_enum_as_dict()
+
         return {
             "type": "EnumSet",
             "data": {
                 "elements": [{"name": name} for name in sorted(self.get_names())],
                 "enum": {
-                    # dont include kv pairs in serialized name because in values already
-                    "name": not_none(self.get_type_name()).split("<")[0]
-                    or "UnknownEnum",
-                    "values": self.get_enum_as_dict(),
+                    "name": type_name,
+                    "values": enum_dict,
                 },
             },
         }
@@ -8895,6 +8900,58 @@ class TestEnums:
 
         # Also verify we can still read the original
         assert sorted(original.get_values()) == ["bar", "foo"]
+
+    def test_serialize_makechild_enum(self):
+        """
+        Test that MakeChild()-created enum literals serialize correctly.
+
+        MakeChild() now creates instances typed as the concrete enum type
+        directly, so no workaround is needed.
+        """
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class TempCoeff(StrEnum):
+            X5R = "X5R"
+            X7R = "X7R"
+            C0G = "C0G"
+
+        # Create concrete enum type and register in TG
+        ConcreteT = EnumsFactory(TempCoeff)
+        ConcreteT.bind_typegraph(tg=tg)
+
+        # Create an instance via the concrete type (as MakeChild now does)
+        instance = ConcreteT.bind_typegraph(tg=tg).create_instance(g=g)
+
+        # Point its values to an EnumValue on the concrete type
+        concrete_type_node = ConcreteT.bind_typegraph(tg=tg).as_type_node()
+        x7r_value = AbstractEnums.get_enum_value(
+            s=concrete_type_node, tg=tg, name="X7R"
+        )
+        instance.values.get().append(x7r_value)
+
+        # Instance type is the concrete type, not base AbstractEnums
+        assert instance.get_type_name() != "AbstractEnums"
+
+        # get_all_members_of_enum_literal works directly
+        members = instance.get_all_members_of_enum_literal()
+        member_names = sorted(m.name for m in members)
+        assert member_names == ["C0G", "X5R", "X7R"]
+
+        # get_enum_as_dict returns full dict
+        enum_dict = instance.get_enum_as_dict()
+        assert enum_dict == {"C0G": "C0G", "X5R": "X5R", "X7R": "X7R"}
+
+        # serialize produces correct output
+        serialized = instance.serialize()
+        assert serialized["type"] == "EnumSet"
+        assert serialized["data"]["enum"]["name"] == "TempCoeff"
+        assert serialized["data"]["enum"]["values"] == {
+            "C0G": "C0G",
+            "X5R": "X5R",
+            "X7R": "X7R",
+        }
+        assert serialized["data"]["elements"] == [{"name": "X7R"}]
 
 
 # def test_make_lit():
