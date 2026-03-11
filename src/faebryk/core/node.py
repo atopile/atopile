@@ -2513,12 +2513,9 @@ class TreeRenderer:
                 if isinstance(value, str):
                     return f'"{TreeRenderer.truncate_text(value)}"'
                 return str(value)
-            case _ if (
-                type_name == "AbstractEnums"
-                or (
-                    (seen := Node._seen_types.get(type_name)) is not None
-                    and issubclass(seen, F.Literals.AbstractEnums)
-                )
+            case _ if type_name == "AbstractEnums" or (
+                (seen := Node._seen_types.get(type_name)) is not None
+                and issubclass(seen, F.Literals.AbstractEnums)
             ):
                 bound = F.Literals.AbstractEnums.bind_instance(node)
                 values = bound.get_values()
@@ -3447,12 +3444,12 @@ def test_tree_renderer_extract_literal_value():
     g, tg = _make_graph_and_typegraph()
 
     # --- Strings ---
-    str_single = (
+    singlestr = (
         F.Literals.Strings.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup_from_values("hello")
     )
-    assert TreeRenderer.extract_literal_value(str_single.instance, "Strings") == (
+    assert TreeRenderer.extract_literal_value(singlestr.instance, "Strings") == (
         '"hello"'
     )
 
@@ -3534,7 +3531,9 @@ def test_tree_renderer_extract_literal_value():
 
     ConcreteT = F.Literals.EnumsFactory(TempCoeff)
 
-    setup_lit = ConcreteT.bind_typegraph(tg=tg).create_instance(g=g).setup(TempCoeff.X7R)
+    setup_lit = (
+        ConcreteT.bind_typegraph(tg=tg).create_instance(g=g).setup(TempCoeff.X7R)
+    )
     setup_type_name = setup_lit.get_type_name()
     assert setup_type_name is not None
     assert setup_type_name != "AbstractEnums"
@@ -3557,8 +3556,10 @@ def test_tree_renderer_extract_literal_value():
     )
 
     # --- Enums: multiple values ---
-    multi_lit = ConcreteT.bind_typegraph(tg=tg).create_instance(g=g).setup(
-        TempCoeff.X5R, TempCoeff.X7R, TempCoeff.C0G
+    multi_lit = (
+        ConcreteT.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(TempCoeff.X5R, TempCoeff.X7R, TempCoeff.C0G)
     )
     multi_type_name = multi_lit.get_type_name()
     assert multi_type_name is not None
@@ -3569,7 +3570,7 @@ def test_tree_renderer_extract_literal_value():
     assert "C0G" in result
 
     # --- Unknown type returns None ---
-    assert TreeRenderer.extract_literal_value(str_single.instance, "UnknownType") is None
+    assert TreeRenderer.extract_literal_value(singlestr.instance, "UnknownType") is None
 
 
 if __name__ == "__main__":

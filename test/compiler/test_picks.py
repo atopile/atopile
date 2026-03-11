@@ -77,9 +77,10 @@ def test_ato_pick_capacitor():
     # Verify temperature_coefficient constraint was set
     temp_coeff = r1.temperature_coefficient.get().try_extract_superset()
     assert temp_coeff is not None
-    assert temp_coeff.get_single_value_typed(
-        F.Capacitor.TemperatureCoefficient
-    ) == F.Capacitor.TemperatureCoefficient.X7R
+    assert (
+        temp_coeff.get_single_value_typed(F.Capacitor.TemperatureCoefficient)
+        == F.Capacitor.TemperatureCoefficient.X7R
+    )
 
     pick_parts_recursively(r1, Solver())
 

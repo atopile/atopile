@@ -7691,9 +7691,7 @@ class AbstractEnums(fabll.Node):
 
     def serialize(self) -> dict:
         type_name_raw = self.get_type_name()
-        type_name = (
-            type_name_raw.split("<")[0] if type_name_raw else "UnknownEnum"
-        )
+        type_name = type_name_raw.split("<")[0] if type_name_raw else "UnknownEnum"
         enum_dict = self.get_enum_as_dict()
 
         return {
