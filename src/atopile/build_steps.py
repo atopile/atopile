@@ -52,6 +52,7 @@ from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
+from faebryk.exporters.pcb.rectangular_board_shape import apply_board_shapes
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.exporters.power_tree.power_tree import export_power_tree
 from faebryk.libs.app.checks import check_design
@@ -362,8 +363,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()
@@ -819,6 +824,7 @@ def update_pcb(ctx: BuildStepContext) -> None:
 
     original_pcb = kicad.copy(pcb.pcb_file)
     pcb.transformer.apply_design()
+    apply_board_shapes(app, pcb.transformer)
     pcb.transformer.check_unattached_fps()
 
     # Ensure proper board appearance (matte black soldermask, ENIG copper finish)

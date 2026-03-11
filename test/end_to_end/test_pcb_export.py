@@ -15,6 +15,17 @@ SIMPLE_APP_PCB_SUMMARY = PcbSummary(
     footprints=["R1"],
 )
 
+BOARD_SHAPE_APP = """
+import RectangularBoardShape
+import Resistor
+module App:
+    board = new RectangularBoardShape
+    board.x = 20mm
+    board.y = 45mm
+    board.corner_radius = 2mm
+    r1 = new Resistor
+"""
+
 
 def test_empty_design(tmp_path: Path):
     pcb_file = tmp_path / Path("layout/app/app.kicad_pcb")
@@ -113,3 +124,17 @@ def test_pcb_file_removal(tmp_path: Path):
     assert p.returncode == 0
     assert "Creating new layout" not in stderr
     assert SIMPLE_APP_PCB_SUMMARY == summarize_pcb_file(pcb_file)
+
+
+def test_pcb_file_with_rectangular_board_shape(tmp_path: Path):
+    pcb_file = tmp_path / Path("layout/app/app.kicad_pcb")
+
+    stdout, stderr, p = dump_and_run(BOARD_SHAPE_APP, [], working_dir=tmp_path)
+
+    assert p.returncode == 0
+    assert pcb_file.exists()
+    assert summarize_pcb_file(pcb_file) == PcbSummary(
+        num_layers=29,
+        nets=["unnamed[0]", "unnamed[1]"],
+        footprints=["BS1", "R1"],
+    )

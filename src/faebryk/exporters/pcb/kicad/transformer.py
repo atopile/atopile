@@ -1155,8 +1155,11 @@ class PCB_Transformer:
     ) -> tuple[Line, Arc, Line]:
         import numpy as np
 
-        # Assert if the endpoints of the lines are not connected
-        assert line1.end == line2.start, "The endpoints of the lines are not connected."
+        # The generated Zig structs don't implement value-based equality reliably,
+        # so compare coordinates directly.
+        assert line1.end.x == line2.start.x and line1.end.y == line2.start.y, (
+            "The endpoints of the lines are not connected."
+        )
 
         # Assert if the radius is less than or equal to zero
         assert radius > 0, "The radius must be greater than zero."

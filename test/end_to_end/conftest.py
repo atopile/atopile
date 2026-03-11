@@ -16,12 +16,18 @@ DEFAULT_CONFIG = HERE / "default_ato.yaml"
 
 
 def exec_build(args: list[str], cwd: Path) -> tuple[str, str, subprocess.Popen]:
+    pythonpath = str(HERE.parent.parent / "src")
+    if existing := os.environ.get("PYTHONPATH"):
+        pythonpath = f"{pythonpath}:{existing}"
+
     return run_live(
         [sys.executable, "-m", "atopile", "build", *args],
         env={
             **os.environ,
             "NONINTERACTIVE": "1",
             "FBRK_SKIP_SOLVING": "y",
+            "XDG_STATE_HOME": str(cwd / ".state"),
+            "PYTHONPATH": pythonpath,
         },
         stdout=print,
         stderr=print,
