@@ -6,7 +6,7 @@
 
 import * as vscode from 'vscode';
 import { backendServer } from '../../common/backendServer';
-import { traceInfo, traceError } from '../../common/log/logging';
+import { traceError, traceVerbose } from '../../common/log/logging';
 import { getWorkspaceSettings } from '../../common/settings';
 import { getProjectRoot } from '../../common/utilities';
 import type { AtopileSettingsMessage } from './types';
@@ -31,7 +31,7 @@ export class SidebarSettingsHandlers {
     try {
       const projectRoot = await getProjectRoot();
       const settings = await getWorkspaceSettings(projectRoot);
-      traceInfo(`[SidebarSettings] Sending atopile settings: ato=${settings.ato}, from=${settings.from}`);
+      traceVerbose(`[SidebarSettings] Sending atopile settings: ato=${settings.ato}, from=${settings.from}`);
       this._postToWebview({
         type: 'atopileSettingsResponse',
         settings: {
@@ -59,7 +59,7 @@ export class SidebarSettingsHandlers {
   async handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): Promise<void> {
     if (!atopile) return;
 
-    traceInfo(`[SidebarSettings] handleAtopileSettings received: ${JSON.stringify(atopile)}`);
+    traceVerbose(`[SidebarSettings] handleAtopileSettings received: ${JSON.stringify(atopile)}`);
 
     // Build a key for comparison to avoid unnecessary updates
     const settingsKey = JSON.stringify({
@@ -69,11 +69,11 @@ export class SidebarSettingsHandlers {
 
     // Skip if nothing changed - this is called on every state update
     if (settingsKey === this._lastAtopileSettingsKey) {
-      traceInfo(`[SidebarSettings] Skipping - settings unchanged: ${settingsKey}`);
+      traceVerbose(`[SidebarSettings] Skipping - settings unchanged: ${settingsKey}`);
       return;
     }
 
-    traceInfo(`[SidebarSettings] Processing new settings: ${settingsKey}`);
+    traceVerbose(`[SidebarSettings] Processing new settings: ${settingsKey}`);
 
     const config = vscode.workspace.getConfiguration('atopile');
     const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
@@ -82,14 +82,14 @@ export class SidebarSettingsHandlers {
     try {
       // Only manage atopile.ato setting - atopile.from is only set manually in settings
       if (atopile.source === 'local' && atopile.localPath) {
-        traceInfo(`[SidebarSettings] Setting atopile.ato = ${atopile.localPath}`);
+        traceVerbose(`[SidebarSettings] Setting atopile.ato = ${atopile.localPath}`);
         await config.update('ato', atopile.localPath, target);
       } else {
-        traceInfo(`[SidebarSettings] Clearing atopile.ato (using default)`);
+        traceVerbose('[SidebarSettings] Clearing atopile.ato (using default)');
         await config.update('ato', undefined, target);
       }
       this._lastAtopileSettingsKey = settingsKey;
-      traceInfo(`[SidebarSettings] atopile settings saved. User must restart to apply.`);
+      traceVerbose('[SidebarSettings] atopile settings saved. User must restart to apply.');
     } catch (error) {
       traceError(`[SidebarSettings] Failed to update atopile settings: ${error}`);
 
@@ -102,7 +102,7 @@ export class SidebarSettingsHandlers {
   }
 
   async browseAtopilePath(): Promise<void> {
-    traceInfo('[SidebarSettings] Browsing for local atopile path');
+    traceVerbose('[SidebarSettings] Browsing for local atopile path');
 
     const result = await vscode.window.showOpenDialog({
       canSelectFiles: true,
@@ -116,7 +116,7 @@ export class SidebarSettingsHandlers {
     });
 
     const selectedPath = result?.[0]?.fsPath ?? null;
-    traceInfo(`[SidebarSettings] Browse result: ${selectedPath}`);
+    traceVerbose(`[SidebarSettings] Browse result: ${selectedPath}`);
 
     this._postToWebview({
       type: 'browseAtopilePathResult',
@@ -125,7 +125,7 @@ export class SidebarSettingsHandlers {
   }
 
   async browseProjectPath(): Promise<void> {
-    traceInfo('[SidebarSettings] Browsing for project directory');
+    traceVerbose('[SidebarSettings] Browsing for project directory');
 
     const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
 
@@ -139,7 +139,7 @@ export class SidebarSettingsHandlers {
     });
 
     const selectedPath = result?.[0]?.fsPath ?? null;
-    traceInfo(`[SidebarSettings] Browse project path result: ${selectedPath}`);
+    traceVerbose(`[SidebarSettings] Browse project path result: ${selectedPath}`);
 
     this._postToWebview({
       type: 'browseProjectPathResult',
@@ -148,7 +148,7 @@ export class SidebarSettingsHandlers {
   }
 
   async browseExportDirectory(): Promise<void> {
-    traceInfo('[SidebarSettings] Browsing for export directory');
+    traceVerbose('[SidebarSettings] Browsing for export directory');
 
     const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
 
@@ -162,7 +162,7 @@ export class SidebarSettingsHandlers {
     });
 
     const selectedPath = result?.[0]?.fsPath ?? null;
-    traceInfo(`[SidebarSettings] Browse export directory result: ${selectedPath}`);
+    traceVerbose(`[SidebarSettings] Browse export directory result: ${selectedPath}`);
 
     this._postToWebview({
       type: 'browseExportDirectoryResult',

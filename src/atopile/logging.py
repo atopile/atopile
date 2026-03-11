@@ -49,6 +49,8 @@ from atopile.logging_utils import (
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("http11").setLevel(logging.INFO)
+logging.getLogger("pygls.protocol.language_server").setLevel(logging.WARNING)
+logging.getLogger("pygls.protocol.json_rpc").setLevel(logging.ERROR)
 
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 _log_scope_level: ContextVar[int] = ContextVar("log_scope_level", default=0)
@@ -914,18 +916,21 @@ class ConsoleLogHandler(RichHandler):
         if scope_prefix:
             message = f"{scope_prefix}{message}"
 
-        if _is_serving():
-            # VSCode Output should be plain text to avoid forced wrapping.
-            from rich.text import Text
-
-            plain = Text.from_ansi(message.replace("\r", "")).plain
-            target = (
-                error_console.file
+        if _is_serving() or not self._is_terminal:
+            # Non-terminal sinks such as the VS Code Output pane should receive
+            # plain lines, not Rich's padded table layout.
+            target_console = (
+                error_console
                 if (record.levelno >= logging.ERROR and record.exc_info)
-                else self.console.file
+                else self.console
             )
-            target.write(plain + "\n")
-            target.flush()
+            target_console.print(
+                self.render_message(record, message),
+                crop=False,
+                overflow="ignore",
+            )
+            if tb is not None:
+                target_console.print(tb, crop=False, overflow="ignore")
             return
 
         renderable = self.render(

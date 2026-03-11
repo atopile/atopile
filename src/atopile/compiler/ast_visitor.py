@@ -1,4 +1,5 @@
 import itertools
+import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -1340,7 +1341,7 @@ class ASTVisitor:
                 expr_type = F.Expressions.IsSubset
             case AST.ComparisonClause.ComparisonOperator.IS:
                 if rhs_is_literal:
-                    with downgrade(DeprecatedException):
+                    with downgrade(DeprecatedException, to_level=logging.DEBUG):
                         raise DeprecatedException(
                             "`assert x is <literal>` is deprecated. "
                             "Use `assert x within <literal>` instead."

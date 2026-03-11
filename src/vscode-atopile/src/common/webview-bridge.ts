@@ -8,7 +8,7 @@
 
 import { WebSocket as NodeWebSocket } from 'ws';
 import { backendServer } from './backendServer';
-import { traceInfo, traceError } from './log/logging';
+import { traceError, traceVerbose } from './log/logging';
 
 // ── Shared message interfaces ────────────────────────────────────────
 
@@ -212,7 +212,7 @@ export class WebviewProxyBridge {
   }
 
   private _connectWsProxy(id: number, targetUrl: string, attempt: number): void {
-    traceInfo(`[${this._tag}][WsProxy] Connecting id=${id} to ${targetUrl}${attempt > 0 ? ` (attempt ${attempt})` : ''}`);
+    traceVerbose(`[${this._tag}][WsProxy] Connecting id=${id} to ${targetUrl}${attempt > 0 ? ` (attempt ${attempt})` : ''}`);
     const ws = new NodeWebSocket(targetUrl);
     this._wsProxies.set(id, ws);
 
@@ -220,7 +220,7 @@ export class WebviewProxyBridge {
 
     ws.on('open', () => {
       this._clearWsProxyRetry(id);
-      traceInfo(`[${this._tag}][WsProxy] Connected id=${id}`);
+      traceVerbose(`[${this._tag}][WsProxy] Connected id=${id}`);
       this._post({ type: 'wsProxyOpen', id });
     });
 
@@ -235,7 +235,7 @@ export class WebviewProxyBridge {
         return;
       }
 
-      traceInfo(`[${this._tag}][WsProxy] Closed id=${id} code=${code}`);
+      traceVerbose(`[${this._tag}][WsProxy] Closed id=${id} code=${code}`);
       this._post({
         type: 'wsProxyClose',
         id,
@@ -251,7 +251,7 @@ export class WebviewProxyBridge {
 
         // Backend stopped/error: don't retry — the recovery loop will restart it
         if (state === 'stopped' || state === 'error') {
-          traceInfo(`[${this._tag}][WsProxy] Backend ${state}, not retrying id=${id}`);
+          traceVerbose(`[${this._tag}][WsProxy] Backend ${state}, not retrying id=${id}`);
           // fall through to error reporting
         }
         // Backend starting: use longer delay and more attempts
@@ -261,7 +261,7 @@ export class WebviewProxyBridge {
           if (attempt < maxStartingAttempts) {
             suppressClose = true;
             this._wsProxies.delete(id);
-            traceInfo(`[${this._tag}][WsProxy] Backend starting, delaying id=${id}: ${err.message}`);
+            traceVerbose(`[${this._tag}][WsProxy] Backend starting, delaying id=${id}: ${err.message}`);
             this._scheduleWsProxyRetry(id, targetUrl, attempt + 1, startingDelayMs);
             try { ws.removeAllListeners(); ws.close(); } catch { /* ignore */ }
             return;
@@ -273,7 +273,7 @@ export class WebviewProxyBridge {
           if (attempt < maxRunningAttempts) {
             suppressClose = true;
             this._wsProxies.delete(id);
-            traceInfo(`[${this._tag}][WsProxy] Backend running, quick retry id=${id}: ${err.message}`);
+            traceVerbose(`[${this._tag}][WsProxy] Backend running, quick retry id=${id}: ${err.message}`);
             this._scheduleWsProxyRetry(id, targetUrl, attempt + 1);
             try { ws.removeAllListeners(); ws.close(); } catch { /* ignore */ }
             return;
@@ -283,7 +283,7 @@ export class WebviewProxyBridge {
         else if (state === 'running' && !connected && attempt < this._wsMaxRetries) {
           suppressClose = true;
           this._wsProxies.delete(id);
-          traceInfo(`[${this._tag}][WsProxy] Backend not connected, retrying id=${id}: ${err.message}`);
+          traceVerbose(`[${this._tag}][WsProxy] Backend not connected, retrying id=${id}: ${err.message}`);
           this._scheduleWsProxyRetry(id, targetUrl, attempt + 1);
           try { ws.removeAllListeners(); ws.close(); } catch { /* ignore */ }
           return;
@@ -325,7 +325,7 @@ export class WebviewProxyBridge {
     this._clearWsProxyRetry(id);
 
     const delay = delayOverrideMs ?? this._wsRetryDelayMs;
-    traceInfo(`[${this._tag}][WsProxy] Retrying id=${id} in ${delay}ms (attempt ${attempt})`);
+    traceVerbose(`[${this._tag}][WsProxy] Retrying id=${id} in ${delay}ms (attempt ${attempt})`);
 
     const timer = setTimeout(() => {
       this._wsProxyRetryTimers.delete(id);

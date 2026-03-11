@@ -9,6 +9,7 @@ such as `reference_shim` which resolves to the ElectricPower `reference` from
 has_single_electric_reference.
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -35,7 +36,7 @@ logger = get_logger(__name__)
 
 
 def _deprecated_warning(input: str, replacement: str) -> None:
-    with downgrade(DeprecatedException):
+    with downgrade(DeprecatedException, to_level=logging.DEBUG):
         raise DeprecatedException(
             f"'{input}' is deprecated. Use '{replacement}' instead."
         )

@@ -7,7 +7,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { traceInfo, traceError } from '../../common/log/logging';
+import { traceError, traceVerbose } from '../../common/log/logging';
 
 export interface FileNode {
   name: string;
@@ -37,7 +37,7 @@ export class SidebarFileOperations {
     const newUri = vscode.Uri.file(newPath);
     vscode.workspace.fs.rename(oldUri, newUri).then(
       () => {
-        traceInfo(`[SidebarFileOps] Renamed ${oldPath} to ${newPath}`);
+        traceVerbose(`[SidebarFileOps] Renamed ${oldPath} to ${newPath}`);
         this._notifyFilesChanged();
       },
       (err) => {
@@ -58,7 +58,7 @@ export class SidebarFileOperations {
       if (choice === 'Delete') {
         vscode.workspace.fs.delete(deleteUri, { recursive: true, useTrash: true }).then(
           () => {
-            traceInfo(`[SidebarFileOps] Deleted ${filePath}`);
+            traceVerbose(`[SidebarFileOps] Deleted ${filePath}`);
             this._notifyFilesChanged();
           },
           (err) => {
@@ -89,7 +89,7 @@ export class SidebarFileOperations {
         const newUri = vscode.Uri.file(newFilePath);
         vscode.workspace.fs.writeFile(newUri, new Uint8Array()).then(
           () => {
-            traceInfo(`[SidebarFileOps] Created file ${newFilePath}`);
+            traceVerbose(`[SidebarFileOps] Created file ${newFilePath}`);
             this._notifyFilesChanged();
             // Open the new file
             vscode.workspace.openTextDocument(newUri).then((doc) => {
@@ -124,7 +124,7 @@ export class SidebarFileOperations {
         const newUri = vscode.Uri.file(newFolderPath);
         vscode.workspace.fs.createDirectory(newUri).then(
           () => {
-            traceInfo(`[SidebarFileOps] Created folder ${newFolderPath}`);
+            traceVerbose(`[SidebarFileOps] Created folder ${newFolderPath}`);
             this._notifyFilesChanged();
           },
           (err) => {
@@ -141,7 +141,7 @@ export class SidebarFileOperations {
     const destUri = vscode.Uri.file(destPath);
     vscode.workspace.fs.copy(sourceUri, destUri, { overwrite: false }).then(
       () => {
-        traceInfo(`[SidebarFileOps] Duplicated ${sourcePath} to ${destPath}`);
+        traceVerbose(`[SidebarFileOps] Duplicated ${sourcePath} to ${destPath}`);
         this._notifyFilesChanged();
         // Notify webview to start rename mode on the new file
         this._postToWebview({
@@ -162,7 +162,7 @@ export class SidebarFileOperations {
       name: `Terminal: ${path.basename(dirPath)}`,
     });
     terminal.show();
-    traceInfo(`[SidebarFileOps] Opened terminal at ${dirPath}`);
+    traceVerbose(`[SidebarFileOps] Opened terminal at ${dirPath}`);
   }
 
   revealInFinder(filePath: string): void {
@@ -170,7 +170,7 @@ export class SidebarFileOperations {
   }
 
   async listFiles(projectRoot: string, includeAll: boolean): Promise<void> {
-    traceInfo(`[SidebarFileOps] Listing files for: ${projectRoot}, includeAll: ${includeAll}`);
+    traceVerbose(`[SidebarFileOps] Listing files for: ${projectRoot}, includeAll: ${includeAll}`);
 
     // Directories to completely exclude (not even show)
     const excludedDirs = new Set([
@@ -291,7 +291,7 @@ export class SidebarFileOperations {
         total,
       });
 
-      traceInfo(`[SidebarFileOps] Listed ${total} files for ${projectRoot}`);
+      traceVerbose(`[SidebarFileOps] Listed ${total} files for ${projectRoot}`);
     } catch (err) {
       traceError(`[SidebarFileOps] Failed to list files: ${err}`);
       this._postToWebview({
@@ -305,7 +305,7 @@ export class SidebarFileOperations {
   }
 
   async loadDirectory(projectRoot: string, directoryPath: string): Promise<void> {
-    traceInfo(`[SidebarFileOps] Loading directory: ${directoryPath} in ${projectRoot}`);
+    traceVerbose(`[SidebarFileOps] Loading directory: ${directoryPath} in ${projectRoot}`);
 
     try {
       const dirUri = vscode.Uri.file(path.join(projectRoot, directoryPath));
@@ -349,7 +349,7 @@ export class SidebarFileOperations {
         children: nodes,
       });
 
-      traceInfo(`[SidebarFileOps] Loaded ${nodes.length} items in ${directoryPath}`);
+      traceVerbose(`[SidebarFileOps] Loaded ${nodes.length} items in ${directoryPath}`);
     } catch (err) {
       traceError(`[SidebarFileOps] Failed to load directory: ${err}`);
       this._postToWebview({

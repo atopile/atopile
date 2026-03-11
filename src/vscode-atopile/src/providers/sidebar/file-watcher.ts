@@ -6,7 +6,7 @@
  */
 
 import * as vscode from 'vscode';
-import { traceInfo } from '../../common/log/logging';
+import { traceVerbose } from '../../common/log/logging';
 
 export interface SidebarFileWatcherOptions {
   postToWebview: (msg: Record<string, unknown>) => void;
@@ -60,7 +60,7 @@ export class SidebarFileWatcher {
         clearTimeout(this._fileChangeDebounce);
       }
       this._fileChangeDebounce = setTimeout(() => {
-        traceInfo(`[SidebarFileWatcher] Files changed in ${projectRoot}`);
+        traceVerbose(`[SidebarFileWatcher] Files changed in ${projectRoot}`);
         this._postToWebview({
           type: 'filesChanged',
           projectRoot,
@@ -75,7 +75,7 @@ export class SidebarFileWatcher {
       // Renames appear as delete + create, so they're covered
     });
 
-    traceInfo(`[SidebarFileWatcher] File watcher set up for ${projectRoot}`);
+    traceVerbose(`[SidebarFileWatcher] File watcher set up for ${projectRoot}`);
   }
 
   /**
@@ -105,7 +105,7 @@ export class SidebarFileWatcher {
         clearTimeout(this._fileChangeDebounce);
       }
       this._fileChangeDebounce = setTimeout(() => {
-        traceInfo(`[SidebarFileWatcher] Notifying webview of file changes in ${this._watchedProjectRoot}`);
+        traceVerbose(`[SidebarFileWatcher] Notifying webview of file changes in ${this._watchedProjectRoot}`);
         this._postToWebview({
           type: 'filesChanged',
           projectRoot: this._watchedProjectRoot,

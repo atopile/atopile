@@ -397,10 +397,10 @@ class BackendServerManager implements vscode.Disposable {
      * Update connection status (called from SidebarProvider when WebSocket connects/disconnects).
      */
     setConnected(connected: boolean): void {
-        traceInfo(`BackendServer: setConnected(${connected}) called, current: ${this._isConnected}`);
+        traceVerbose(`BackendServer: setConnected(${connected}) called, current: ${this._isConnected}`);
         if (this._isConnected !== connected) {
             this._isConnected = connected;
-            traceInfo(`BackendServer: ${connected ? 'Connected' : 'Disconnected'}, firing onStatusChange`);
+            traceVerbose(`BackendServer: ${connected ? 'Connected' : 'Disconnected'}, firing onStatusChange`);
             this._onStatusChange.fire(connected);
             this._updateStatusBar();
         }

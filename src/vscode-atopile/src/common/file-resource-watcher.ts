@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getBuildTarget, onBuildTargetChanged } from '../common/target';
-import { traceVerbose, traceInfo } from './log/logging';
+import { traceVerbose } from './log/logging';
 import { Build } from './manifest';
 import * as fs from 'fs';
 
@@ -150,9 +150,9 @@ export abstract class FileResourceWatcher<T extends FileResource> {
             return;
         }
 
-        traceInfo(`Setting up watcher for ${resource.path}`);
+        traceVerbose(`Setting up watcher for ${resource.path}`);
         this.watcher = new FileWatcher(resource.path, (type) => {
-            traceInfo(`${this.resourceName} watcher triggered by ${type} for ${resource.path}`);
+            traceVerbose(`${this.resourceName} watcher triggered by ${type} for ${resource.path}`);
             if (type === FileEventType.Change) {
                 this.notifyChange(resource);
             } else {

@@ -114,7 +114,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('atopile.ato') || e.affectsConfiguration('atopile.from')) {
-          traceInfo('[SidebarProvider] atopile settings changed, notifying webview');
+          traceVerbose('[SidebarProvider] atopile settings changed, notifying webview');
           this._settings.sendAtopileSettings();
         }
       })
@@ -218,7 +218,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
     const filePath = editor?.document?.uri?.fsPath ?? null;
-    traceInfo(`[SidebarProvider] Posting active file: ${filePath}`);
+    traceVerbose(`[SidebarProvider] Posting active file: ${filePath}`);
     this._view.webview.postMessage({ type: 'activeFile', filePath });
   }
 
@@ -276,7 +276,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         void vscode.window.showInformationMessage(message.message);
         break;
       case 'webviewReady':
-        traceMilestone('sidebar webview ready');
+        traceVerbose('[SidebarProvider] sidebar webview ready');
         break;
       case 'showError':
         void vscode.window.showErrorMessage(message.message);

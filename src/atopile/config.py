@@ -1435,7 +1435,7 @@ class Config:
 
         self.project.entry = entry
 
-        logger.info("Using project %s", self.project_dir)
+        logger.debug("Using project %s", self.project_dir)
 
         # if we set an entry-point, we now need to deal with that
         entry_addr_override = self._check_entry_arg_file_path(
