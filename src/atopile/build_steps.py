@@ -362,8 +362,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()

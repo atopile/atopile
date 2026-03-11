@@ -108,6 +108,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.XtalIF,
         F.TestPoint,
         F.MountingHole,
+        F.RectangularBoardShape,
         F.NetTie,
     }
 ) | (

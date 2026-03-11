@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 KiCadPCBFootprint = kicad.pcb.Footprint
 KiCadPCBPad = kicad.pcb.Pad
 KiCadPCBNet = kicad.pcb.Net
+KiCadLibraryFootprint = kicad.footprint.Footprint
 
 
 class has_associated_kicad_pcb_footprint(fabll.Node):
@@ -286,6 +288,62 @@ class has_associated_kicad_library_footprint(fabll.Node):
         self.kicad_identifier_.get().set_superset(kicad_identifier)
         self.library_name_.get().set_superset(lib_name)
         return self
+
+
+class can_generate_kicad_footprint(fabll.Node):
+    """
+    Associate a graph footprint with a Python generator for a synthetic KiCad footprint.
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+
+    @dataclass
+    class Data:
+        generator: Callable[[fabll.Node, "PCB_Transformer"], KiCadLibraryFootprint]
+        kicad_identifier: str
+        reference: str | None
+        value: str | None
+        at: kicad.pcb.Xyr | None
+
+    def setup(
+        self,
+        generator: Callable[[fabll.Node, "PCB_Transformer"], KiCadLibraryFootprint],
+        kicad_identifier: str,
+        *,
+        reference: str | None = None,
+        value: str | None = None,
+        at: kicad.pcb.Xyr | None = None,
+    ) -> Self:
+        self.instance.store(
+            data=self.Data(
+                generator=generator,
+                kicad_identifier=kicad_identifier,
+                reference=reference,
+                value=value,
+                at=at,
+            )
+        )
+        return self
+
+    def _data(self) -> Data:
+        return self.instance.load(t=self.Data)
+
+    def generate(
+        self, component: fabll.Node, transformer: "PCB_Transformer"
+    ) -> KiCadLibraryFootprint:
+        return self._data().generator(component, transformer)
+
+    def get_kicad_identifier(self) -> str:
+        return self._data().kicad_identifier
+
+    def get_reference(self) -> str | None:
+        return self._data().reference
+
+    def get_value(self) -> str | None:
+        return self._data().value
+
+    def get_at(self) -> kicad.pcb.Xyr | None:
+        return self._data().at
 
 
 def setup_pcb_transformer_test():

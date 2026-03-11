@@ -123,9 +123,7 @@ class has_associated_footprint(fabll.Node):
         ).create_instance(g=component_node.instance.g())
         fp_trait = fabll.Traits.create_and_add_instance_to(node=fp, trait=is_footprint)
 
-        fabll.Traits.create_and_add_instance_to(
-            node=component_node, trait=has_associated_footprint
-        ).setup(fp_trait)
+        self.setup(fp_trait)
 
         # add pad_nodes to the footprint with composition edge
         if pads:
