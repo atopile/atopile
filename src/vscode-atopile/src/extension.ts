@@ -4,9 +4,9 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceInfo, traceLog, traceVerbose, initTimer, traceMilestone } from './common/log/logging';
-import { startOrRestartServer, initServer, onNeedsRestart } from './common/lspServer';
+import { getRunningServerMemorySnapshot, startOrRestartServer, initServer, onNeedsRestart } from './common/lspServer';
 import { getExtensionManagedUvPath, setUvPathLocal, onDidChangeAtoBinInfoEvent, resetAtoBinFailures } from './common/findbin';
-import { getLSClientTraceLevel } from './common/utilities';
+import { formatMiB, getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel, get_ide_type } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
@@ -136,6 +136,20 @@ async function handleConfigUpdate(event: vscode.ConfigurationChangeEvent) {
     }
 }
 
+function getLspRestartMemoryThresholdPercent(): number {
+    const configured = vscode.workspace
+        .getConfiguration('atopile')
+        .get<number>('restartLspMemoryThresholdPercent');
+    return Math.min(100, Math.max(1, configured as number));
+}
+
+function isTrackedRecompileUri(uri: vscode.Uri): boolean {
+    if (uri.scheme !== 'file' || !vscode.workspace.getWorkspaceFolder(uri)) {
+        return false;
+    }
+    const normalizedPath = uri.fsPath.toLowerCase();
+    return normalizedPath.endsWith('.ato') || normalizedPath.endsWith('/ato.yaml') || normalizedPath.endsWith('\\ato.yaml');
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const activationTime = Date.now();
@@ -194,6 +208,49 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
     };
 
+    let lspLifecycle = Promise.resolve();
+
+    const runLspLifecycle = (reason: string) => {
+        lspLifecycle = lspLifecycle
+            .catch((error) => {
+                traceLog(`Previous LSP lifecycle operation failed: ${String(error)}`);
+            })
+            .then(async () => {
+                traceInfo(`Starting LSP lifecycle operation: ${reason}`);
+                await startLsp();
+            });
+        return lspLifecycle;
+    };
+
+    const maybeRestartLspForMemory = async (uri: vscode.Uri, reason: string) => {
+        if (!isTrackedRecompileUri(uri)) {
+            return;
+        }
+
+        const snapshot = await getRunningServerMemorySnapshot();
+        if (!snapshot) {
+            traceVerbose(`Skipping LSP recycle check for ${uri.fsPath}; no running LSP process found.`);
+            return;
+        }
+
+        const thresholdPercent = getLspRestartMemoryThresholdPercent();
+        if (snapshot.percentOfLimit < thresholdPercent) {
+            traceVerbose(
+                `Skipping LSP restart after ${uri.fsPath}; pid=${snapshot.pid} RSS ${formatMiB(snapshot.rssBytes)} ` +
+                    `is ${snapshot.percentOfLimit.toFixed(1)}% of ${formatMiB(snapshot.limitBytes)} ` +
+                    `(threshold ${thresholdPercent}%).`,
+            );
+            return;
+        }
+
+        traceInfo(
+            `Scheduling LSP restart after ${uri.fsPath}; pid=${snapshot.pid} RSS ${formatMiB(snapshot.rssBytes)} ` +
+                `is ${snapshot.percentOfLimit.toFixed(1)}% of ${formatMiB(snapshot.limitBytes)} ` +
+                `(threshold ${thresholdPercent}%).`,
+        );
+        void runLspLifecycle(`${reason}:rss>${thresholdPercent}pct`);
+    };
+
     const startBackend = async () => {
         const backendSuccess = isInitialStart
             ? await backendServer.startServer()
@@ -206,7 +263,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const restartAll = async () => {
         traceInfo('User requested restart, restarting servers...');
-        await Promise.all([startLsp(), startBackend()]);
+        await Promise.all([runLspLifecycle('manual restart'), startBackend()]);
     };
 
     context.subscriptions.push(
@@ -214,10 +271,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         onBuildTargetChanged((target: Build | undefined) => {
             g_lsClient?.sendNotification('atopile/didChangeBuildTarget', { buildTarget: target?.entry ?? '' });
         }),
+        vscode.workspace.onDidSaveTextDocument((document) => {
+            void maybeRestartLspForMemory(document.uri, `save:${document.uri.fsPath}`);
+        }),
     );
 
     // LSP starts in background (only needed for .ato editing), backend and UI block activation
-    startLsp();
+    void runLspLifecycle('activation');
     await Promise.all([ui.activate(context), startBackend()]);
 
     traceMilestone('activated');

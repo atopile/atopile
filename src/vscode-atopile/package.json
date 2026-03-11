@@ -102,6 +102,14 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": false
+                },
+                "atopile.restartLspMemoryThresholdPercent": {
+                    "description": "Restart the atopile language server on recompile boundaries when its RSS exceeds this percentage of the effective system or container memory limit.",
+                    "scope": "resource",
+                    "type": "number",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 100
                 }
             }
         },

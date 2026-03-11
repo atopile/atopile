@@ -2,10 +2,17 @@
 // Licensed under the MIT License.
 
 import * as fs from 'fs-extra';
+import * as fsPromises from 'fs/promises';
+import * as os from 'os';
 import * as path from 'path';
 import { LogLevel, Uri, WorkspaceFolder } from 'vscode';
 import { Trace } from 'vscode-jsonrpc/node';
 import { getWorkspaceFolders, getAtopileWorkspaceFolders } from './vscodeapi';
+
+const CGROUP_MEMORY_LIMIT_PATHS = [
+    '/sys/fs/cgroup/memory.max',
+    '/sys/fs/cgroup/memory/memory.limit_in_bytes',
+];
 
 function logLevelToTrace(logLevel: LogLevel): Trace {
     switch (logLevel) {
@@ -160,4 +167,47 @@ export function indent(input_string: string, indent: number, skip_first: boolean
         .split('\n')
         .map((line, index) => (index === 0 && skip_first ? line : ' '.repeat(indent) + line))
         .join('\n');
+}
+
+export function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function getEffectiveMemoryLimitBytes(): Promise<number> {
+    const hostTotalBytes = os.totalmem();
+
+    for (const cgroupPath of CGROUP_MEMORY_LIMIT_PATHS) {
+        try {
+            const raw = (await fsPromises.readFile(cgroupPath, 'utf-8')).trim();
+            if (!raw || raw === 'max') {
+                continue;
+            }
+
+            const parsed = Number.parseInt(raw, 10);
+            if (Number.isFinite(parsed) && parsed > 0) {
+                return Math.min(parsed, hostTotalBytes);
+            }
+        } catch {
+            // Fall through to the next cgroup path or host total memory.
+        }
+    }
+
+    return hostTotalBytes;
+}
+
+export async function getProcessRssBytes(pid: number): Promise<number | undefined> {
+    try {
+        const status = await fsPromises.readFile(`/proc/${pid}/status`, 'utf-8');
+        const match = status.match(/^VmRSS:\s+(\d+)\s+kB$/m);
+        if (!match) {
+            return undefined;
+        }
+        return Number.parseInt(match[1], 10) * 1024;
+    } catch {
+        return undefined;
+    }
+}
+
+export function formatMiB(bytes: number): string {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }

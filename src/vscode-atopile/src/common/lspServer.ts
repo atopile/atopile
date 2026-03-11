@@ -12,13 +12,100 @@ import {
 } from 'vscode-languageclient/node';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
 import { ISettings } from './settings';
-import { getLSClientTraceLevel } from './utilities';
+import { getEffectiveMemoryLimitBytes, getLSClientTraceLevel, getProcessRssBytes, sleep } from './utilities';
 import { isVirtualWorkspace, onDidChangeConfiguration, registerCommand } from './vscodeapi';
 import { SERVER_ID } from './constants';
 import { resolveAtoBinForWorkspace, onDidChangeAtoBinInfo } from './findbin';
 import * as fs from 'fs/promises';
 import * as cp from 'child_process';
 import { constants as fsc } from 'fs';
+
+const SERVER_STOP_TIMEOUT_MS = 5000;
+const SERVER_FORCE_KILL_GRACE_MS = 1000;
+
+let _serverProcess: cp.ChildProcess | undefined;
+
+function setServerProcess(child: cp.ChildProcess | undefined): void {
+    _serverProcess = child;
+    if (!child) {
+        return;
+    }
+
+    const clearIfCurrent = () => {
+        if (_serverProcess === child) {
+            _serverProcess = undefined;
+        }
+    };
+    child.once('exit', clearIfCurrent);
+    child.once('error', clearIfCurrent);
+}
+
+function isProcessRunning(child: cp.ChildProcess): boolean {
+    return child.exitCode === null && child.signalCode === null;
+}
+
+async function stopCurrentServerProcess(): Promise<void> {
+    const child = _serverProcess;
+    if (!child?.pid) {
+        return;
+    }
+
+    traceError(`Server: stop timed out, terminating LSP pid ${child.pid}`);
+
+    if (isProcessRunning(child)) {
+        child.kill('SIGTERM');
+    }
+
+    await sleep(SERVER_FORCE_KILL_GRACE_MS);
+
+    if (_serverProcess === child && isProcessRunning(child)) {
+        traceError(`Server: force-killing LSP pid ${child.pid}`);
+        child.kill('SIGKILL');
+    }
+}
+
+async function stopLanguageClient(lsClient: LanguageClient): Promise<void> {
+    const stopPromise = lsClient.stop();
+    const outcome = await Promise.race([
+        stopPromise.then(() => 'stopped' as const),
+        sleep(SERVER_STOP_TIMEOUT_MS).then(() => 'timeout' as const),
+    ]);
+
+    if (outcome === 'timeout') {
+        await stopCurrentServerProcess();
+        return;
+    }
+
+    await stopPromise;
+}
+
+export async function getRunningServerMemorySnapshot(): Promise<
+    | {
+          pid: number;
+          rssBytes: number;
+          limitBytes: number;
+          percentOfLimit: number;
+      }
+    | undefined
+> {
+    const pid = _serverProcess?.pid;
+    if (!pid) {
+        return undefined;
+    }
+
+    const rssBytes = await getProcessRssBytes(pid);
+    if (rssBytes === undefined) {
+        return undefined;
+    }
+
+    const limitBytes = await getEffectiveMemoryLimitBytes();
+    return {
+        pid,
+        rssBytes,
+        limitBytes,
+        percentOfLimit: (rssBytes / limitBytes) * 100,
+    };
+}
 
 async function trySpawn(
     command: string,
@@ -83,6 +170,7 @@ async function _runServer(
         traceError(`LSP: preflight/spawn failed; not starting client.`);
         return undefined; // no client => no “couldn't create connection” toast
     }
+    setServerProcess(child);
 
     // Hand the already-running process to the client (never rejects)
     const serverOptions: ServerOptions = () => Promise.resolve(child);
@@ -124,9 +212,15 @@ export async function startOrRestartServer(
 ): Promise<LanguageClient | undefined> {
     if (lsClient) {
         traceInfo(`Server: Stop requested`);
-        await lsClient.stop();
+        try {
+            await stopLanguageClient(lsClient);
+        } catch (error) {
+            traceError(`Server: Stop failed: ${String(error)}`);
+            await stopCurrentServerProcess();
+        }
         _disposables.forEach((d) => d.dispose());
         _disposables = [];
+        setServerProcess(undefined);
     }
     const resolved = await resolveAtoBinForWorkspace();
     if (!resolved) {
