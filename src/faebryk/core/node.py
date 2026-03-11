@@ -2513,7 +2513,13 @@ class TreeRenderer:
                 if isinstance(value, str):
                     return f'"{TreeRenderer.truncate_text(value)}"'
                 return str(value)
-            case _ if type_name.endswith("Enums") or type_name == "AbstractEnums":
+            case _ if (
+                type_name == "AbstractEnums"
+                or (
+                    (seen := Node._seen_types.get(type_name)) is not None
+                    and issubclass(seen, F.Literals.AbstractEnums)
+                )
+            ):
                 bound = F.Literals.AbstractEnums.bind_instance(node)
                 values = bound.get_values()
                 if len(values) == 1:

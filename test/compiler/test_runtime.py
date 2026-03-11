@@ -489,7 +489,9 @@ def test_assign_to_enum_param():
     temp_coeff = F.Capacitor.bind_instance(cap).temperature_coefficient.get()
     lit = temp_coeff.is_parameter_operatable.get().try_extract_superset()
     assert lit is not None
-    enum_lit = fabll.Traits(lit).get_obj(F.Literals.AbstractEnums)
+    enum_lit = F.Literals.AbstractEnums.bind_instance(
+        instance=fabll.Traits(lit).get_obj_raw().instance
+    )
     assert (
         enum_lit.get_single_value_typed(F.Capacitor.TemperatureCoefficient)
         == F.Capacitor.TemperatureCoefficient.X7R
