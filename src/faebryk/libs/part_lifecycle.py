@@ -561,7 +561,6 @@ class PartLifecycle:
                     F.KiCadFootprints.has_associated_kicad_library_footprint
                 )
 
-            # This is the component which is being stuck on the board
             address = component.get_full_name()
 
             # At this point, all footprints MUST have a KiCAD identifier
