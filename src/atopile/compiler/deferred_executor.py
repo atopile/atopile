@@ -17,7 +17,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from atopile.compiler import DslException, DslRichException
-from atopile.compiler.ast_visitor import BuildState
+from atopile.compiler.ast_visitor import AnyAtoBlock, BuildState
 from atopile.compiler.gentypegraph import FieldPath, ImportRef
 from faebryk.libs.util import DAG, prefixes
 
@@ -213,6 +213,21 @@ class DeferredExecutor:
             )
             self._tg.merge_types(target=localized_type, source=source_type)
             self._tg.mark_constructable(type_node=localized_type)
+
+            # TODO: merge_types doesn't copy type-node-level EdgePointer edges.
+            # Definition node needed for layout reuse
+            definition_node = fbrk.EdgePointer.get_pointed_node_by_identifier(
+                bound_node=source_type,
+                identifier=AnyAtoBlock._definition_identifier,
+            )
+            if definition_node is not None:
+                fbrk.EdgePointer.point_to(
+                    bound_node=localized_type,
+                    target_node=definition_node.node(),
+                    identifier=AnyAtoBlock._definition_identifier,
+                    index=None,
+                )
+
             return localized_type
 
         def _localize_parent_path(
