@@ -1518,9 +1518,9 @@ fn wrap_graphview_destroy() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
-            const allocator = std.heap.c_allocator;
             wrapper.data.deinit();
-            allocator.destroy(wrapper.data);
+            // Don't free the struct — BoundNodeReferences may still hold *GraphView
+            // The struct is small; arena (the big allocation) IS freed by deinit()
             return bind.wrap_none();
         }
     };

@@ -374,8 +374,7 @@ fn wrap_edge_composition_add_child() type {
             }
             const identifier_slice = std.mem.span(identifier_c.?);
 
-            const allocator = kwarg_obj.bound_node.g.allocator;
-            const identifier_copy = allocator.dupe(u8, identifier_slice) catch {
+            const identifier_copy = std.heap.c_allocator.dupe(u8, identifier_slice) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate child_identifier");
                 return null;
             };
@@ -385,7 +384,7 @@ fn wrap_edge_composition_add_child() type {
                 kwarg_obj.child.*,
                 identifier_copy,
             ) catch |err| {
-                allocator.free(identifier_copy);
+                std.heap.c_allocator.free(identifier_copy);
                 const msg = switch (err) {
                     error.SourceNodeNotInGraph => "Parent node not in graph",
                     error.TargetNodeNotInGraph => "Child node not in graph",
@@ -1246,7 +1245,6 @@ fn wrap_edge_operand_add_operand() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const allocator = kwarg_obj.bound_node.g.allocator;
             var identifier_copy: ?[]u8 = null;
             if (kwarg_obj.operand_identifier) |identifier_obj| {
                 if (identifier_obj != py.Py_None()) {
@@ -1256,7 +1254,7 @@ fn wrap_edge_operand_add_operand() type {
                         return null;
                     }
                     const identifier_slice = std.mem.span(identifier_c.?);
-                    identifier_copy = allocator.dupe(u8, identifier_slice) catch {
+                    identifier_copy = std.heap.c_allocator.dupe(u8, identifier_slice) catch {
                         py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate operand_identifier");
                         return null;
                     };
@@ -1268,7 +1266,7 @@ fn wrap_edge_operand_add_operand() type {
                 kwarg_obj.operand.*,
                 identifier_copy,
             ) catch |err| {
-                if (identifier_copy) |copy| allocator.free(copy);
+                if (identifier_copy) |copy| std.heap.c_allocator.free(copy);
                 const msg = switch (err) {
                     error.SourceNodeNotInGraph => "Expression node not in graph",
                     error.TargetNodeNotInGraph => "Operand node not in graph",
@@ -2674,12 +2672,11 @@ fn wrap_edge_pointer_point_to() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const allocator = kwarg_obj.bound_node.g.allocator;
             var identifier_copy: ?[]u8 = null;
             if (kwarg_obj.identifier) |identifier_obj| {
                 if (identifier_obj != py.Py_None()) {
                     const identifier_str = bind.unwrap_str(identifier_obj) orelse return null;
-                    identifier_copy = allocator.dupe(u8, identifier_str) catch {
+                    identifier_copy = std.heap.c_allocator.dupe(u8, identifier_str) catch {
                         py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate identifier");
                         return null;
                     };
@@ -3240,10 +3237,8 @@ fn wrap_typegraph_add_type() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const allocator = wrapper.data.self_node.g.allocator;
-
             const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
-            const identifier_copy = allocator.dupe(u8, identifier) catch {
+            const identifier_copy = std.heap.c_allocator.dupe(u8, identifier) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate identifier");
                 return null;
             };
@@ -3331,11 +3326,10 @@ fn wrap_typegraph_add_make_child() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const allocator = kwarg_obj.type_node.g.allocator;
             var identifier_copy: ?[]u8 = null;
             if (kwarg_obj.identifier != py.Py_None()) {
                 const identifier_slice = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
-                identifier_copy = allocator.dupe(u8, identifier_slice) catch {
+                identifier_copy = std.heap.c_allocator.dupe(u8, identifier_slice) catch {
                     py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate identifier");
                     return null;
                 };
@@ -3345,7 +3339,7 @@ fn wrap_typegraph_add_make_child() type {
             var node_attributes: ?*faebryk.nodebuilder.NodeCreationAttributes = null;
             if (node_attrs_obj != py.Py_None()) {
                 const attrs_wrapper = bind.castWrapper("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, node_attrs_obj) orelse {
-                    if (identifier_copy) |copy| allocator.free(copy);
+                    if (identifier_copy) |copy| std.heap.c_allocator.free(copy);
                     return null;
                 };
                 node_attributes = attrs_wrapper.data;
@@ -3389,17 +3383,16 @@ fn wrap_typegraph_add_make_child_deferred() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const allocator = kwarg_obj.type_node.g.allocator;
             var identifier_copy: ?[]u8 = null;
             if (kwarg_obj.identifier != py.Py_None()) {
                 const identifier_slice = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
-                identifier_copy = allocator.dupe(u8, identifier_slice) catch {
+                identifier_copy = std.heap.c_allocator.dupe(u8, identifier_slice) catch {
                     py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate identifier");
                     return null;
                 };
             }
             const child_type_identifier_slice = bind.unwrap_str(kwarg_obj.child_type_identifier) orelse return null;
-            const child_type_identifier_copy = allocator.dupe(u8, child_type_identifier_slice) catch {
+            const child_type_identifier_copy = std.heap.c_allocator.dupe(u8, child_type_identifier_slice) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate child type identifier");
                 return null;
             };
@@ -3408,7 +3401,7 @@ fn wrap_typegraph_add_make_child_deferred() type {
             var node_attributes: ?*faebryk.nodebuilder.NodeCreationAttributes = null;
             if (node_attrs_obj != py.Py_None()) {
                 const attrs_wrapper = bind.castWrapper("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, node_attrs_obj) orelse {
-                    if (identifier_copy) |copy| allocator.free(copy);
+                    if (identifier_copy) |copy| std.heap.c_allocator.free(copy);
                     return null;
                 };
                 node_attributes = attrs_wrapper.data;
@@ -3446,8 +3439,7 @@ fn wrap_typegraph_add_type_reference() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const type_id_slice = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
-            const allocator = wrapper.data.self_node.g.allocator;
-            const type_id_copy = allocator.dupe(u8, type_id_slice) catch {
+            const type_id_copy = std.heap.c_allocator.dupe(u8, type_id_slice) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate type identifier");
                 return null;
             };
@@ -4769,8 +4761,7 @@ fn wrap_typegraph_get_or_create_type() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
-            const allocator = wrapper.data.self_node.g.allocator;
-            const identifier_copy = allocator.dupe(u8, identifier) catch {
+            const identifier_copy = std.heap.c_allocator.dupe(u8, identifier) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate type identifier");
                 return null;
             };

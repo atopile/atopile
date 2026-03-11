@@ -1962,7 +1962,7 @@ class Mutator:
         obj: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
         if obj.is_in_graph(self.G_out):
-            return obj
+            return obj.rebind(self.G_out)
         if obj_po := obj.as_parameter_operatable.try_get():
             if self.has_been_mutated(obj_po):
                 return self.get_mutated(obj_po).as_operand.get()
@@ -1981,7 +1981,7 @@ class Mutator:
         obj: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
         if obj.is_in_graph(self.G_out):
-            return obj
+            return obj.rebind(self.G_out)
         if obj_lit := obj.as_literal.try_get():
             self.tg_out
             return obj_lit.copy_into(self.G_out).as_operand.get()
