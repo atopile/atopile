@@ -75,17 +75,26 @@ export class SidebarSettingsHandlers {
 
     traceInfo(`[SidebarSettings] Processing new settings: ${settingsKey}`);
 
-    const config = vscode.workspace.getConfiguration('atopile');
-    const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
-    const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-
     try {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.length
+        ? await getProjectRoot()
+        : undefined;
+      // `atopile.ato` is resource-scoped, so writes must target a workspace folder.
+      const config = vscode.workspace.getConfiguration('atopile', workspaceFolder?.uri);
+      const target = workspaceFolder
+        ? vscode.ConfigurationTarget.WorkspaceFolder
+        : vscode.ConfigurationTarget.Global;
+
       // Only manage atopile.ato setting - atopile.from is only set manually in settings
       if (atopile.source === 'local' && atopile.localPath) {
-        traceInfo(`[SidebarSettings] Setting atopile.ato = ${atopile.localPath}`);
+        traceInfo(
+          `[SidebarSettings] Setting atopile.ato = ${atopile.localPath} (target: ${workspaceFolder ? 'workspaceFolder' : 'global'})`,
+        );
         await config.update('ato', atopile.localPath, target);
       } else {
-        traceInfo(`[SidebarSettings] Clearing atopile.ato (using default)`);
+        traceInfo(
+          `[SidebarSettings] Clearing atopile.ato (target: ${workspaceFolder ? 'workspaceFolder' : 'global'})`,
+        );
         await config.update('ato', undefined, target);
       }
       this._lastAtopileSettingsKey = settingsKey;

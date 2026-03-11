@@ -129,20 +129,50 @@ function normalizePath(inputPath: string): string {
     return inputPath;
 }
 
+function resolveExplicitAtoPath(inputPath: string): string | null {
+    const normalizedPath = normalizePath(inputPath);
+    if (!fs.existsSync(normalizedPath)) {
+        traceError(`[findbin] Explicit path does not exist: ${normalizedPath}`);
+        return null;
+    }
+
+    if (!fs.statSync(normalizedPath).isDirectory()) {
+        return normalizedPath;
+    }
+
+    const candidates = os.platform() === 'win32'
+        ? ['ato.exe', 'ato.cmd', 'ato.bat']
+        : ['ato'];
+
+    for (const candidate of candidates) {
+        const candidatePath = path.join(normalizedPath, candidate);
+        if (fs.existsSync(candidatePath)) {
+            traceInfo(
+                `[findbin] Explicit path "${normalizedPath}" is a directory, using ${candidatePath}`,
+            );
+            return candidatePath;
+        }
+    }
+
+    traceError(
+        `[findbin] Explicit path "${normalizedPath}" is a directory but no ato executable was found inside it`,
+    );
+    return null;
+}
+
 /**
  * Get the atopile binary from explicit settings path (atopile.ato).
  * Returns null if not configured or path doesn't exist.
  */
 async function _getExplicitAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
     if (settings?.ato && settings.ato !== '') {
-        const normalizedPath = normalizePath(settings.ato);
-        if (fs.existsSync(normalizedPath)) {
+        const explicitPath = resolveExplicitAtoPath(settings.ato);
+        if (explicitPath) {
             return {
-                command: [normalizedPath],
+                command: [explicitPath],
                 source: 'explicit-path',
             };
         }
-        traceError(`[findbin] Explicit path does not exist: ${normalizedPath}`);
     }
     return null;
 }
