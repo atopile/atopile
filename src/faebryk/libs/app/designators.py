@@ -54,7 +54,7 @@ def attach_random_designators(tg: fbrk.TypeGraph):
     assigned: dict[str, list[int]] = defaultdict(list)
 
     # Parse existing designators to track which numbers are used per prefix
-    pattern = re.compile(r"([A-Z]+)([0-9]+)")
+    pattern = re.compile(r"([A-Za-z]+)([0-9]+)")
     for module in part_modules_sorted:
         if (designator_trait := module.try_get_sibling_trait(F.has_designator)) is None:
             continue
