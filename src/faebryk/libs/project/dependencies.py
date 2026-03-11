@@ -62,7 +62,7 @@ def _log_changes(
 
     for action, identifier, ver in changes:
         prefix = _CHANGE_FMT.get(action, " ")
-        ver_str = f"  {ver}" if ver else ""
+        ver_str = f"@{ver}" if ver else ""
         logger.info(
             "%s %s%s",
             prefix,
@@ -945,7 +945,11 @@ class ProjectDependencies:
         for dep in new_deps:
             self.install_from_spec_to_manifest(dep, upgrade=upgrade)
 
+        # Preserve changes recorded during install so they survive reload()
+        # (reload reinitializes _changes)
+        prior_changes = self._changes[:]
         self.reload()
+        _log_changes(prior_changes)
 
     def remove_dependencies(self, *identifiers: str):
         all_deps_by_identifier = {dep.identifier: dep for dep in self.all_deps}
@@ -1006,9 +1010,11 @@ class ProjectDependencies:
             if dep.target_path.exists():
                 robustly_rm_dir(dep.target_path)
 
-        # reload and clean orphaned packages
+        # Preserve changes recorded during removal so they survive reload()
+        prior_changes = self._changes[:]
         self.reload()
         self.clean_unmanaged_directories()
+        _log_changes(prior_changes)
 
     def sync_versions(self, force: bool = False):
         """
