@@ -3077,6 +3077,47 @@ class TestAssertWithComputedVariableInArithmetic:
         solver = Solver()
         solver.simplify(tg, g, terminal=True)
 
+    def test_assert_with_inline_param_multiply_literal_with_solver(self):
+        """Param * literal inline in assert works with solver (simple case)."""
+        g, tg, _, _, app_instance = build_instance(
+            """
+            module App:
+                output_voltage = 3.3V +/- 5%
+                cap_max_voltage = 10V to 25V
+                assert cap_max_voltage >= output_voltage * 2
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_assert_with_child_param_multiply_literal_with_solver(self):
+        """Child_module.param * literal inline in assert works with solver."""
+        g, tg, _, _, app_instance = build_instance(
+            """
+            interface Power:
+                voltage = 0V to 100V
+
+            module Cap:
+                max_voltage = 0V to 100V
+
+            module App:
+                power_out = new Power
+                assert power_out.voltage within 3.3V +/- 5%
+                cap = new Cap
+                assert cap.max_voltage >= power_out.voltage * 2
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
 
 class TestParameterConstraintTypes:
     """Tests for Is vs IsSubset constraint types based on block type."""
