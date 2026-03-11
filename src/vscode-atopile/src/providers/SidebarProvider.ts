@@ -434,6 +434,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
     const workspaceRoot = this._getWorkspaceRootSync();
+    const enableChat = vscode.workspace.getConfiguration('atopile').get<boolean>('enableChat', false);
     const isWebIde = isWebIdeUi();
     const bridgeConfigJson = serializeWebviewBridgeConfig({
       apiUrl,
@@ -463,6 +464,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       extensionVersionJson: serializeJsonForHtml(this._extensionVersion),
       wasmUriJson: serializeJsonForHtml(wasmUri),
       modelViewerUriJson: serializeJsonForHtml(modelViewerUri),
+      enableChatLiteral: enableChat ? 'true' : 'false',
       isWebIdeLiteral: isWebIde ? 'true' : 'false',
       workspaceRootJson: serializeJsonForHtml(workspaceRoot || ''),
       bridgeConfigElementId: WEBVIEW_BRIDGE_CONFIG_ELEMENT_ID,

@@ -7,6 +7,7 @@ interface AtopileWindow extends Window {
   __ATOPILE_API_URL__?: string;
   __ATOPILE_WS_URL__?: string;
   __ATOPILE_WORKSPACE_FOLDERS__?: string[];
+  __ATOPILE_ENABLE_CHAT__?: boolean;
   __ATOPILE_IS_WEB_IDE__?: boolean;
 }
 
@@ -17,15 +18,10 @@ const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
  * e.g., http://127.0.0.1:12345 -> ws://127.0.0.1:12345
  */
 function httpToWsUrl(httpUrl: string): string {
-  try {
-    const url = new URL(httpUrl);
-    const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    const port = url.port ? `:${url.port}` : '';
-    return `${wsProtocol}//${url.hostname}${port}`;
-  } catch {
-    // Fallback if URL parsing fails
-    return httpUrl.replace(/^http/, 'ws');
-  }
+  const url = new URL(httpUrl);
+  const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  const port = url.port ? `:${url.port}` : '';
+  return `${wsProtocol}//${url.hostname}${port}`;
 }
 
 /**
@@ -60,6 +56,11 @@ export const WS_STATE_URL = `${WS_BASE_URL}/ws/state`;
  * Used by the LogViewer component.
  */
 export const WS_LOGS_URL = `${WS_BASE_URL}/ws/logs`;
+
+/**
+ * Chat feature flag injected by the host webview.
+ */
+export const ENABLE_CHAT = Boolean(win.__ATOPILE_ENABLE_CHAT__);
 
 /**
  * True when running inside the browser-based web-ide container.
