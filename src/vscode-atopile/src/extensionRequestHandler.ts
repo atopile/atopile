@@ -166,6 +166,8 @@ export class ExtensionRequestHandler {
           this._logger.error(`[Webview] ${text}`);
         } else if (level === "warn") {
           this._logger.warn(`[Webview] ${text}`);
+        } else {
+          this._logger.info(`[Webview] ${text}`);
         }
         return { ok: true };
       }

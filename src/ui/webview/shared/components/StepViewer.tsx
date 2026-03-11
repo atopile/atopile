@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { createWebviewLogger } from '../logger'
 import './ModelViewer.css'
 
 interface StepViewerProps {
@@ -8,6 +9,8 @@ interface StepViewerProps {
   className?: string
   style?: React.CSSProperties
 }
+
+const logger = createWebviewLogger("StepViewer")
 
 export default function StepViewer({ src, className, style }: StepViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -31,6 +34,7 @@ export default function StepViewer({ src, className, style }: StepViewerProps) {
     const init = async () => {
       setIsLoading(true)
       setError(null)
+      logger.info(`initializing STEP viewer src=${src}`)
 
       try {
         // Dynamically import occt-import-js (large WASM) first
@@ -43,6 +47,7 @@ export default function StepViewer({ src, className, style }: StepViewerProps) {
           const stepViewerWasmUrl =
             (window as { __ATOPILE_STEP_VIEWER_WASM_URL__?: string }).__ATOPILE_STEP_VIEWER_WASM_URL__
             || new URL('/occt-import-js.wasm', window.location.href).href
+          logger.info(`loading occt-import-js wasm=${stepViewerWasmUrl}`)
           occt = await occtModule.default({
             locateFile: (file: string) => {
               if (file.endsWith('.wasm')) {
@@ -52,13 +57,18 @@ export default function StepViewer({ src, className, style }: StepViewerProps) {
             }
           })
         } catch (wasmError) {
+          logger.error(
+            `failed to initialize STEP viewer runtime: ${wasmError instanceof Error ? wasmError.message : String(wasmError)}`,
+          )
           throw new Error('3D viewer not available in this environment')
         }
 
         if (cancelled) return
 
         // Fetch the STEP file
+        logger.info(`fetching STEP asset src=${src}`)
         const response = await fetch(src)
+        logger.info(`STEP fetch completed src=${src} status=${String(response.status)}`)
         if (!response.ok) {
           if (response.status === 404) {
             throw new Error('No 3D model available for this part')
@@ -72,6 +82,9 @@ export default function StepViewer({ src, className, style }: StepViewerProps) {
 
         // Parse STEP file
         const result = occt.ReadStepFile(fileBuffer, null)
+        logger.info(
+          `STEP parse completed src=${src} success=${String(result.success)} meshes=${String(result.meshes.length)}`,
+        )
         if (!result.success || result.meshes.length === 0) {
           throw new Error('Failed to parse 3D model')
         }
@@ -207,6 +220,7 @@ export default function StepViewer({ src, className, style }: StepViewerProps) {
 
         animate()
         setIsLoading(false)
+        logger.info(`STEP viewer ready src=${src}`)
 
         // Handle resize
         const handleResize = () => {
@@ -222,6 +236,9 @@ export default function StepViewer({ src, className, style }: StepViewerProps) {
         resizeObserver.observe(container)
       } catch (err) {
         if (!cancelled) {
+          logger.error(
+            `STEP viewer failed src=${src} error=${err instanceof Error ? err.message : String(err)}`,
+          )
           setError(err instanceof Error ? err.message : 'Failed to load 3D model')
           setIsLoading(false)
         }

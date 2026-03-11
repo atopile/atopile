@@ -11,9 +11,12 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PackageDetails } from '../../shared/generated-types'
 import { CopyableCodeBlock, GlbViewer } from '../shared/components'
+import { createWebviewLogger } from '../shared/logger'
 import MarkdownRenderer from './MarkdownRenderer'
 import { useBlobAssetUrl } from '../shared/utils'
 import './PackageDetailPanel.css'
+
+const logger = createWebviewLogger("PackageDetailPanel")
 
 interface PackageDetailProps {
   package: {
@@ -240,6 +243,22 @@ export function PackageDetailPanel({
     modelArtifact?.url ? 'getRemoteAsset' : null,
     modelArtifact?.url ? { url: modelArtifact.url } : null,
   )
+
+  useEffect(() => {
+    if (isLoading || !details || !selectedBuildTarget || modelArtifact) {
+      return
+    }
+
+    logger.warn(
+      `No matching GLB artifact for build=${selectedBuildTarget}. Artifacts=${JSON.stringify(
+        (details.artifacts || []).map(artifact => ({
+          buildName: artifact.buildName,
+          filename: artifact.filename,
+          url: artifact.url,
+        })),
+      )}`,
+    )
+  }, [details, isLoading, modelArtifact, selectedBuildTarget])
 
   useEffect(() => {
     if (!buildDropdownOpen) return

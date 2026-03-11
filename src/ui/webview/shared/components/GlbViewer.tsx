@@ -1,4 +1,5 @@
 import { createElement, useEffect, useRef, useState, useCallback } from 'react'
+import { createWebviewLogger } from '../logger'
 import './ModelViewer.css'
 
 // Use bundled model-viewer from VS Code extension if available, otherwise fall back to CDN
@@ -49,6 +50,8 @@ interface GlbViewerElement extends HTMLElement {
   model?: Model
 }
 
+const logger = createWebviewLogger("GlbViewer")
+
 export default function GlbViewer({ src, className, style, isOptimizing }: GlbViewerProps) {
   const viewerRef = useRef<GlbViewerElement>(null)
   const [isReady, setIsReady] = useState(false)
@@ -88,6 +91,7 @@ export default function GlbViewer({ src, className, style, isOptimizing }: GlbVi
     const checkReady = () => {
       if (window.customElements?.get('model-viewer')) {
         if (pollInterval) clearInterval(pollInterval)
+        logger.info('model-viewer custom element is registered')
         if (!cancelled) setIsReady(true)
         return true
       }
@@ -100,6 +104,7 @@ export default function GlbViewer({ src, className, style, isOptimizing }: GlbVi
     // Poll for registration after script loads (model-viewer registers async)
     const startPolling = () => {
       let attempts = 0
+      logger.info(`waiting for model-viewer registration from ${GLB_VIEWER_SCRIPT_SRC}`)
       pollInterval = setInterval(() => {
         if (checkReady() || cancelled) {
           if (pollInterval) clearInterval(pollInterval)
@@ -108,6 +113,7 @@ export default function GlbViewer({ src, className, style, isOptimizing }: GlbVi
         attempts++
         if (attempts > 50) { // 5 seconds max
           if (pollInterval) clearInterval(pollInterval)
+          logger.error('model-viewer custom element did not register within 5s')
           if (!cancelled) setError('3D viewer failed to initialize')
         }
       }, 100)
@@ -116,6 +122,7 @@ export default function GlbViewer({ src, className, style, isOptimizing }: GlbVi
     const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null
     if (existing) {
       // Script already added, just poll for element registration
+      logger.info('reusing existing model-viewer script tag')
       startPolling()
       return () => {
         cancelled = true
@@ -128,10 +135,15 @@ export default function GlbViewer({ src, className, style, isOptimizing }: GlbVi
     script.src = GLB_VIEWER_SCRIPT_SRC
     script.type = 'module'
     script.async = true
-    script.addEventListener('load', () => startPolling(), { once: true })
+    script.addEventListener('load', () => {
+      logger.info('model-viewer script loaded')
+      startPolling()
+    }, { once: true })
     script.addEventListener('error', () => {
+      logger.error(`failed to load model-viewer script ${GLB_VIEWER_SCRIPT_SRC}`)
       if (!cancelled) setError('Failed to load 3D viewer')
     }, { once: true })
+    logger.info(`injecting model-viewer script ${GLB_VIEWER_SCRIPT_SRC}`)
     document.head.appendChild(script)
 
     return () => {
@@ -143,6 +155,7 @@ export default function GlbViewer({ src, className, style, isOptimizing }: GlbVi
   useEffect(() => {
     setIsLoading(true)
     setModelLoaded(false)
+    logger.info(`loading GLB src=${src}`)
   }, [src])
 
   useEffect(() => {
@@ -150,20 +163,25 @@ export default function GlbViewer({ src, className, style, isOptimizing }: GlbVi
     if (!viewer || !isReady) return
 
     const handleLoad = () => {
+      logger.info(`model-viewer load event for src=${src}`)
       setIsLoading(false)
       setModelLoaded(true)
       // Apply initial opacity after model loads
       applySoldermaskOpacity(soldermaskOpacity)
     }
-    const handleError = () => setIsLoading(false)
+    const handleError = (event: Event) => {
+      logger.error(`model-viewer error event for src=${src} type=${event.type}`)
+      setIsLoading(false)
+    }
 
+    logger.info(`binding model-viewer events for src=${src}`)
     viewer.addEventListener('load', handleLoad)
     viewer.addEventListener('error', handleError)
     return () => {
       viewer.removeEventListener('load', handleLoad)
       viewer.removeEventListener('error', handleError)
     }
-  }, [isReady, applySoldermaskOpacity, soldermaskOpacity])
+  }, [isReady, applySoldermaskOpacity, soldermaskOpacity, src])
 
   return (
     <div

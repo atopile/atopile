@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { Build, BuildStage } from "../../shared/generated-types";
 import { SOURCE_COLORS, type TimeMode } from "../../shared/types";
+import { createWebviewLogger } from './logger';
 import { WebviewRpcClient, rpcClient } from './rpcClient';
 
 /** Canonical mapping from status string → Lucide icon component. */
@@ -27,6 +28,8 @@ export const ansiConverter = new AnsiToHtml({
   newline: true,
   escapeXML: true,
 });
+
+const logger = createWebviewLogger("WebviewUtils");
 
 /** Hash a string to a deterministic color from SOURCE_COLORS. */
 export function hashStringToColor(str: string): string {
@@ -125,24 +128,29 @@ export function useBlobAssetUrl(
 ): { url: string; error: string | null; loading: boolean } {
   const blobAsset = WebviewRpcClient.useSubscribe("blobAsset");
   const [state, setState] = useState({ url: "", error: null as string | null, loading: false });
+  const enabled = Boolean(action && payload);
   const requestKey = payload ? JSON.stringify(payload) : "";
 
   useEffect(() => {
-    if (!action || !payload) {
+    if (!enabled || !action || !payload) {
       setState({ url: "", error: null, loading: false });
       return;
     }
+    logger.info(`useBlobAssetUrl request action=${action} requestKey=${requestKey}`);
     setState({ url: "", error: null, loading: true });
     rpcClient?.sendAction(action, payload);
-  }, [action, requestKey]);
+  }, [action, enabled, requestKey]);
 
   useEffect(() => {
-    if (!action || !payload) {
+    if (!enabled || !action) {
       return;
     }
     if (blobAsset.action !== action || blobAsset.requestKey !== requestKey) {
       return;
     }
+    logger.info(
+      `useBlobAssetUrl response action=${action} requestKey=${requestKey} loading=${String(blobAsset.loading)} contentType=${blobAsset.contentType || "null"} filename=${blobAsset.filename || "null"} error=${blobAsset.error || "null"} data=${blobAsset.data ? "present" : "missing"}`,
+    );
     if (blobAsset.loading) {
       setState({ url: "", error: null, loading: true });
       return;
@@ -163,11 +171,14 @@ export function useBlobAssetUrl(
       type: blobAsset.contentType || "application/octet-stream",
     });
     const url = URL.createObjectURL(blob);
+    logger.info(
+      `useBlobAssetUrl created object URL action=${action} requestKey=${requestKey} bytes=${String(bytes.byteLength)}`,
+    );
     setState({ url, error: null, loading: false });
     return () => {
       URL.revokeObjectURL(url);
     };
-  }, [action, blobAsset, payload, requestKey]);
+  }, [action, blobAsset, enabled, requestKey]);
 
   return state;
 }

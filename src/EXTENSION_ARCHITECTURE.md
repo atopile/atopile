@@ -1,221 +1,132 @@
 # VS Code Extension Architecture
 
+Active rewrite-native runtime only:
+
+- Extension host runtime: `src/vscode-atopile/src`
+- Webview UI source: `src/ui/webview`
+- Shared RPC/types: `src/ui/shared`
+- Python core runtime: `src/atopile/server`, `src/atopile/agent`, `src/atopile/layout_server`
+
 Key invariants:
 
-- webviews only talk through RPC
-- core interprets every webview-originated action first
-- extension-only work returns from core as `extension_request`
-- VS Code-coupled backend actions live under the `vscode.*` RPC namespace
-- there is exactly one extension-to-core IPC socket
-- webview and extension sessions are multiplexed over that socket via `sessionId`
-- there is no direct webview command channel into the extension host
+- Webviews only talk to the extension host through `rpc:*` postMessage events.
+- The extension host keeps one shared websocket open to the Python core at
+  `ws://127.0.0.1:<port>/atopile-ui`.
+- Webview traffic and extension-owned traffic are multiplexed on that socket by
+  `sessionId`.
+- The canonical shared UI state lives in the backend `UiStore`.
+- Backend work that needs VS Code APIs round-trips back through
+  `extension_request` / `extension_response`.
 
 ```mermaid
 flowchart LR
-  subgraph CLIENT["Client machine: desktop VS Code workbench or browser workbench"]
-    subgraph VS["VS Code Workbench UI"]
-      IDE["Workbench shell
-activity bar
-sidebar container
-editor tabs
-command palette
-settings UI
-active editor state"]
-    end
-
-    subgraph WV["Webview renderer processes"]
-      HTML["render.tsx
-mount app"]
-      PMT["PostMessageTransport
-send: vscode.postMessage(type=rpc:send)
-recv: window.message(type=rpc:open / rpc:close / rpc:recv)"]
-      WRPC["WebviewRpcClient
-RpcClient(PostMessageTransport)
-subscribe()
-sendAction()
-requestAction()
-local connected state"]
-      LOGRPC["LogRpcClient
-same RPC connection
-subscribeLogs / unsubscribeLogs
-consume logs_stream / logs_error"]
-      UI["Sidebar / Logs / Panels
-call rpcClient directly"]
-    end
+  subgraph CLIENT["Client machine"]
+    IDE["VS Code workbench UI
+activity bar / panels / editors / settings"]
+    WV["Webview renderer
+React UI
+WebviewRpcClient
+PostMessageTransport"]
   end
 
-  subgraph SERVER["Extension-side runtime: local machine in normal desktop mode, remote VS Code server in SSH / web-IDE mode"]
-    subgraph EH["Extension host process (Node)"]
-      ACT["extension.ts / activate()
-resolve ato
-start core process
-create RpcProxy
-create CoreClient
-register passive webview hosts"]
-      HOST["HostedWebviewViewProvider + PanelHost
-serve HTML/bootstrap only
-sidebar view
-logs view
-editor panels
-register webview with RpcProxy using panel/view id as sessionId"]
-      PROXY["RpcProxy
-only webview entrypoint in extension runtime
-recv from webview: rpc:send
-send to webview: rpc:open / rpc:close / rpc:recv
-one shared WS to core
-multiplex sessions by sessionId
-intercept extension_request
-send extension_response"]
-      EXTSRV["ExtensionRequestHandler
-vscode.openPanel
-vscode.openFile
-vscode.browseFolder
-vscode.openKicad
-vscode.resolveThreeDModel
-vscode.log"]
-      CORECLI["CoreClient
-extension-owned RpcClient
-uses RpcProxy transport
+  subgraph EH["Extension host process (Node)
+src/vscode-atopile/src"]
+    HOST["Activation and webview hosting
+extension.ts
+webviewHost.ts
+panel host
+commands"]
+    PROC["Runtime bootstrap
+AtoResolver
+ProcessManager
+spawn ato serve core"]
+    PROXY["RpcProxy
+consumes rpc:send
+emits rpc:open / rpc:close / rpc:recv
+one shared websocket
+multiplexes sessionId"]
+    CORECLI["CoreClient
 sessionId=extension
-send resolverInfo
-send extensionSettings
-send setActiveFile
-send discoverProjects
-subscribe extensionSettings
-apply backend settings to VS Code config"]
-      PM["ProcessManager
-spawn: ato serve core
-env: ATOPILE_CORE_SERVER_PORT"]
-      OUT["OutputChannel"]
-      CMDS["VS Code commands
-openPanel
-openFile
-browseFolder
-openKicad"]
-    end
-
-    subgraph PY["Python core server process"]
-      ENTRY["serve core
-websockets.serve(CoreSocket.handle_client)
-endpoint: ws://127.0.0.1:CORE/atopile-ui"]
-      SOCK["CoreSocket
-receive subscribe / action / extension_response
-track subscriptions per sessionId
-track pending extension requests per sessionId
-track log task per sessionId
-dispatch actions
-broadcast state
-return action_result"]
-      STORE["Store
-canonical shared UI state"]
-      FILES["FileWatcher"]
-      BUILDS["BuildQueue + builds model"]
-      DOMAIN["Project / packages / parts / stdlib / artifacts handlers"]
-      LOGS["SQLite Logs polling"]
-    end
+sends resolverInfo / extensionSettings /
+setActiveFile / discoverProjects"]
+    EXTSRV["ExtensionRequestHandler
+consumes extension_request for vscode actions
+openPanel / showLogsView / openFile / openDiff /
+browseFolder / revealInOs / openInTerminal /
+openKicad / resolveThreeDModel / restartExtensionHost / log"]
   end
 
-  IDE -. activate extension .-> ACT
-  IDE -. active editor + settings events .-> ACT
-  IDE -. show views / panels .-> HOST
-  IDE -. command palette .-> CMDS
+  subgraph CORE["Python core process
+src/atopile/server"]
+    SERVER["CoreServer
+server.py
+endpoint: ws://127.0.0.1:PORT/atopile-ui"]
+    SOCK["CoreSocket
+consumes subscribe / action / extension_response
+emits state / action_result / logs_stream /
+agent_progress / extension_request"]
+    STORE["UiStore
+canonical shared UI state"]
+    DOMAIN["Domain handlers
+projects / builds / files / packages /
+parts / stdlib / structure / variables /
+BOM / migration / remote assets"]
+    AGENT["AgentService
+session state + progress"]
+    LOGS["SQLite log streaming"]
+    VSB["VscodeBridge
+creates extension_request
+converts extension_response to action_result"]
+    LAYOUT["Layout service
+separate local HTTP and layout websocket service"]
+  end
 
-  ACT --> PM
-  ACT --> HOST
-  ACT --> PROXY
-  ACT --> CORECLI
-  ACT --> CMDS
-  ACT --> OUT
-  ACT -. setActiveFile / extensionSettings .-> CORECLI
-  PM -->|"spawn child process"| ENTRY
-  CMDS --> HOST
+  IDE -. workbench events and command invocations .-> HOST
+  HOST -->|"HTML bootstrap for sidebar and panels"| WV
+  PROC -->|"spawn child process: ato serve core"| SERVER
 
-  HOST -->|"HTML + asset bootstrap"| HTML
-  HOST -->|"registerWebview(webview)"| PROXY
+  WV -->|"window.postMessage
+type=rpc:send"| PROXY
+  PROXY -->|"window.message
+type=rpc:open / rpc:close / rpc:recv"| WV
 
-  HTML --> WRPC
-  UI --> WRPC
-  UI --> LOGRPC
-  WRPC --> PMT
-  LOGRPC --> WRPC
-
-  PMT -->|"rpc:send + raw JSON"| PROXY
-  PROXY -->|"rpc:open / rpc:close / rpc:recv"| PMT
-
-  PROXY -->|"single WS
-subscribe / action / extension_response
-with sessionId"| ENTRY
-  CORECLI -->|"same shared WS via RpcProxy
+  HOST --> PROXY
+  HOST --> CORECLI
+  CORECLI -->|"same RpcProxy transport
 sessionId=extension"| PROXY
 
-  ENTRY --> SOCK
+  PROXY -->|"shared websocket
+subscribe / action / extension_response
+all tagged with sessionId"| SERVER
+  SERVER --> SOCK
+
   SOCK <--> STORE
-  SOCK <--> FILES
-  SOCK <--> BUILDS
   SOCK <--> DOMAIN
+  SOCK <--> AGENT
   SOCK <--> LOGS
+  SOCK -->|"backend wants vscode side effect"| VSB
+  DOMAIN -->|"openLayout selects PCB"| LAYOUT
 
-  FILES -->|"projectFiles"| STORE
-  BUILDS -->|"currentBuilds / previousBuilds"| STORE
-  DOMAIN -->|"projects / packagesSummary / partsSearch /
-installedParts / stdlibData / structureData /
-variablesData / bomData"| STORE
+  STORE -->|"state changes"| SOCK
+  LOGS -->|"logs_stream"| SOCK
 
-  STORE -->|"on_change(key,data)"| SOCK
-  SOCK -->|"state(key,data)
-only to subscribed sessionIds"| PROXY
-  LOGS -->|"logs_stream / logs_error"| SOCK
-  SOCK -->|"state / logs_stream / logs_error / action_result
-with sessionId"| PROXY
-
-  SOCK -->|"extension_request
-sessionId + requestId + action=vscode.* + payload"| PROXY
-  PROXY -->|"handle(webview, extension_request)"| EXTSRV
-  EXTSRV -->|"open panel / open file / browse dialog /
-launch KiCad / resolve asWebviewUri / output log"| IDE
-  PROXY -->|"extension_response
-sessionId + requestId + ok/result/error"| SOCK
-  PROXY -->|"sessionId=extension messages"| CORECLI
-
-  CORECLI -->|"state(extensionSettings)
-apply VS Code config"| IDE
+  VSB -->|"extension_request"| PROXY
+  PROXY -->|"extension_request"| EXTSRV
+  EXTSRV -->|"VS Code API side effects"| IDE
+  PROXY -->|"extension_response"| SOCK
 
   classDef proc fill:#e8f0fe,stroke:#4a67d6,color:#102040
   classDef state fill:#e8fff1,stroke:#2b8a57,color:#123524
   classDef ui fill:#fff4db,stroke:#c48a18,color:#4a3510
-  class ACT,HOST,PROXY,EXTSRV,CORECLI,PM,OUT,CMDS,ENTRY,SOCK,FILES,BUILDS,DOMAIN,LOGS proc
+  class HOST,PROC,PROXY,CORECLI,EXTSRV,SERVER,SOCK,DOMAIN,AGENT,LOGS,VSB,LAYOUT proc
   class STORE state
-  class IDE,HTML,PMT,WRPC,LOGRPC,UI ui
+  class IDE,WV ui
 ```
 
-## Boundary Meaning
+Notes:
 
-`VS Code Workbench UI` is the host application shell: the activity bar, editor tabs, command palette, settings UI, and the active-editor state that the extension observes through the VS Code API.
-
-It is not the same thing as either of these:
-
-- `Extension host process`: the Node process running the extension code and owning the VS Code extension API surface.
-- `Webview renderer processes`: isolated browser documents/processes used to render the sidebar, logs view, and editor panels.
-
-So the workbench box is there to show where user-visible UI and VS Code-owned events live, while the extension host and webviews are the programmable runtimes attached to that shell.
-
-## Placement In Remote Modes
-
-In normal desktop VS Code:
-
-- client machine runs the workbench UI, webview renderers, extension host, and Python core server
-
-In Remote SSH, Codespaces, or similar web-IDE/server-backed modes:
-
-- client machine runs the workbench UI and webview renderers
-- backend VS Code server runs the extension host and Python core server
-
-That is the main reason the diagram is split into `Client machine` and `Extension-side runtime`: the left side always stays with the user, while the right side may be local or remote depending on how VS Code is being used.
-
-## Notes
-
-- `connected` is local webview state derived from `rpc:open` / `rpc:close`; it is not stored in Python.
-- panel/view ids are the logical `sessionId`s used for multiplexing webview traffic on the shared extension-to-core socket.
-- `updateExtensionSetting` still goes through core first: webview action -> backend store -> `CoreClient` subscription -> VS Code config update.
-- Logs share the same proxied RPC connection as the rest of the logs panel.
-- VS Code-coupled backend routing lives in [`src/atopile/server/domains/vscode_bridge.py`](/home/ra/git/atopile/src/atopile/server/domains/vscode_bridge.py).
+- This diagram shows the normal extension runtime path. It does not show the
+  old `src/ui-server` path because that is not part of the active rewrite.
+- `panel-layout` is the main intentional side channel: the panel still uses the
+  main RPC path to choose the PCB, then embeds the separate local layout
+  service.
