@@ -134,11 +134,22 @@ def _build_rectangular_outline(
     width_mm: float,
     height_mm: float,
 ) -> list[kicad.pcb.Line]:
+    half_width = width_mm / 2.0
+    half_height = height_mm / 2.0
+
     return [
-        _edge_cuts_line(transformer, (0.0, 0.0), (width_mm, 0.0)),
-        _edge_cuts_line(transformer, (width_mm, 0.0), (width_mm, height_mm)),
-        _edge_cuts_line(transformer, (width_mm, height_mm), (0.0, height_mm)),
-        _edge_cuts_line(transformer, (0.0, height_mm), (0.0, 0.0)),
+        _edge_cuts_line(
+            transformer, (-half_width, -half_height), (half_width, -half_height)
+        ),
+        _edge_cuts_line(
+            transformer, (half_width, -half_height), (half_width, half_height)
+        ),
+        _edge_cuts_line(
+            transformer, (half_width, half_height), (-half_width, half_height)
+        ),
+        _edge_cuts_line(
+            transformer, (-half_width, half_height), (-half_width, -half_height)
+        ),
     ]
 
 
@@ -151,35 +162,53 @@ def _build_rounded_rectangular_outline(
 ) -> list[kicad.pcb.Line | kicad.pcb.Arc]:
     r = corner_radius_mm
     offset = r * _HALF_SQRT2
+    half_width = width_mm / 2.0
+    half_height = height_mm / 2.0
 
     return [
-        _edge_cuts_line(transformer, (r, 0.0), (width_mm - r, 0.0)),
-        _edge_cuts_arc(
+        _edge_cuts_line(
             transformer,
-            start=(width_mm - r, 0.0),
-            mid=(width_mm - r + offset, r - offset),
-            end=(width_mm, r),
+            (-half_width + r, -half_height),
+            (half_width - r, -half_height),
         ),
-        _edge_cuts_line(transformer, (width_mm, r), (width_mm, height_mm - r)),
         _edge_cuts_arc(
             transformer,
-            start=(width_mm, height_mm - r),
-            mid=(width_mm - r + offset, height_mm - r + offset),
-            end=(width_mm - r, height_mm),
+            start=(half_width - r, -half_height),
+            mid=(half_width - r + offset, -half_height + r - offset),
+            end=(half_width, -half_height + r),
         ),
-        _edge_cuts_line(transformer, (width_mm - r, height_mm), (r, height_mm)),
-        _edge_cuts_arc(
+        _edge_cuts_line(
             transformer,
-            start=(r, height_mm),
-            mid=(r - offset, height_mm - r + offset),
-            end=(0.0, height_mm - r),
+            (half_width, -half_height + r),
+            (half_width, half_height - r),
         ),
-        _edge_cuts_line(transformer, (0.0, height_mm - r), (0.0, r)),
         _edge_cuts_arc(
             transformer,
-            start=(0.0, r),
-            mid=(r - offset, r - offset),
-            end=(r, 0.0),
+            start=(half_width, half_height - r),
+            mid=(half_width - r + offset, half_height - r + offset),
+            end=(half_width - r, half_height),
+        ),
+        _edge_cuts_line(
+            transformer,
+            (half_width - r, half_height),
+            (-half_width + r, half_height),
+        ),
+        _edge_cuts_arc(
+            transformer,
+            start=(-half_width + r, half_height),
+            mid=(-half_width + r - offset, half_height - r + offset),
+            end=(-half_width, half_height - r),
+        ),
+        _edge_cuts_line(
+            transformer,
+            (-half_width, half_height - r),
+            (-half_width, -half_height + r),
+        ),
+        _edge_cuts_arc(
+            transformer,
+            start=(-half_width, -half_height + r),
+            mid=(-half_width + r - offset, -half_height + r - offset),
+            end=(-half_width + r, -half_height),
         ),
     ]
 

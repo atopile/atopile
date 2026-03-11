@@ -54,10 +54,25 @@ def test_apply_rectangular_board_shape_creates_board_only_footprint() -> None:
         for geo in get_all_geos(board_fp)
         if "Edge.Cuts" in kicad.geo.get_layers(geo)
     ]
+    edge_points = [
+        point
+        for geo in edge_geos
+        for point in (
+            [geo.start, geo.end]
+            if isinstance(geo, kicad.pcb.Line)
+            else [geo.start, geo.mid, geo.end]
+        )
+    ]
 
     assert "board_only" in board_fp.attr
+    assert board_fp.at.x == 0
+    assert board_fp.at.y == 0
     assert len([geo for geo in edge_geos if isinstance(geo, kicad.pcb.Line)]) == 4
     assert len([geo for geo in edge_geos if isinstance(geo, kicad.pcb.Arc)]) == 4
+    assert min(point.x for point in edge_points) == pytest.approx(-10.0)
+    assert max(point.x for point in edge_points) == pytest.approx(10.0)
+    assert min(point.y for point in edge_points) == pytest.approx(-22.5)
+    assert max(point.y for point in edge_points) == pytest.approx(22.5)
 
 
 def test_apply_rectangular_board_shape_rejects_foreign_outline() -> None:
