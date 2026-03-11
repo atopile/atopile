@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import cast
 
 import atopile.config as config
 from atopile import errors, version
 from faebryk.libs.backend.packages.api import Errors as ApiErrors
-from faebryk.libs.backend.packages.api import PackagesAPIClient
+from faebryk.libs.backend.packages.api import PackagesAPIClient, _Schemas
 from faebryk.libs.package.dist import Dist, DistValidationError
 from faebryk.libs.package.meta import (
     PackageModifiedError,
@@ -73,7 +74,7 @@ def _log_changes(
 
 def _select_compatible_registry_release(
     api: PackagesAPIClient, identifier: str, requested_release: str | None
-) -> str:
+) -> _Schemas.PackageReleaseInfo:
     """
     Select a compatible release for a package based on the installed atopile version.
 
@@ -108,7 +109,7 @@ def _select_compatible_registry_release(
                 f"{version.clean_version(installed_version)} installed."
             )
 
-        return requested.version
+        return requested
 
     # No version specified - find the first compatible release (fallback behavior)
     latest_release = releases[0]
@@ -138,7 +139,7 @@ def _select_compatible_registry_release(
             compatible_release.version,
         )
 
-    return compatible_release.version
+    return compatible_release
 
 
 class BrokenDependencyError(Exception):
@@ -168,6 +169,7 @@ class ProjectDependency:
         self.pcfg = pcfg or self.gcfg.project
 
         self.cfg: config.ProjectConfig | None = None
+        self._release_info: _Schemas.PackageReleaseInfo | None = None
 
     # TODO see __eq__
     def __hash__(self) -> int:
@@ -183,6 +185,28 @@ class ProjectDependency:
             # TODO do some asserts about the equivalence
             return True
         return False
+
+    def resolve_metadata(self, api: PackagesAPIClient) -> None:
+        """Resolve version and metadata without downloading the dist archive.
+
+        For registry deps: fetches release info from the API (lightweight).
+        For file/git deps: falls back to load_dist() since metadata is in the archive.
+        """
+        if isinstance(self.spec, config.RegistryDependencySpec):
+            release_info = _select_compatible_registry_release(
+                api, self.spec.identifier, self.spec.release
+            )
+            self._release_info = release_info
+            self.spec.release = release_info.version
+        elif isinstance(
+            self.spec, (config.FileDependencySpec, config.GitDependencySpec)
+        ):
+            # Metadata is inside the archive — must download
+            self.load_dist()
+        else:
+            raise NotImplementedError(
+                f"Resolving metadata for {self.spec} not implemented"
+            )
 
     @property
     def identifier(self) -> str:
@@ -214,7 +238,7 @@ class ProjectDependency:
     def remove_from_manifest(self):
         config.ProjectConfig.remove_dependency(self.gcfg, self.spec)
 
-    def load_dist(self):
+    def load_dist(self, api: PackagesAPIClient | None = None):
         if self.dist is not None:
             return
         # TODO implement cache
@@ -252,21 +276,35 @@ class ProjectDependency:
             self.spec.identifier = dist.identifier
 
         elif isinstance(self.spec, config.RegistryDependencySpec):
-            api = PackagesAPIClient()
-            requested_release = self.spec.release
-            try:
-                selected_release = _select_compatible_registry_release(
-                    api, self.spec.identifier, requested_release
+            if self._release_info is not None:
+                # Metadata already resolved — just download the archive
+                if api is None:
+                    api = PackagesAPIClient()
+                dist = api.download_dist(
+                    download_url=self._release_info.download_url,
+                    filename=self._release_info.filename,
+                    output_path=Path(temp_dir),
+                    identifier=self.spec.identifier,
                 )
-                dist = api.get_release_dist(
-                    self.spec.identifier,
-                    Path(temp_dir),
-                    version=selected_release,
-                )
-            except ApiErrors.ReleaseNotFoundError as e:
-                raise errors.UserException(
-                    f"Release not found: {self.spec.identifier}@{selected_release}"
-                ) from e
+            else:
+                if api is None:
+                    api = PackagesAPIClient()
+                requested_release = self.spec.release
+                try:
+                    release_info = _select_compatible_registry_release(
+                        api, self.spec.identifier, requested_release
+                    )
+                    dist = api.download_dist(
+                        download_url=release_info.download_url,
+                        filename=release_info.filename,
+                        output_path=Path(temp_dir),
+                        identifier=self.spec.identifier,
+                    )
+                except ApiErrors.ReleaseNotFoundError as e:
+                    raise errors.UserException(
+                        f"Release not found:"
+                        f" {self.spec.identifier}@{release_info.version}"
+                    ) from e
             self.spec.release = dist.version
         else:
             raise NotImplementedError(f"Loading dist for {self.spec} not implemented")
@@ -274,6 +312,18 @@ class ProjectDependency:
 
     @property
     def direct_dependencies(self) -> list["ProjectDependency"]:
+        if self._release_info is not None:
+            # Use metadata from API instead of reading installed project_config
+            return [
+                ProjectDependency(
+                    config.DependencySpec.from_str(
+                        f"registry://{dep.identifier}"
+                        + (f"@{dep.release}" if dep.release else "")
+                    ),
+                    gcfg=self.gcfg,
+                )
+                for dep in self._release_info.dependencies.requires
+            ]
         return [
             not_none(ProjectDependency(spec, pcfg=self.project_config, gcfg=self.gcfg))
             for spec in self.project_config.dependencies or []
@@ -347,6 +397,7 @@ class ProjectDependencies:
         }
 
         if update_versions:
+            logger.info("Checking for updates...")
             # Update manifest specs BEFORE resolving dependencies.
             # This avoids loading/validating old installed packages that may have
             # config errors in their ato.yaml (which would fail resolution).
@@ -361,6 +412,7 @@ class ProjectDependencies:
                 }
 
         self.dag = self.resolve_dependencies()
+        self.fetch_all_dists()
 
         if sync_versions:
             self.sync_versions(force=force_sync)
@@ -377,11 +429,91 @@ class ProjectDependencies:
     def all_deps(self) -> set[ProjectDependency]:
         return self.dag.values
 
+    def fetch_all_dists(self) -> None:
+        """Download dist archives for all resolved deps in parallel."""
+        to_fetch = [
+            dep for dep in self.all_deps if dep.dist is None and dep.cfg is None
+        ]
+        if not to_fetch:
+            return
+
+        from rich.progress import (
+            Progress,
+            SpinnerColumn,
+            TextColumn,
+        )
+
+        from atopile.logging_utils import (
+            ShortTimeElapsedColumn,
+            error_console,
+        )
+
+        errors_list: list[BrokenDependencyError] = []
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn(
+                "Downloading"
+                "  {task.completed}/{task.total}"
+                "  [dim]{task.fields[current]}[/dim]"
+            ),
+            ShortTimeElapsedColumn(),
+            console=error_console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("", total=len(to_fetch), current="")
+
+            def _fetch_dep(dep: ProjectDependency) -> None:
+                # Each thread gets its own API client (httpx.Client is not thread-safe)
+                dep.load_dist(PackagesAPIClient())
+
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = {pool.submit(_fetch_dep, dep): dep for dep in to_fetch}
+                for future in as_completed(futures):
+                    dep = futures[future]
+                    try:
+                        future.result()
+                        progress.update(
+                            task,
+                            advance=1,
+                            current=dep.identifier,
+                        )
+                    except Exception as e:
+                        progress.update(task, advance=1)
+                        release = (
+                            dep.spec.release
+                            if isinstance(dep.spec, config.RegistryDependencySpec)
+                            else None
+                        )
+                        errors_list.append(
+                            BrokenDependencyError(dep.identifier, e, release=release)
+                        )
+
+        downloaded = len(to_fetch) - len(errors_list)
+        if downloaded:
+            logger.info(
+                "Downloaded %d %s",
+                downloaded,
+                "package" if downloaded == 1 else "packages",
+            )
+
+        if errors_list:
+            error_msgs = [
+                f"{e.identifier}: {self._format_dep_error(e.identifier, e.error)}"
+                for e in errors_list
+            ]
+            raise errors.UserException(
+                f"Failed to download {len(errors_list)} "
+                f"{'package' if len(errors_list) == 1 else 'packages'}:"
+                f"\n {md_list(error_msgs)}"
+            )
+
     def reload(self):
         if self.gcfg is not None:
             self.gcfg.reload()
             self.pcfg = self.gcfg.project
 
+        logger.info("Rechecking dependencies...")
         self.__init__(pcfg=self.pcfg, sync_versions=False)
 
     @property
@@ -407,7 +539,7 @@ class ProjectDependencies:
         with Progress(
             SpinnerColumn(),
             TextColumn(
-                "Installing"
+                "Unpacking"
                 "  {task.completed}/{task.total}"
                 "  [dim]{task.fields[current]}[/dim]"
             ),
@@ -434,6 +566,12 @@ class ProjectDependencies:
                     )
                 )
                 progress.advance(task)
+
+        logger.info(
+            "Unpacked %d %s",
+            len(missing),
+            "package" if len(missing) == 1 else "packages",
+        )
 
     def clean_unmanaged_directories(self):
         module_dir = self.pcfg.paths.modules
@@ -536,6 +674,9 @@ class ProjectDependencies:
         # TODO: can be replaced with dag.values
         all_deps: set[ProjectDependency] = set()
 
+        # Shared API client for metadata resolution (reuses HTTP connection)
+        api = PackagesAPIClient()
+
         # Track parent relationships for error reporting
         parent_map: dict[str, ProjectDependency] = {}
 
@@ -597,8 +738,8 @@ class ProjectDependencies:
 
                         dep.try_load()
                         if dep.cfg is None:
-                            dep.load_dist()
-                        resolved_count += 1
+                            dep.resolve_metadata(api)
+                            resolved_count += 1
                         children = dep.direct_dependencies
                         to_add.extend((dep, child) for child in children)
                         # Grow total as we discover transitive deps
@@ -839,6 +980,7 @@ class ProjectDependencies:
             force: If True, overwrite locally modified packages without error.
                    If False (default), raise PackageModifiedError for modified packages.
         """
+        logger.info("Syncing versions...")
 
         def _sync_dep(
             dep: ProjectDependency,
@@ -1012,15 +1154,13 @@ class ProjectDependencies:
             if not isinstance(dep.spec, config.RegistryDependencySpec):
                 continue
             # Pass None to get the latest compatible release (fallback behavior)
-            latest_version = _select_compatible_registry_release(
-                api, dep.spec.identifier, None
-            )
-            if dep.spec.release != latest_version:
+            latest = _select_compatible_registry_release(api, dep.spec.identifier, None)
+            if dep.spec.release != latest.version:
                 logger.info(
                     f"Updating {dep.spec.identifier}: "
-                    f"{dep.spec.release or '<unpinned>'} -> {latest_version}"
+                    f"{dep.spec.release or '<unpinned>'} -> {latest.version}"
                 )
-                dep.spec.release = latest_version
+                dep.spec.release = latest.version
                 dep.add_to_manifest()
                 dirty = True
 

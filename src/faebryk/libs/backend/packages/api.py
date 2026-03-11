@@ -722,15 +722,29 @@ class PackagesAPIClient:
         self, identifier: str, output_path: Path, version: str | None = None
     ) -> Dist:
         release = self.get_package(identifier, version)
-        url = release.info.download_url
-        filepath = output_path / release.info.filename
+        return self.download_dist(
+            download_url=release.info.download_url,
+            filename=release.info.filename,
+            output_path=output_path,
+            identifier=identifier,
+        )
+
+    def download_dist(
+        self,
+        download_url: str,
+        filename: str,
+        output_path: Path,
+        identifier: str = "<unknown>",
+    ) -> Dist:
+        """Download a dist archive given a direct URL."""
+        filepath = output_path / filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
         # download the file with retry on timeout
         client = self._ensure_client()
         last_error: ReadTimeout | None = None
         for attempt in range(_MAX_RETRIES + 1):
             try:
-                response = client.get(url, timeout=30.0)
+                response = client.get(download_url, timeout=30.0)
                 response.raise_for_status()
                 with filepath.open("wb") as f:
                     for chunk in response.iter_bytes(chunk_size=8192):
