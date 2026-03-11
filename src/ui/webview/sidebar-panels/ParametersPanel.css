@@ -1,0 +1,57 @@
+/* ParametersPanel — uses shared sidebar-panel, sidebar-panel-scroll, TreeRowHeader, Table from PanelLayout.css */
+
+.parameters-node {
+  margin-bottom: var(--spacing-xs);
+}
+
+.parameters-children {
+  padding-left: var(--spacing-md);
+}
+
+.parameters-table {
+  font-size: var(--font-size-xs);
+}
+
+.parameters-table .table-head {
+  font-size: var(--font-size-xxs);
+  padding: 2px var(--spacing-xs);
+}
+
+.parameters-table .table-cell {
+  padding: 2px var(--spacing-xs);
+}
+
+.param-name {
+  font-weight: 500;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.param-spec {
+  color: var(--text-secondary);
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.param-actual {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.param-status-ok {
+  color: var(--success);
+}
+
+.param-status-error {
+  color: var(--error);
+}
+
+.param-status-unknown {
+  color: var(--text-muted);
+}

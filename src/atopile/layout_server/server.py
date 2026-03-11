@@ -1,8 +1,4 @@
-"""Shared layout-editor API router factory.
-
-Used by both the standalone server (``__main__``) and the backend
-integration server (``atopile.server.routes.layout``).
-"""
+"""Shared layout-editor API router factory."""
 
 from __future__ import annotations
 

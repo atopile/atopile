@@ -1,0 +1,711 @@
+.projects-panel-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  container-type: inline-size;
+  --project-row-label-width: 72px;
+}
+
+.section-label {
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+}
+
+.project-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.project-selector-row {
+  display: grid;
+  grid-template-columns: var(--project-row-label-width) minmax(0, 1fr) auto;
+  column-gap: 6px;
+  align-items: center;
+}
+
+.project-selector-row .section-label,
+.build-targets .section-label {
+  flex: 0 0 auto;
+  justify-self: start;
+}
+
+.new-project-btn,
+.icon-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.new-project-btn:hover:not(:disabled),
+.icon-action-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.new-project-btn:disabled,
+.icon-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.icon-action-btn.danger:hover:not(:disabled) {
+  color: var(--ctp-red);
+  background: color-mix(in srgb, var(--ctp-red) 12%, transparent);
+}
+
+.project-combobox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.combobox-input-wrapper {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
+  min-height: 26px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.combobox-input-wrapper:hover {
+  background: var(--bg-hover);
+}
+
+.combobox-input-wrapper.open,
+.combobox-input-wrapper:focus-within {
+  background: var(--bg-tertiary);
+}
+
+.combobox-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.combobox-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  outline: none;
+}
+
+.combobox-input::placeholder {
+  color: var(--text-muted);
+}
+
+.combobox-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.combobox-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chevron {
+  transition: transform 0.15s ease;
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.combobox-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--vscode-dropdown-background, #1e1e2e);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.combobox-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.combobox-empty {
+  padding: var(--spacing-sm);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.combobox-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.1s ease;
+}
+
+.combobox-option:hover,
+.combobox-option.highlighted {
+  background: var(--bg-tertiary);
+}
+
+.combobox-option.active {
+  background: color-mix(in srgb, var(--ctp-blue) 15%, var(--bg-tertiary));
+}
+
+.combobox-option.highlighted.active {
+  background: color-mix(in srgb, var(--ctp-blue) 25%, var(--bg-tertiary));
+}
+
+.combobox-option .option-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.combobox-option-name {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combobox-option-path {
+  flex: 1;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.check-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.combobox-footer {
+  padding: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.combobox-create-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px;
+  border: 1px dashed var(--border-default);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.combobox-create-btn:hover {
+  border-color: var(--ctp-blue);
+  color: var(--ctp-blue);
+  background: color-mix(in srgb, var(--ctp-blue) 8%, transparent);
+}
+
+.builds-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.build-targets {
+  display: grid;
+  grid-template-columns: var(--project-row-label-width) minmax(0, 1fr) auto;
+  column-gap: 6px;
+  align-items: center;
+  padding-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
+}
+
+.target-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.target-combobox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.target-combobox-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0 var(--spacing-xs);
+  min-height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  overflow: hidden;
+}
+
+.target-combobox-trigger:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.target-combobox-trigger.open {
+  background: var(--bg-tertiary);
+}
+
+.target-combobox-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.target-combobox-trigger .target-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.target-trigger-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.target-trigger-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex: 1;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.target-trigger-entry,
+.target-option-entry {
+  margin-left: auto;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.target-scope-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ctp-teal) 12%, transparent);
+  color: color-mix(in srgb, var(--ctp-teal) 85%, white 15%);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.target-combobox-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  margin-left: auto;
+}
+
+.target-combobox-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--vscode-dropdown-background, #1e1e2e);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.target-combobox-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.target-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.1s ease;
+}
+
+.target-option:hover,
+.target-option.highlighted {
+  background: var(--bg-tertiary);
+}
+
+.target-option.active {
+  background: color-mix(in srgb, var(--ctp-blue) 15%, var(--bg-tertiary));
+}
+
+.target-option .option-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.target-option-name {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.target-selector-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.new-project-form,
+.new-target-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ctp-blue);
+  background: var(--bg-secondary);
+}
+
+.form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.form-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.form-close-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.form-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.form-error svg {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  margin-top: 1px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.form-field label {
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.form-field label .required {
+  color: var(--ctp-red);
+}
+
+.form-path-input {
+  display: flex;
+  gap: 4px;
+}
+
+.form-path-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-browse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.form-browse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--ctp-blue);
+}
+
+.form-browse-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  border-color: var(--ctp-blue);
+}
+
+.form-field input::placeholder,
+.form-field textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.form-field textarea {
+  resize: vertical;
+  min-height: 40px;
+}
+
+.form-hint {
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.form-hint.status-exists {
+  color: var(--ctp-green);
+}
+
+.form-hint.status-create {
+  color: var(--ctp-yellow);
+}
+
+.form-hint.status-error {
+  color: var(--ctp-red);
+}
+
+.entry-field .entry-input-wrapper {
+  position: relative;
+}
+
+.entry-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.entry-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.entry-suggestion:hover,
+.entry-suggestion.highlighted {
+  background: var(--bg-tertiary);
+}
+
+.entry-suggestion .suggestion-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.entry-suggestion .suggestion-file {
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.form-btn {
+  padding: 5px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.form-btn.secondary {
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.form-btn.secondary:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.form-btn.primary {
+  border: 1px solid var(--ctp-blue);
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.form-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.form-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -5,7 +5,22 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-__all__ = ["build_history", "build_queue", "builds", "model_state"]
+__all__ = [
+    "artifacts",
+    "atopile_install",
+    "build_queue",
+    "builds",
+    "cost_estimation",
+    "layout",
+    "manufacturing",
+    "packages",
+    "parts",
+    "parts_search",
+    "parts_search_jlc",
+    "projects",
+    "resolve",
+    "stdlib",
+]
 
 
 def __getattr__(name: str) -> Any:

@@ -1,0 +1,418 @@
+import {
+  createContext,
+  useContext,
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type ReactNode,
+  type HTMLAttributes,
+} from 'react'
+import { ChevronDown, Check } from 'lucide-react'
+import './Select.css'
+
+/* ---- Types ---- */
+
+interface SelectItem {
+  label: string
+  value: string | null
+}
+
+/* ---- Shared hook: click-outside + escape + optional keyboard ---- */
+
+function useDropdownPanel(
+  open: boolean,
+  setOpen: (v: boolean) => void,
+  ref: React.RefObject<HTMLDivElement | null>,
+  onKeyDown?: (e: KeyboardEvent) => void,
+) {
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.closest('.select-root')?.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open, setOpen, ref])
+
+  useEffect(() => {
+    if (!open) return
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setOpen(false); return }
+      onKeyDown?.(e)
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [open, setOpen, onKeyDown])
+}
+
+/* ---- Context ---- */
+
+interface SelectContextValue {
+  open: boolean
+  setOpen: (v: boolean) => void
+  value: string | null
+  onValueChange: (v: string | null) => void
+  items: SelectItem[]
+  disabled: boolean
+  highlightedIndex: number
+  setHighlightedIndex: (v: number | ((prev: number) => number)) => void
+}
+
+const SelectCtx = createContext<SelectContextValue | null>(null)
+
+function useSelectCtx() {
+  const ctx = useContext(SelectCtx)
+  if (!ctx) throw new Error('Select.* must be used inside <Select>')
+  return ctx
+}
+
+/** Public hook — use from custom triggers that compose Select */
+export const useSelectContext = useSelectCtx
+
+/* ---- Select (root) ---- */
+
+export interface SelectProps {
+  items: SelectItem[]
+  value?: string | null
+  defaultValue?: string | null
+  onValueChange?: (value: string | null) => void
+  disabled?: boolean
+  className?: string
+  children: ReactNode
+}
+
+export function Select({
+  items,
+  value: valueProp,
+  defaultValue = null,
+  onValueChange,
+  disabled = false,
+  className,
+  children,
+}: SelectProps) {
+  const [open, setOpenRaw] = useState(false)
+  const [internalValue, setInternalValue] = useState(defaultValue)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+
+  const isControlled = valueProp !== undefined
+  const value = isControlled ? valueProp : internalValue
+
+  const setOpen = useCallback(
+    (v: boolean) => {
+      setOpenRaw(v)
+      if (v) {
+        const idx = items.findIndex((i) => i.value === (isControlled ? valueProp : internalValue))
+        setHighlightedIndex(idx >= 0 ? idx : 0)
+      } else {
+        setHighlightedIndex(-1)
+      }
+    },
+    [items, isControlled, valueProp, internalValue],
+  )
+
+  const handleChange = useCallback(
+    (v: string | null) => {
+      if (!isControlled) setInternalValue(v)
+      onValueChange?.(v)
+    },
+    [isControlled, onValueChange],
+  )
+
+  useEffect(() => {
+    if (items.length > 0 && highlightedIndex >= items.length) {
+      setHighlightedIndex(items.length - 1)
+    }
+  }, [items.length, highlightedIndex])
+
+  const rootClass = className ? `select-root ${className}` : 'select-root'
+
+  return (
+    <SelectCtx.Provider value={{ open, setOpen, value, onValueChange: handleChange, items, disabled, highlightedIndex, setHighlightedIndex }}>
+      <div className={rootClass}>{children}</div>
+    </SelectCtx.Provider>
+  )
+}
+
+/* ---- SelectTrigger ---- */
+
+export interface SelectTriggerProps extends HTMLAttributes<HTMLButtonElement> {
+  'aria-invalid'?: boolean
+}
+
+export function SelectTrigger({
+  children,
+  className = '',
+  ...props
+}: SelectTriggerProps) {
+  const { open, setOpen, disabled } = useSelectCtx()
+  const ref = useRef<HTMLButtonElement>(null)
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      role="combobox"
+      aria-expanded={open}
+      disabled={disabled}
+      className={`select-trigger ${className}`.trim()}
+      onClick={() => setOpen(!open)}
+      {...props}
+    >
+      {children}
+      <ChevronDown size={12} className="select-chevron" />
+    </button>
+  )
+}
+
+/* ---- SelectValue ---- */
+
+export interface SelectValueProps {
+  placeholder?: string
+}
+
+export function SelectValue({ placeholder = 'Select...' }: SelectValueProps) {
+  const { value, items } = useSelectCtx()
+  const selected = items.find((i) => i.value === value)
+
+  if (!selected || selected.value === null) {
+    return <span className="select-value select-value-placeholder">{selected?.label ?? placeholder}</span>
+  }
+
+  return <span className="select-value">{selected.label}</span>
+}
+
+/* ---- SelectContent ---- */
+
+export interface SelectContentProps {
+  children: ReactNode
+  className?: string
+}
+
+export function SelectContent({ children, className = '' }: SelectContentProps) {
+  const { open, setOpen, items, highlightedIndex, setHighlightedIndex, onValueChange } = useSelectCtx()
+  const ref = useRef<HTMLDivElement>(null)
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setHighlightedIndex((i: number) => Math.min(i + 1, items.length - 1))
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setHighlightedIndex((i: number) => Math.max(i - 1, 0))
+        break
+      case 'Enter': {
+        e.preventDefault()
+        const item = items[highlightedIndex]
+        if (item) {
+          onValueChange(item.value)
+          setOpen(false)
+        }
+        break
+      }
+    }
+  }, [items, highlightedIndex, setHighlightedIndex, onValueChange, setOpen])
+
+  useDropdownPanel(open, setOpen, ref, handleKeyDown)
+
+  useEffect(() => {
+    if (!open || highlightedIndex < 0 || !ref.current) return
+    const el = ref.current.querySelector('[data-highlighted="true"]') as HTMLElement
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [open, highlightedIndex])
+
+  if (!open) return null
+
+  return (
+    <div ref={ref} className={`select-content ${className}`.trim()} role="listbox">
+      {children}
+    </div>
+  )
+}
+
+/* ---- SelectGroup ---- */
+
+export interface SelectGroupProps {
+  label?: string
+  children: ReactNode
+  className?: string
+}
+
+export function SelectGroup({ label, children, className = '' }: SelectGroupProps) {
+  return (
+    <div className={`select-group ${className}`.trim()} role="group">
+      {label && <div className="select-group-label">{label}</div>}
+      {children}
+    </div>
+  )
+}
+
+/* ---- SelectItem ---- */
+
+export interface SelectItemProps {
+  value: string | null
+  disabled?: boolean
+  children: ReactNode
+  className?: string
+}
+
+export function SelectItem({ value, disabled = false, children, className = '' }: SelectItemProps) {
+  const { value: selected, onValueChange, setOpen, items, highlightedIndex, setHighlightedIndex } = useSelectCtx()
+  const isSelected = value === selected
+  const itemIndex = items.findIndex((i) => i.value === value)
+  const isHighlighted = itemIndex === highlightedIndex
+
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={isSelected}
+      data-selected={isSelected ? 'true' : undefined}
+      data-highlighted={isHighlighted ? 'true' : undefined}
+      data-disabled={disabled ? 'true' : undefined}
+      className={`select-item ${className}`.trim()}
+      onClick={() => {
+        if (disabled) return
+        onValueChange(value)
+        setOpen(false)
+      }}
+      onMouseEnter={() => {
+        if (!disabled) setHighlightedIndex(itemIndex)
+      }}
+    >
+      <span className="select-item-check">
+        {isSelected && <Check size={12} />}
+      </span>
+      {children}
+    </button>
+  )
+}
+
+/* ---- SelectLabel ---- */
+
+export interface SelectLabelProps {
+  children: ReactNode
+  className?: string
+}
+
+export function SelectLabel({ children, className = '' }: SelectLabelProps) {
+  return <div className={`select-label ${className}`.trim()}>{children}</div>
+}
+
+/* ---- SelectSeparator ---- */
+
+export interface SelectSeparatorProps {
+  className?: string
+}
+
+export function SelectSeparator({ className = '' }: SelectSeparatorProps) {
+  return <div role="separator" className={`select-separator ${className}`.trim()} />
+}
+
+interface DropdownMenuContextValue {
+  open: boolean
+  setOpen: (v: boolean) => void
+}
+
+const DropdownMenuCtx = createContext<DropdownMenuContextValue | null>(null)
+
+function useDropdownMenuCtx() {
+  const ctx = useContext(DropdownMenuCtx)
+  if (!ctx) throw new Error('DropdownMenu.* must be used inside <DropdownMenu>')
+  return ctx
+}
+
+export interface DropdownMenuProps {
+  className?: string
+  children: ReactNode
+}
+
+export function DropdownMenu({ className, children }: DropdownMenuProps) {
+  const [open, setOpen] = useState(false)
+  const rootClass = className ? `select-root ${className}` : 'select-root'
+
+  return (
+    <DropdownMenuCtx.Provider value={{ open, setOpen }}>
+      <div className={rootClass}>{children}</div>
+    </DropdownMenuCtx.Provider>
+  )
+}
+
+export interface DropdownMenuTriggerProps extends HTMLAttributes<HTMLButtonElement> {
+  'aria-invalid'?: boolean
+}
+
+export function DropdownMenuTrigger({
+  children,
+  className = '',
+  ...props
+}: DropdownMenuTriggerProps) {
+  const { open, setOpen } = useDropdownMenuCtx()
+
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      className={`select-trigger ${className}`.trim()}
+      onClick={() => setOpen(!open)}
+      {...props}
+    >
+      {children}
+      <ChevronDown size={12} className={`select-chevron ${open ? 'select-chevron-open' : ''}`} />
+    </button>
+  )
+}
+
+export interface DropdownMenuContentProps extends HTMLAttributes<HTMLDivElement> {
+  children: ReactNode
+}
+
+export function DropdownMenuContent({ children, className = '', ...props }: DropdownMenuContentProps) {
+  const { open, setOpen } = useDropdownMenuCtx()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useDropdownPanel(open, setOpen, ref)
+
+  if (!open) return null
+
+  return (
+    <div ref={ref} className={`select-content ${className}`.trim()} {...props}>
+      {children}
+    </div>
+  )
+}
+
+export interface DropdownMenuCheckboxItemProps {
+  checked?: boolean
+  onCheckedChange?: (checked: boolean) => void
+  disabled?: boolean
+  children: ReactNode
+  className?: string
+}
+
+export function DropdownMenuCheckboxItem({
+  checked = false,
+  onCheckedChange,
+  disabled = false,
+  children,
+  className = '',
+}: DropdownMenuCheckboxItemProps) {
+  return (
+    <button
+      type="button"
+      className={`select-item ${className}`.trim()}
+      data-selected={checked ? 'true' : undefined}
+      data-disabled={disabled ? 'true' : undefined}
+      onClick={() => { if (!disabled) onCheckedChange?.(!checked) }}
+    >
+      <span className="select-item-check">
+        {checked && <Check size={12} />}
+      </span>
+      {children}
+    </button>
+  )
+}

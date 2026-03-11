@@ -1,239 +1,228 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+import * as vscode from "vscode";
+import { ProcessManager } from "./processManager";
+import { AtoResolver } from "./atoResolver";
+import { CoreClient } from "./coreClient";
+import { RpcProxy } from "./rpcProxy";
+import { findFreePort } from "./utils";
+import { openPcb } from "./kicad";
+import { ExtensionRequestHandler } from "./extensionRequestHandler";
+import { ExtensionLogger } from "./logger";
+import {
+  HostedWebviewViewProvider,
+  LOGS_VIEW_ID,
+  PanelHost,
+  SIDEBAR_VIEW_ID,
+} from "./webviewHost";
+import { createUiCoreStatus, type ResolvedBuildTarget } from "../../ui/shared/generated-types";
 
-import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
-import { registerLogger, traceInfo, traceLog, traceVerbose, initTimer, traceMilestone } from './common/log/logging';
-import { startOrRestartServer, initServer, onNeedsRestart } from './common/lspServer';
-import { getExtensionManagedUvPath, setUvPathLocal, onDidChangeAtoBinInfoEvent, resetAtoBinFailures } from './common/findbin';
-import { getLSClientTraceLevel } from './common/utilities';
-import { createOutputChannel, get_ide_type } from './common/vscodeapi';
-import * as ui from './ui/ui';
-import { SERVER_ID, SERVER_NAME } from './common/constants';
-import { captureEvent, deinitializeTelemetry, initializeTelemetry, updateConfig } from './common/telemetry';
-import { onBuildTargetChanged } from './common/target';
-import { Build } from './common/manifest';
-import { openPackageExplorer } from './ui/packagexplorer';
-import * as llm from './common/llm';
-import { backendServer } from './common/backendServer';
-import { initMenu } from './common/vscode-menu';
-import { hasConfiguredBackendPort } from './common/environment';
-import { SidebarProvider, LogViewerProvider } from './providers';
-import { ensureAtoBin } from './ui/setup';
-import * as demo from './demo';
+const CORE_SERVER_READY_MARKER = "ATOPILE_SERVER_READY";
 
-export let g_lsClient: LanguageClient | undefined;
+const panels = [
+  { id: "panel-settings", label: "Settings" },
+  { id: "panel-developer", label: "Developer" },
+  { id: "panel-layout", label: "Layout" },
+  { id: "panel-3d", label: "3D Model" },
+  { id: "panel-manufacture", label: "Manufacture" },
+];
 
-function _setupLogging(context: vscode.ExtensionContext) {
-    const outputChannel = createOutputChannel(SERVER_NAME);
-    context.subscriptions.push(outputChannel, registerLogger(outputChannel));
+let coreClient: CoreClient | undefined;
 
-    const changeLogLevel = async (c: vscode.LogLevel, g: vscode.LogLevel) => {
-        const level = getLSClientTraceLevel(c, g);
-        await g_lsClient?.setTrace(level);
-    };
-
-    context.subscriptions.push(
-        outputChannel.onDidChangeLogLevel(async (e) => {
-            await changeLogLevel(e, vscode.env.logLevel);
-        }),
-        vscode.env.onDidChangeLogLevel(async (e) => {
-            await changeLogLevel(outputChannel.logLevel, e);
-        }),
-    );
-
-    return outputChannel;
+async function showLogsView(logsProvider: HostedWebviewViewProvider): Promise<void> {
+  await vscode.commands.executeCommand("workbench.view.extension.atopile-logs");
+  await vscode.commands.executeCommand(`${LOGS_VIEW_ID}.focus`);
+  logsProvider.reveal();
 }
 
-function _registerDevStatusButtons(context: vscode.ExtensionContext): void {
-    const isDevUiEnabled = process.env.ATOPILE_EXTENSION_DEV_UI === '1';
-    if (!isDevUiEnabled) {
-        return;
-    }
-
-    const reloadWebviewsCmd = vscode.commands.registerCommand('atopile.dev.reloadWebviews', async () => {
-        await vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
-    });
-    const restartExtHostCmd = vscode.commands.registerCommand('atopile.dev.restartExtensionHost', async () => {
-        await vscode.commands.executeCommand('workbench.action.restartExtensionHost');
-    });
-    const killBackendCmd = vscode.commands.registerCommand('atopile.dev.killBackendServer', async () => {
-        await backendServer.stopServer();
-    });
-
-    const reloadWebviewsItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
-    reloadWebviewsItem.text = '$(refresh)$(window)';
-    reloadWebviewsItem.tooltip = 'Reload Webviews';
-    reloadWebviewsItem.command = 'atopile.dev.reloadWebviews';
-    reloadWebviewsItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-    reloadWebviewsItem.show();
-
-    const restartExtHostItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -101);
-    restartExtHostItem.text = '$(refresh)$(tools)';
-    restartExtHostItem.tooltip = 'Restart Extension Host';
-    restartExtHostItem.command = 'atopile.dev.restartExtensionHost';
-    restartExtHostItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-    restartExtHostItem.show();
-
-    const killBackendItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -102);
-    killBackendItem.text = '$(debug-stop)';
-    killBackendItem.tooltip = 'Kill Backend Server';
-    killBackendItem.command = 'atopile.dev.killBackendServer';
-    killBackendItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-    killBackendItem.show();
-
-    context.subscriptions.push(
-        reloadWebviewsCmd,
-        restartExtHostCmd,
-        killBackendCmd,
-        reloadWebviewsItem,
-        restartExtHostItem,
-        killBackendItem,
-    );
-}
-
-class atopileUriHandler implements vscode.UriHandler {
-    handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
-        traceInfo(`handleUri: ${uri.toString()}`);
-        const path = uri.path
-
-        if (path === "/addPackage") {
-            traceInfo('addPackage');
-            // e.g. vscode://atopile.atopile/addPackage?packageIdentifier=atopile/esp32
-            const queryParams = uri.query.split("&");
-            const packageIdentifier = queryParams.find(param => param.startsWith("packageIdentifier="))?.split("=")[1];
-            if (packageIdentifier) {
-                traceInfo(`packageIdentifier: ${packageIdentifier}`);
-                openPackageExplorer('packages/' + packageIdentifier);
-            }
-        } else if (path === "/openDashboard") {
-            traceInfo('openDashboard - redirecting to log viewer panel');
-            // Open the log viewer panel instead
-            vscode.commands.executeCommand('atopile.logViewer.focus');
-        } else if (path === "/restartExtensionHost") {
-            traceInfo('restartExtensionHost - restarting extension host');
-            vscode.commands.executeCommand('workbench.action.restartExtensionHost');
-        } else if (path === "/promptRestart") {
-            traceInfo('promptRestart - showing restart prompt');
-            vscode.window.showInformationMessage(
-                'atopile extension has been updated. Restart to apply changes.',
-                'Restart Now',
-                'Later'
-            ).then(selection => {
-                if (selection === 'Restart Now') {
-                    vscode.commands.executeCommand('workbench.action.restartExtensionHost');
-                }
-            });
-        }
-    }
-}
-
-async function handleConfigUpdate(event: vscode.ConfigurationChangeEvent) {
-    if (event.affectsConfiguration('atopile.telemetry')) {
-        // mirror to CLI config
-        const telemetry = vscode.workspace.getConfiguration('atopile').get('telemetry');
-        updateConfig(telemetry as boolean);
-    }
-}
-
+// -- Activate -----------------------------------------------------------------
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    const activationTime = Date.now();
-    const outputChannel = _setupLogging(context);
-    _registerDevStatusButtons(context);
-    initTimer();
-    traceMilestone('activate()');
+  const output = vscode.window.createOutputChannel("atopile", { log: true });
+  const logger = new ExtensionLogger(output);
+  logger.info("atopile extension activating");
 
-    // 1. Register webview providers FIRST
-    // If sidebar is open, webview starts loading immediately while servers start
-    const extensionVersion = vscode.extensions.getExtension('atopile.atopile')?.packageJSON?.version ?? 'unknown';
-    const sidebarProvider = new SidebarProvider(context.extensionUri, extensionVersion, activationTime);
-    const logViewerProvider = new LogViewerProvider(context.extensionUri);
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebarProvider, { webviewOptions: { retainContextWhenHidden: true } }),
-        vscode.window.registerWebviewViewProvider(LogViewerProvider.viewType, logViewerProvider, { webviewOptions: { retainContextWhenHidden: true } }),
-        sidebarProvider,
-        vscode.window.registerUriHandler(new atopileUriHandler()),
-        vscode.workspace.onDidChangeConfiguration(handleConfigUpdate),
-        backendServer,
-    );
-    traceMilestone('providers registered');
+  const coreServerPort = await findFreePort();
+  const layoutServerPort = await findFreePort();
+  const workspaceFolders =
+    vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
 
-    // 2. Initialize menu, telemetry, ato binary detection
-    initMenu(context);
-    await initializeTelemetry(context);
-    traceMilestone('telemetry initialized');
-    captureEvent('vsce:startup');
-    setUvPathLocal(getExtensionManagedUvPath(context));
-    context.subscriptions.push(
-        vscode.workspace.onDidChangeConfiguration(async (e) => {
-            if (e.affectsConfiguration('atopile.ato') || e.affectsConfiguration('atopile.from')) {
-                resetAtoBinFailures();
-                onDidChangeAtoBinInfoEvent.fire({ init: false });
-            }
-        }),
-    );
-    initServer(context);
-    // If backend port is pre-configured (web-ide mode), skip ensureAtoBin —
-    // the pre-started backend proves the binary works.
-    if (!hasConfiguredBackendPort()) {
-        await ensureAtoBin(context);
-        traceMilestone('ensureAtoBin done');
-    }
+  const portEnv = {
+    ATOPILE_CORE_SERVER_PORT: String(coreServerPort),
+    ATOPILE_LAYOUT_SERVER_PORT: String(layoutServerPort),
+  };
 
-    // 3. Start servers and UI in parallel
-    let isInitialStart = true;
-    const startLsp = async () => {
-        const newClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
-        g_lsClient = newClient;
-        traceMilestone('LSP ready');
-        backendServer.sendToWebview({
-            type: 'setAtopileInstalling',
-            installing: false,
-            ...(newClient ? {} : { error: 'Failed to start language server' }),
-        });
-    };
+  const version: string = context.extension.packageJSON.version;
+  const resolver = new AtoResolver(context, output);
+  const resolved = await resolveAtoBinary(resolver, version, output);
+  if (!resolved) return;
 
-    const startBackend = async () => {
-        const backendSuccess = isInitialStart
-            ? await backendServer.startServer()
-            : await backendServer.restartServer();
-        isInitialStart = false;
-        if (!backendSuccess) {
-            traceMilestone('backend failed');
-        }
-    };
+  let panelHost!: PanelHost;
+  let logsProvider!: HostedWebviewViewProvider;
+  const requestHandler = new ExtensionRequestHandler(
+    (panelId) => panelHost.openPanel(panelId),
+    () => showLogsView(logsProvider),
+    logger,
+  );
+  const proxy = new RpcProxy(coreServerPort, logger, (webview, message) =>
+    requestHandler.handle(webview, message)
+  );
+  panelHost = new PanelHost(context.extensionUri, proxy, layoutServerPort, logger);
+  const sidebarProvider = new HostedWebviewViewProvider(context.extensionUri, proxy, "sidebar");
+  logsProvider = new HostedWebviewViewProvider(context.extensionUri, proxy, "panel-logs");
 
-    const restartAll = async () => {
-        traceInfo('User requested restart, restarting servers...');
-        await Promise.all([startLsp(), startBackend()]);
-    };
+  registerWebviews(context, sidebarProvider, logsProvider);
+  registerCommands(context, panelHost);
+  context.subscriptions.push(proxy, output, panelHost, sidebarProvider, logsProvider);
 
-    context.subscriptions.push(
-        onNeedsRestart(restartAll),
-        onBuildTargetChanged((target: Build | undefined) => {
-            g_lsClient?.sendNotification('atopile/didChangeBuildTarget', { buildTarget: target?.entry ?? '' });
-        }),
-    );
+  const coreServer = await startCoreServer(resolved, portEnv, output, proxy);
+  context.subscriptions.push(coreServer);
 
-    // LSP starts in background (only needed for .ato editing), backend and UI block activation
-    startLsp();
-    await Promise.all([ui.activate(context), startBackend()]);
+  coreClient = new CoreClient(proxy, workspaceFolders);
+  coreClient.start();
+  coreClient.sendResolverInfo({
+    uvPath: resolved.command,
+    atoBinary: resolved.atoBinary ?? "",
+    mode: resolved.isLocal ? "local" : "production",
+    version,
+    coreServerPort,
+  });
+  context.subscriptions.push(coreClient);
 
-    traceMilestone('activated');
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("atopile")) {
+        coreClient?.sendExtensionSettings();
+      }
+    }),
 
-    // Register demo-mode command and auto-trigger in web-ide environments
-    demo.activate(context);
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      coreClient?.sendActiveFile(editor?.document.uri.fsPath ?? null);
+    }),
+  );
+  coreClient.sendActiveFile(vscode.window.activeTextEditor?.document.uri.fsPath ?? null);
+
+  logger.info("atopile extension activated");
 }
 
-export async function deactivate(): Promise<void> {
-    // Stop LSP server
-    if (g_lsClient) {
-        await g_lsClient.stop();
-    }
+export function deactivate(): void {
+  coreClient?.dispose();
+}
 
-    // Stop backend server (also handled by dispose, but explicit is clearer)
-    await backendServer.stopServer();
+async function resolveAtoBinary(
+  resolver: AtoResolver,
+  version: string,
+  output: vscode.OutputChannel,
+): Promise<Awaited<ReturnType<AtoResolver["resolve"]>> | null> {
+  try {
+    return await resolver.resolve(version);
+  } catch (err: any) {
+    output.appendLine(`[Extension] Failed to resolve ato binary: ${err.message}`);
+    vscode.window.showWarningMessage(`atopile: ${err.message}`);
+    return null;
+  }
+}
 
-    deinitializeTelemetry();
+function registerCommands(
+  context: vscode.ExtensionContext,
+  panelHost: PanelHost,
+): void {
+  context.subscriptions.push(
+    vscode.commands.registerCommand("atopile.openPanel", async () => {
+      const pick = await vscode.window.showQuickPick(
+        panels.map((p) => ({ label: p.label, id: p.id })),
+        { placeHolder: "Select a panel to open" },
+      );
+      if (pick) panelHost.openPanel(pick.id);
+    }),
+
+    vscode.commands.registerCommand(
+      "atopile.openKicad",
+      async ({
+        target,
+      }: {
+        target?: ResolvedBuildTarget;
+      } = {}) => {
+        if (!target) {
+          vscode.window.showErrorMessage("Select a project and target first.");
+          return;
+        }
+
+        try {
+          await openPcb(target.pcbPath);
+        } catch (err) {
+          vscode.window.showErrorMessage(
+            `Failed to open KiCad: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "atopile.openFile",
+      async ({ path }: { path?: string } = {}) => {
+        if (!path) {
+          return;
+        }
+
+        await vscode.window.showTextDocument(vscode.Uri.file(path));
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "atopile.browseFolder",
+      async (): Promise<string | undefined> => {
+        const result = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          openLabel: "Select folder",
+        });
+        return result?.[0]?.fsPath;
+      },
+    ),
+  );
+}
+
+function registerWebviews(
+  context: vscode.ExtensionContext,
+  sidebarProvider: HostedWebviewViewProvider,
+  logsProvider: HostedWebviewViewProvider,
+): void {
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebarProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+
+    vscode.window.registerWebviewViewProvider(LOGS_VIEW_ID, logsProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+}
+
+async function startCoreServer(
+  resolved: Awaited<ReturnType<AtoResolver["resolve"]>>,
+  portEnv: Record<string, string>,
+  output: vscode.OutputChannel,
+  proxy: RpcProxy,
+): Promise<ProcessManager> {
+  const pm = new ProcessManager(output, {
+    name: "CoreServer",
+    command: resolved.command,
+    args: [...resolved.prefixArgs, "serve", "core"],
+    readyMarker: CORE_SERVER_READY_MARKER,
+    env: portEnv,
+  });
+  try {
+    await pm.start();
+    proxy.clearBootstrapState("coreStatus");
+  } catch (err: any) {
+    const summary = err instanceof Error ? err.message : String(err);
+    output.show(true);
+    vscode.window.showWarningMessage(
+      `atopile core server failed to start: ${summary}. See the atopile output channel for details.`,
+    );
+    const coreStatus = createUiCoreStatus();
+    coreStatus.error = `${summary}. See the atopile output channel for details.`;
+    proxy.setBootstrapState("coreStatus", coreStatus);
+  }
+  return pm;
 }

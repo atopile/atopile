@@ -1,0 +1,11 @@
+/* ============================================
+   CenteredSpinner — full-height loading state
+   ============================================ */
+
+.centered-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--spacing-lg);
+}

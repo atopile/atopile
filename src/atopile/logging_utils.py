@@ -48,7 +48,7 @@ from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 if TYPE_CHECKING:
     from rich.console import RenderableType
 
-    from atopile.dataclasses import Build, StageStatus
+    from atopile.dataclasses import Build, BuildStage, StageStatus
 
 # =============================================================================
 # Shared Style Constants
@@ -563,7 +563,7 @@ class _BuildState:
     """Track state for a single build."""
 
     display_name: str
-    stages: list[dict] = field(default_factory=list)
+    stages: list["BuildStage"] = field(default_factory=list)
     total_stages: int = 10  # Initial estimate until subprocess reports actual count
     status: "BuildStatus" = field(default_factory=lambda: BuildStatus.QUEUED)
     started: bool = False
@@ -655,7 +655,7 @@ class BuildPrinter:
                 self._tasks[build_id] = task_id
 
     def stage_update(
-        self, build_id: str, stages: list[dict], total_stages: int | None = None
+        self, build_id: str, stages: list["BuildStage"], total_stages: int | None = None
     ) -> None:
         """Called when stages change - updates progress or prints new stages."""
         state = self._builds.get(build_id)
@@ -683,12 +683,12 @@ class BuildPrinter:
             # (so they appear in correct order relative to logs)
             # We just track completion count here
             state.last_printed_stage = sum(
-                1 for s in stages if s.get("status", "").lower() in terminal_statuses
+                1 for s in stages if s.status.value.lower() in terminal_statuses
             )
         else:
             # Count completed stages for progress bar
             completed_count = sum(
-                1 for s in stages if s.get("status", "").lower() in terminal_statuses
+                1 for s in stages if s.status.value.lower() in terminal_statuses
             )
             # Update progress bar
             if self._progress and build_id in self._tasks:
@@ -696,9 +696,9 @@ class BuildPrinter:
                 # Show current running stage name
                 current_stage = ""
                 for stage in reversed(stages):
-                    status = stage.get("status", "").lower()
+                    status = stage.status.value.lower()
                     if status not in terminal_statuses:
-                        current_stage = stage.get("name", "")
+                        current_stage = stage.name
                         break
                 # Use actual total if known, otherwise estimate
                 display_total = state.total_stages
@@ -739,18 +739,11 @@ class BuildPrinter:
         state = self._builds.get(build_id)
         return state.display_name if state else build_id[:8]
 
-    def _print_verbose_stage(self, stage: dict) -> None:
+    def _print_verbose_stage(self, stage: "BuildStage") -> None:
         """Print a stage completion bar."""
-        from atopile.dataclasses import StageStatus
-
-        status_raw = stage.get("status", StageStatus.SUCCESS.value)
-        try:
-            status = StageStatus(status_raw)
-        except ValueError:
-            status = StageStatus.SUCCESS
-
-        elapsed = stage.get("elapsedSeconds", 0.0)
-        name = stage.get("name", "")
+        status = stage.status
+        elapsed = stage.elapsed_seconds
+        name = stage.name
         icon, color = get_status_style(status)
 
         # Format: ═══════════ ✓ Stage Name [0.5s] ═══════════
@@ -816,20 +809,26 @@ class BuildPrinter:
         """Print a single build's summary in a box with logs from database."""
         from rich.console import Group
 
-        from atopile.model.sqlite import Logs
+        from atopile.logging import read_build_logs
 
         icon, color = get_status_style(build.status)
-        display_name = build.display_name or build.name
+        display_name = build.name
         build_id = build.build_id or ""
 
         # Fetch errors and warnings from the database
         errors_list: list[dict] = []
         warnings_list: list[dict] = []
         if build_id:
-            errors_list, _ = Logs.fetch_chunk(
-                build_id, levels=["ERROR", "CRITICAL"], count=50
+            errors_list, _ = read_build_logs(
+                build_id=build_id,
+                log_levels=["ERROR"],
+                count=50,
             )
-            warnings_list, _ = Logs.fetch_chunk(build_id, levels=["WARNING"], count=50)
+            warnings_list, _ = read_build_logs(
+                build_id=build_id,
+                log_levels=["WARNING"],
+                count=50,
+            )
 
         # Build content as a list of renderables
         renderables: list = []
@@ -855,12 +854,12 @@ class BuildPrinter:
         }
         total_stage_time = 0.0
         for stage in build.stages:
-            status_str = stage.get("status", "").lower()
+            status_str = stage.status.value.lower()
             if status_str not in terminal_statuses:
                 continue  # Skip running/pending stages
 
-            stage_name = stage.get("name", stage.get("displayName", ""))
-            elapsed = stage.get("elapsedSeconds", 0.0)
+            stage_name = stage.name
+            elapsed = stage.elapsed_seconds
             total_stage_time += elapsed
             stage_icon, stage_color = get_status_style(status_str)
 

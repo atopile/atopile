@@ -1,0 +1,15 @@
+/* PackagesPanel — uses shared sidebar-panel, sidebar-panel-scroll, panel-tabs, card-row from PanelLayout.css */
+
+.package-version-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.package-update-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+}

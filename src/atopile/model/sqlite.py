@@ -9,9 +9,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from atopile.server.agent.message_log import TrackedChecklistItem, TrackedMessage
+    from atopile.agent.message_log import TrackedChecklistItem, TrackedMessage
 
-from atopile.dataclasses import AgentEventRow, Build, BuildStatus, LogRow, TestLogRow
+from atopile.dataclasses import (
+    AgentEventRow,
+    Build,
+    BuildStatus,
+    LogRow,
+    ResolvedBuildTarget,
+    TestLogRow,
+)
 from atopile.logging import get_logger
 from faebryk.libs.paths import get_log_dir
 
@@ -32,6 +39,19 @@ def _ensure_db_dir(db_path: Path) -> None:
     """Ensure database directory exists (called once per database)."""
     with _init_lock:
         db_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def close_thread_connections(db_paths: set[Path] | None = None) -> None:
+    connections = getattr(_thread_local, "connections", None)
+    if not connections:
+        return
+
+    targets = db_paths or set(connections)
+    for db_path in list(targets):
+        conn = connections.pop(db_path, None)
+        if conn is None:
+            continue
+        conn.close()
 
 
 @contextmanager
@@ -71,11 +91,9 @@ class BuildHistory:
                 CREATE TABLE IF NOT EXISTS build_history (
                     build_id         TEXT PRIMARY KEY,
                     name             TEXT,
-                    display_name     TEXT,
                     project_name     TEXT,
                     project_root     TEXT,
                     target           TEXT,
-                    entry            TEXT,
                     status           TEXT,
                     return_code      INTEGER,
                     error            TEXT,
@@ -85,24 +103,24 @@ class BuildHistory:
                     total_stages     INTEGER,
                     warnings         INTEGER,
                     errors           INTEGER,
-                    timestamp        TEXT,
                     standalone       INTEGER,
                     frozen           INTEGER
                 );
-                CREATE INDEX IF NOT EXISTS idx_build_history_project_target
-                    ON build_history(project_root, target, started_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_build_history_project_name
+                    ON build_history(project_root, name, started_at DESC);
             """)
 
     @staticmethod
     def _from_row(row: sqlite3.Row) -> Build:
-        return Build(
+        build = Build(
             build_id=row["build_id"],
-            name=row["name"] or "default",
-            display_name=row["display_name"] or "default",
             project_name=row["project_name"],
             project_root=row["project_root"],
-            target=row["target"],
-            entry=row["entry"],
+            target=(
+                ResolvedBuildTarget.model_validate_json(row["target"])
+                if row["target"]
+                else None
+            ),
             status=BuildStatus(row["status"]),
             return_code=row["return_code"],
             error=row["error"],
@@ -112,10 +130,12 @@ class BuildHistory:
             total_stages=row["total_stages"],
             warnings=row["warnings"],
             errors=row["errors"],
-            timestamp=row["timestamp"],
             standalone=bool(row["standalone"]),
             frozen=bool(row["frozen"]),
         )
+        if row["name"]:
+            build.name = row["name"]
+        return build
 
     @staticmethod
     def set(build: Build) -> None:
@@ -144,20 +164,16 @@ class BuildHistory:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO build_history
-                        (build_id, name, display_name, project_name,
-                         project_root, target, entry, status,
+                        (build_id, name, project_name,
+                         project_root, target, status,
                          return_code, error, started_at,
                          elapsed_seconds, stages, total_stages, warnings,
-                         errors, timestamp, standalone, frozen)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         errors, standalone, frozen)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         build.build_id,
                         pick(build.name, existing.name if existing else None),
-                        pick(
-                            build.display_name,
-                            existing.display_name if existing else None,
-                        ),
                         pick(
                             build.project_name,
                             existing.project_name if existing else None,
@@ -166,8 +182,14 @@ class BuildHistory:
                             build.project_root,
                             existing.project_root if existing else None,
                         ),
-                        pick(build.target, existing.target if existing else None),
-                        pick(build.entry, existing.entry if existing else None),
+                        pick(
+                            build.target.model_dump_json(by_alias=True)
+                            if build.target
+                            else None,
+                            existing.target.model_dump_json(by_alias=True)
+                            if existing and existing.target
+                            else None,
+                        ),
                         build.status.value,  # status is always set
                         pick(
                             build.return_code,
@@ -180,7 +202,12 @@ class BuildHistory:
                         build.elapsed_seconds
                         if build.elapsed_seconds
                         else (existing.elapsed_seconds if existing else 0.0),
-                        json.dumps(build.stages)
+                        json.dumps(
+                            [
+                                stage.model_dump(mode="json", by_alias=True)
+                                for stage in build.stages
+                            ]
+                        )
                         if build.stages
                         else (json.dumps(existing.stages) if existing else "[]"),
                         pick(
@@ -193,7 +220,6 @@ class BuildHistory:
                         build.errors
                         if build.errors
                         else (existing.errors if existing else 0),
-                        pick(build.timestamp, existing.timestamp if existing else None),
                         int(bool(build.standalone))
                         if build.standalone
                         else (int(bool(existing.standalone)) if existing else 0),
@@ -247,23 +273,159 @@ class BuildHistory:
             raise e
 
     @staticmethod
-    def get_latest_for_target(project_root: str, target: str) -> Build | None:
-        """Get the most recent build for a specific project/target."""
+    def get_latest_finished_per_target(limit: int = 100) -> list[Build]:
+        """Get the latest completed build per target root and target name."""
         try:
             with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
-                row = conn.execute(
+                rows = conn.execute(
+                    """
+                    SELECT * FROM build_history
+                    WHERE rowid IN (
+                        SELECT rowid FROM (
+                            SELECT rowid, ROW_NUMBER() OVER (
+                                PARTITION BY
+                                    json_extract(target, '$.root'),
+                                    name,
+                                    json_extract(target, '$.entry')
+                                ORDER BY started_at DESC
+                            ) AS rn
+                            FROM build_history
+                            WHERE status NOT IN ('queued', 'building')
+                        ) WHERE rn = 1
+                    )
+                    ORDER BY started_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+                return [BuildHistory._from_row(r) for r in rows]
+        except Exception as e:
+            logger.exception(
+                "Failed to get latest finished builds per target. "
+                "Try running 'ato dev clear_logs'."
+            )
+            raise e
+
+    @staticmethod
+    def get_queued(limit: int = 100) -> list[Build]:
+        """Get queued builds in FIFO order."""
+        try:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """
+                    SELECT * FROM build_history
+                    WHERE status = 'queued'
+                    ORDER BY started_at ASC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+                return [BuildHistory._from_row(r) for r in rows]
+        except Exception as e:
+            logger.exception(
+                "Failed to get queued builds. Try running 'ato dev clear_logs'."
+            )
+            raise e
+
+    @staticmethod
+    def get_building(limit: int = 100) -> list[Build]:
+        """Get running builds."""
+        try:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """
+                    SELECT * FROM build_history
+                    WHERE status = 'building'
+                    ORDER BY started_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+                return [BuildHistory._from_row(r) for r in rows]
+        except Exception as e:
+            logger.exception(
+                "Failed to get running builds. Try running 'ato dev clear_logs'."
+            )
+            raise e
+
+    @staticmethod
+    def get_finished(limit: int = 100) -> list[Build]:
+        """Get builds with status other than 'queued' or 'building'."""
+        try:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """
+                    SELECT * FROM build_history
+                    WHERE status NOT IN ('queued', 'building')
+                    ORDER BY started_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+                return [BuildHistory._from_row(r) for r in rows]
+        except Exception as e:
+            logger.exception(
+                "Failed to get finished builds. Try running 'ato dev clear_logs'."
+            )
+            raise e
+
+    @staticmethod
+    def finalize_incomplete(
+        *,
+        status: BuildStatus = BuildStatus.CANCELLED,
+        error: str = "Build queue restarted",
+    ) -> int:
+        """Finalize any queued or running builds from an earlier process."""
+        try:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
+                cursor = conn.execute(
+                    """
+                    UPDATE build_history
+                    SET status = ?,
+                    error = COALESCE(error, ?),
+                    return_code = COALESCE(return_code, 1)
+                    WHERE status IN ('queued', 'building')
+                    """,
+                    (status.value, error),
+                )
+                return int(cursor.rowcount or 0)
+        except Exception as e:
+            logger.exception(
+                "Failed to finalize incomplete builds. "
+                "Try running 'ato dev clear_logs'."
+            )
+            raise e
+
+    @staticmethod
+    def get_latest_finished_for_target(
+        target: ResolvedBuildTarget,
+    ) -> Build | None:
+        """Get the most recent completed build for a specific project/target."""
+        try:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                params: list[str] = [
+                    target.name,
+                    target.root,
+                ]
+                query = (
                     "SELECT * FROM build_history"
-                    " WHERE project_root = ? AND target = ?"
-                    " ORDER BY started_at DESC LIMIT 1",
-                    (project_root, target),
-                ).fetchone()
+                    " WHERE name = ?"
+                    " AND json_extract(target, '$.root') = ?"
+                    " AND status NOT IN ('queued', 'building')"
+                )
+                query += " ORDER BY started_at DESC LIMIT 1"
+                row = conn.execute(query, params).fetchone()
                 if row is None:
                     return None
                 return BuildHistory._from_row(row)
         except Exception as e:
             logger.exception(
-                "Failed to get latest build for target. "
+                "Failed to get latest finished build for target. "
                 "Try running 'ato dev clear_logs'."
             )
             raise e
@@ -533,6 +695,145 @@ class TestLogs:
 
 
 # agent_logs.db -> agent_events table helper
+class AgentSessions:
+    @staticmethod
+    def init_db() -> None:
+        with _get_connection(AGENT_LOGS_DB) as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS agent_sessions (
+                    session_id                   TEXT PRIMARY KEY,
+                    project_root                 TEXT NOT NULL,
+                    history_json                 TEXT NOT NULL,
+                    messages_json                TEXT NOT NULL DEFAULT '[]',
+                    tool_memory_json             TEXT NOT NULL,
+                    recent_selected_targets_json TEXT NOT NULL,
+                    activity_label               TEXT NOT NULL DEFAULT 'Ready',
+                    error                        TEXT,
+                    run_started_at               REAL,
+                    last_response_id             TEXT,
+                    conversation_id              TEXT,
+                    skill_state_json             TEXT NOT NULL,
+                    created_at                   REAL NOT NULL,
+                    updated_at                   REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_sessions_project_updated
+                    ON agent_sessions(project_root, updated_at DESC);
+            """)
+            conn.row_factory = sqlite3.Row
+            existing_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(agent_sessions)").fetchall()
+            }
+            required_columns = {
+                "messages_json": "TEXT NOT NULL DEFAULT '[]'",
+                "activity_label": "TEXT NOT NULL DEFAULT 'Ready'",
+                "error": "TEXT",
+                "run_started_at": "REAL",
+            }
+            for column, column_type in required_columns.items():
+                if column in existing_columns:
+                    continue
+                conn.execute(
+                    f"ALTER TABLE agent_sessions ADD COLUMN {column} {column_type}"
+                )
+
+    @staticmethod
+    def upsert_many(rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        with _get_connection(AGENT_LOGS_DB) as conn:
+            conn.executemany(
+                """
+                INSERT INTO agent_sessions
+                    (session_id, project_root, history_json, messages_json,
+                     tool_memory_json, recent_selected_targets_json,
+                     activity_label, error, run_started_at, last_response_id,
+                     conversation_id, skill_state_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    project_root = excluded.project_root,
+                    history_json = excluded.history_json,
+                    messages_json = excluded.messages_json,
+                    tool_memory_json = excluded.tool_memory_json,
+                    recent_selected_targets_json =
+                        excluded.recent_selected_targets_json,
+                    activity_label = excluded.activity_label,
+                    error = excluded.error,
+                    run_started_at = excluded.run_started_at,
+                    last_response_id = excluded.last_response_id,
+                    conversation_id = excluded.conversation_id,
+                    skill_state_json = excluded.skill_state_json,
+                    created_at = excluded.created_at,
+                    updated_at = excluded.updated_at
+                """,
+                [
+                    (
+                        row["session_id"],
+                        row["project_root"],
+                        json.dumps(row.get("history", []), ensure_ascii=False),
+                        json.dumps(row.get("messages", []), ensure_ascii=False),
+                        json.dumps(row.get("tool_memory", {}), ensure_ascii=False),
+                        json.dumps(
+                            row.get("recent_selected_targets", []), ensure_ascii=False
+                        ),
+                        str(row.get("activity_label") or "Ready"),
+                        row.get("error"),
+                        (
+                            float(row["run_started_at"])
+                            if row.get("run_started_at") is not None
+                            else None
+                        ),
+                        row.get("last_response_id"),
+                        row.get("conversation_id"),
+                        json.dumps(row.get("skill_state", {}), ensure_ascii=False),
+                        float(row.get("created_at", 0.0) or 0.0),
+                        float(row.get("updated_at", 0.0) or 0.0),
+                    )
+                    for row in rows
+                ],
+            )
+
+    @staticmethod
+    def load_all() -> list[dict[str, Any]]:
+        if not AGENT_LOGS_DB.exists():
+            return []
+        with _get_connection(AGENT_LOGS_DB) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM agent_sessions ORDER BY updated_at DESC"
+            ).fetchall()
+
+        def _decode(raw: str | None, fallback: Any) -> Any:
+            if not raw:
+                return fallback
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                return fallback
+
+        return [
+            {
+                "session_id": row["session_id"],
+                "project_root": row["project_root"],
+                "history": _decode(row["history_json"], []),
+                "messages": _decode(row["messages_json"], []),
+                "tool_memory": _decode(row["tool_memory_json"], {}),
+                "recent_selected_targets": _decode(
+                    row["recent_selected_targets_json"], []
+                ),
+                "activity_label": row["activity_label"],
+                "error": row["error"],
+                "run_started_at": row["run_started_at"],
+                "last_response_id": row["last_response_id"],
+                "conversation_id": row["conversation_id"],
+                "skill_state": _decode(row["skill_state_json"], {}),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+
 class AgentLogs:
     @staticmethod
     def init_db() -> None:
@@ -846,7 +1147,7 @@ class MessageLog:
 
     @staticmethod
     def get_message(message_id: str) -> TrackedMessage | None:
-        from atopile.server.agent.message_log import TrackedMessage
+        from atopile.agent.message_log import TrackedMessage
 
         try:
             with _get_connection(AGENT_LOGS_DB) as conn:
@@ -874,7 +1175,7 @@ class MessageLog:
 
     @staticmethod
     def get_pending_messages(session_id: str) -> list[TrackedMessage]:
-        from atopile.server.agent.message_log import MSG_PENDING, TrackedMessage
+        from atopile.agent.message_log import MSG_PENDING, TrackedMessage
 
         try:
             with _get_connection(AGENT_LOGS_DB) as conn:
@@ -967,7 +1268,7 @@ class MessageLog:
     @staticmethod
     def check_and_complete_messages(session_id: str) -> list[str]:
         """Auto-transition active messages when linked items are terminal."""
-        from atopile.server.agent.message_log import (
+        from atopile.agent.message_log import (
             _TERMINAL_ITEM_STATUSES,
             MSG_ACTIVE,
             MSG_DONE,
@@ -1109,11 +1410,15 @@ class Tests:
         BuildHistory.set(
             Build(
                 name="target",
-                display_name="project_root:target",
                 build_id="123",
                 project_root="project_root",
-                target="target",
-                entry="entry",
+                target=ResolvedBuildTarget(
+                    name="target",
+                    entry="entry",
+                    pcb_path="",
+                    model_path="",
+                    root="project_root",
+                ),
                 status=BuildStatus.SUCCESS,
             )
         )

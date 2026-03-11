@@ -9,41 +9,29 @@ Supports two modes:
 2. Streaming: Send query with subscribe=true, receive continuous updates
 """
 
+from __future__ import annotations
+
 import asyncio
-import logging
-from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from atopile.dataclasses import Log
+from atopile.logging import get_logger, read_build_logs
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 router = APIRouter(tags=["logs"])
 
-STREAM_POLL_INTERVAL = 0.25  # 250ms between polls when streaming
-_MAX_COUNT = 5000
-
-
-def _clamp(count: int) -> int:
-    return max(1, min(count, _MAX_COUNT))
-
-
-def _strip_id(row: dict[str, Any]) -> dict[str, Any]:
-    """Remove the internal 'id' field used for streaming cursors."""
-    return {k: v for k, v in row.items() if k != "id"}
+STREAM_POLL_INTERVAL = 0.25
 
 
 def _parse_filter_params(
     query: Log.BuildQuery | Log.TestQuery | Log.BuildStreamQuery | Log.TestStreamQuery,
 ) -> tuple[list[str] | None, str | None]:
-    """Parse common log_levels and audience from a query into string values."""
-    log_levels_str = (
-        [str(level) for level in query.log_levels] if query.log_levels else None
-    )
-    audience_str = str(query.audience) if query.audience else None
-    return log_levels_str, audience_str
+    levels = [str(level) for level in query.log_levels] if query.log_levels else None
+    audience = str(query.audience) if query.audience else None
+    return levels, audience
 
 
 async def _push_build_stream(
@@ -51,27 +39,31 @@ async def _push_build_stream(
     query: Log.BuildStreamQuery,
     after_id: int,
 ) -> int:
-    """Push build log updates to client. Returns new last_id."""
-    from atopile.model.sqlite import Logs
-
-    log_levels_str, audience_str = _parse_filter_params(query)
-    logs, new_last_id = Logs.fetch_chunk(
-        query.build_id,
+    levels, audience = _parse_filter_params(query)
+    logs, new_last_id = read_build_logs(
+        build_id=query.build_id,
         stage=query.stage,
-        levels=log_levels_str,
-        audience=audience_str,
+        log_levels=levels,
+        audience=audience,
         after_id=after_id,
-        count=_clamp(query.count),
+        count=query.count,
         order="ASC",
+        include_id=True,
     )
+    if not logs:
+        return after_id
 
-    if logs:
-        entries = [Log.BuildStreamEntryPydantic.model_validate(entry) for entry in logs]
-        await websocket.send_json(
-            Log.BuildStreamResult(logs=entries, last_id=new_last_id).model_dump()
-        )
-        return new_last_id
-    return after_id
+    await websocket.send_json(
+        Log.StreamResult(
+            type="logs_stream",
+            build_id=query.build_id,
+            test_run_id="",
+            stage=query.stage,
+            logs=[Log.StreamEntryPydantic.model_validate(entry) for entry in logs],
+            last_id=new_last_id,
+        ).model_dump()
+    )
+    return new_last_id
 
 
 async def _push_test_stream(
@@ -79,61 +71,39 @@ async def _push_test_stream(
     query: Log.TestStreamQuery,
     after_id: int,
 ) -> int:
-    """Push test log updates to client. Returns new last_id."""
     from atopile.model.sqlite import TestLogs
 
-    log_levels_str, audience_str = _parse_filter_params(query)
+    levels, audience = _parse_filter_params(query)
     logs, new_last_id = TestLogs.fetch_chunk(
         query.test_run_id,
         test_name=query.test_name,
-        levels=log_levels_str,
-        audience=audience_str,
+        levels=levels,
+        audience=audience,
         after_id=after_id,
-        count=_clamp(query.count),
+        count=query.count,
         order="ASC",
     )
+    if not logs:
+        return after_id
 
-    if logs:
-        entries = [Log.TestStreamEntryPydantic.model_validate(entry) for entry in logs]
-        await websocket.send_json(
-            Log.TestStreamResult(logs=entries, last_id=new_last_id).model_dump()
-        )
-        return new_last_id
-    return after_id
+    await websocket.send_json(
+        Log.StreamResult(
+            type="test_logs_stream",
+            build_id="",
+            test_run_id=query.test_run_id,
+            test_name=query.test_name,
+            logs=[Log.StreamEntryPydantic.model_validate(entry) for entry in logs],
+            last_id=new_last_id,
+        ).model_dump()
+    )
+    return new_last_id
 
 
 @router.websocket("/ws/logs")
-async def websocket_logs(websocket: WebSocket):
-    """
-    WebSocket endpoint for querying build or test logs.
-
-    Supports two modes:
-    1. One-shot: Send query, receive all matching logs
-    2. Streaming: Send query with subscribe=true, receive continuous updates
-
-    For streaming, the response includes last_id which tracks the cursor position.
-    New logs are pushed automatically as they appear in the database.
-
-    Common payload:
-    - log_levels (list[str] enum, optional)
-    - audience (str enum, optional)
-    - count (int, default 500 for one-shot, 100 for streaming)
-    - subscribe (bool, default false) - enable streaming mode
-
-    Build log payload:
-    - build_id (str)
-    - stage (str, optional)
-    - after_id (int, optional) - cursor for streaming, only logs with id > after_id
-
-    Test log payload:
-    - test_run_id (str)
-    - test_name (str, optional)
-    - after_id (int, optional) - cursor for streaming
-    """
+async def websocket_logs(websocket: WebSocket) -> None:
     await websocket.accept()
     log.info("Logs WebSocket client connected")
 
-    # Streaming state
     streaming = False
     stream_query: Log.BuildStreamQuery | Log.TestStreamQuery | None = None
     last_id = 0
@@ -141,48 +111,39 @@ async def websocket_logs(websocket: WebSocket):
 
     try:
         while True:
-            # In streaming mode, use short timeout to allow periodic polling
-            # In normal mode, wait indefinitely for next message
             try:
                 if streaming and stream_query:
-                    # Non-blocking check for new client message
                     data = await asyncio.wait_for(
                         websocket.receive_json(), timeout=STREAM_POLL_INTERVAL
                     )
                 else:
-                    # Blocking wait for client message
                     data = await websocket.receive_json()
             except asyncio.TimeoutError:
-                # No new message during streaming - push any new logs
-                if streaming and stream_query:
-                    if is_test_mode:
-                        last_id = await _push_test_stream(
-                            websocket,
-                            stream_query,  # type: ignore
-                            last_id,
-                        )
-                    else:
-                        last_id = await _push_build_stream(
-                            websocket,
-                            stream_query,  # type: ignore
-                            last_id,
-                        )
+                if not streaming or stream_query is None:
+                    continue
+                if is_test_mode:
+                    last_id = await _push_test_stream(
+                        websocket,
+                        stream_query,
+                        last_id,
+                    )
+                else:
+                    last_id = await _push_build_stream(
+                        websocket,
+                        stream_query,
+                        last_id,
+                    )
                 continue
 
-            # Check for subscribe mode
             subscribe = data.pop("subscribe", False)
-
-            # Check for unsubscribe
             if data.get("unsubscribe"):
                 streaming = False
                 stream_query = None
                 log.debug("Client unsubscribed from log streaming")
                 continue
 
-            # Guard: reject requests with both build_id and test_run_id
             has_build_id = "build_id" in data
             has_test_run_id = "test_run_id" in data
-
             if has_build_id and has_test_run_id:
                 await websocket.send_json(
                     Log.Error(
@@ -193,102 +154,102 @@ async def websocket_logs(websocket: WebSocket):
 
             if has_test_run_id:
                 is_test_mode = True
-                # Test logs mode
                 if subscribe:
                     try:
                         stream_query = Log.TestStreamQuery.model_validate(data)
                     except ValidationError as exc:
-                        err = Log.Error(error=str(exc)).model_dump()
-                        await websocket.send_json(err)
+                        await websocket.send_json(
+                            Log.Error(error=str(exc)).model_dump()
+                        )
                         continue
-
                     streaming = True
                     last_id = stream_query.after_id
                     log.debug(
-                        f"Client subscribed to test logs: {stream_query.test_run_id}"
+                        "Client subscribed to test logs: %s",
+                        stream_query.test_run_id,
                     )
-                    # Send initial batch immediately
                     last_id = await _push_test_stream(websocket, stream_query, last_id)
-                else:
-                    # One-shot query
-                    streaming = False
-                    stream_query = None
-                    try:
-                        query = Log.TestQuery.model_validate(data)
-                    except ValidationError as exc:
-                        err = Log.Error(error=str(exc)).model_dump()
-                        await websocket.send_json(err)
-                        continue
+                    continue
 
-                    from atopile.model.sqlite import TestLogs
+                streaming = False
+                stream_query = None
+                try:
+                    query = Log.TestQuery.model_validate(data)
+                except ValidationError as exc:
+                    await websocket.send_json(Log.Error(error=str(exc)).model_dump())
+                    continue
 
-                    log_levels_str, audience_str = _parse_filter_params(query)
-                    rows, _ = TestLogs.fetch_chunk(
-                        query.test_run_id,
+                from atopile.model.sqlite import TestLogs
+
+                levels, audience = _parse_filter_params(query)
+                rows, _ = TestLogs.fetch_chunk(
+                    query.test_run_id,
+                    test_name=query.test_name,
+                    levels=levels,
+                    audience=audience,
+                    after_id=0,
+                    count=query.count,
+                    order="DESC",
+                )
+                await websocket.send_json(
+                    Log.Result(
+                        type="test_logs_result",
+                        build_id="",
+                        test_run_id=query.test_run_id,
                         test_name=query.test_name,
-                        levels=log_levels_str,
-                        audience=audience_str,
-                        after_id=0,
-                        count=_clamp(query.count),
-                        order="DESC",
-                    )
+                        logs=[
+                            Log.EntryPydantic.model_validate(
+                                {k: v for k, v in row.items() if k != "id"}
+                            )
+                            for row in rows
+                        ],
+                    ).model_dump()
+                )
+                continue
 
-                    entries = [
-                        Log.TestEntryPydantic.model_validate(_strip_id(r)) for r in rows
-                    ]
-                    await websocket.send_json(Log.TestResult(logs=entries).model_dump())
-            else:
-                is_test_mode = False
-                # Build logs mode (default)
-                if subscribe:
-                    try:
-                        stream_query = Log.BuildStreamQuery.model_validate(data)
-                    except ValidationError as exc:
-                        err = Log.Error(error=str(exc)).model_dump()
-                        await websocket.send_json(err)
-                        continue
+            is_test_mode = False
+            if subscribe:
+                try:
+                    stream_query = Log.BuildStreamQuery.model_validate(data)
+                except ValidationError as exc:
+                    await websocket.send_json(Log.Error(error=str(exc)).model_dump())
+                    continue
+                streaming = True
+                last_id = stream_query.after_id
+                log.debug(
+                    "Client subscribed to build logs: %s",
+                    stream_query.build_id,
+                )
+                last_id = await _push_build_stream(websocket, stream_query, last_id)
+                continue
 
-                    streaming = True
-                    last_id = stream_query.after_id
-                    log.debug(
-                        f"Client subscribed to build logs: {stream_query.build_id}"
-                    )
-                    # Send initial batch immediately
-                    last_id = await _push_build_stream(websocket, stream_query, last_id)
-                else:
-                    # One-shot query
-                    streaming = False
-                    stream_query = None
-                    try:
-                        query = Log.BuildQuery.model_validate(data)
-                    except ValidationError as exc:
-                        err = Log.Error(error=str(exc)).model_dump()
-                        await websocket.send_json(err)
-                        continue
+            streaming = False
+            stream_query = None
+            try:
+                query = Log.BuildQuery.model_validate(data)
+            except ValidationError as exc:
+                await websocket.send_json(Log.Error(error=str(exc)).model_dump())
+                continue
 
-                    from atopile.model.sqlite import Logs
-
-                    log_levels_str, audience_str = _parse_filter_params(query)
-                    rows, _ = Logs.fetch_chunk(
-                        query.build_id,
-                        stage=query.stage,
-                        levels=log_levels_str,
-                        audience=audience_str,
-                        after_id=0,
-                        count=_clamp(query.count),
-                        order="DESC",
-                    )
-
-                    entries = [
-                        Log.BuildEntryPydantic.model_validate(_strip_id(r))
-                        for r in rows
-                    ]
-                    await websocket.send_json(
-                        Log.BuildResult(logs=entries).model_dump()
-                    )
-
+            levels, audience = _parse_filter_params(query)
+            rows, _ = read_build_logs(
+                build_id=query.build_id,
+                stage=query.stage,
+                log_levels=levels,
+                audience=audience,
+                count=query.count,
+            )
+            await websocket.send_json(
+                Log.Result(
+                    type="logs_result",
+                    build_id=query.build_id,
+                    test_run_id="",
+                    stage=query.stage,
+                    logs=[Log.EntryPydantic.model_validate(row) for row in rows],
+                ).model_dump()
+            )
     except WebSocketDisconnect:
         log.info("Logs WebSocket client disconnected")
     except Exception as exc:
-        log.exception(f"Logs WebSocket error: {exc}")
+        log.exception("Logs WebSocket error: %s", exc)
         raise

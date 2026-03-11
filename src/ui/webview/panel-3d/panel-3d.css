@@ -1,0 +1,28 @@
+.panel-3d-container,
+.panel-3d-canvas {
+  height: 100%;
+  width: 100%;
+}
+
+.panel-3d-container {
+  position: relative;
+  background: var(--vscode-editor-background);
+}
+
+.panel-3d-canvas canvas {
+  display: block;
+}
+
+.panel-3d-state {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-foreground);
+  text-align: center;
+  max-width: 360px;
+  margin: 0 auto;
+}

@@ -1,0 +1,63 @@
+/* StructurePanel — uses shared sidebar-panel, sidebar-panel-scroll, sidebar-panel-header, type-icon from PanelLayout.css + TypeIcon.css */
+
+.structure-file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.structure-module {
+  margin-bottom: var(--spacing-xs);
+}
+
+.structure-module-header {
+  font-size: var(--font-size-sm);
+}
+
+.structure-children {
+  padding-left: var(--spacing-md);
+}
+
+.structure-child-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 2px var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.structure-child-row:hover {
+  background: var(--bg-hover);
+}
+
+.structure-chevron {
+  transition: transform 0.15s;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.structure-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.structure-child-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.structure-child-type {
+  color: var(--text-muted);
+  font-size: var(--font-size-xxs);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.structure-child-spec {
+  color: var(--accent);
+  font-size: var(--font-size-xxs);
+  flex-shrink: 0;
+}

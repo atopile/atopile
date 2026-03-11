@@ -18,7 +18,7 @@ from faebryk.core.solver.algorithm import SolverAlgorithm
 
 if TYPE_CHECKING:
     import faebryk.library._F as F
-from atopile.logging import scope
+from atopile.logging import get_logger, scope
 from atopile.logging_utils import NET_LINE_WIDTH
 from faebryk.core.solver.mutator import MutationMap, Mutator
 from faebryk.core.solver.symbolic import (
@@ -34,7 +34,7 @@ from faebryk.core.solver.utils import (
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import not_none
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 if S_LOG:
     logger.setLevel(logging.DEBUG)

@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from atopile.server.routes.logs import router as logs_router
@@ -30,9 +30,11 @@ router = APIRouter()
 aggregator = None  # type: ignore
 REPORT_HTML_PATH = Path("artifacts/test-report.html")
 REMOTE_BASELINES_DIR = Path("artifacts/baselines/remote")
-
-# Path to the log viewer static files
-LOG_VIEWER_DIST_DIR = Path(__file__).parent.parent.parent / "src" / "ui-server" / "dist"
+WEBVIEW_DIST_DIR = (
+    Path(__file__).parent.parent.parent / "src" / "vscode-atopile" / "webview-dist"
+)
+STANDALONE_LOG_VIEWER_DIST_DIR = WEBVIEW_DIST_DIR / "panel-logs-standalone"
+LOG_VIEWER_HTML_PATH = Path(__file__).with_name("log_viewer.html")
 
 
 def set_globals(agg_ref, report_path, remote_dir):
@@ -237,53 +239,25 @@ async def get_baseline_status(commit: str):
 
 @router.get("/logs")
 async def serve_log_viewer(request: Request):
-    """Serve the log viewer HTML page with injected API URL."""
-    html_path = LOG_VIEWER_DIST_DIR / "log-viewer.html"
-    if not html_path.exists():
+    """Serve the test runner log viewer page, adapted from mainline."""
+    script_path = STANDALONE_LOG_VIEWER_DIST_DIR / "index.js"
+    style_path = STANDALONE_LOG_VIEWER_DIST_DIR / "index.css"
+    if not script_path.exists() or not style_path.exists():
         return HTMLResponse(
-            content="<html><body><h1>Log viewer not found</h1>"
-            f"<p>Expected at: {html_path}</p>"
-            "<p>Run 'npm run build' in src/ui-server to build it.</p></body></html>",
+            content="<html><body><h1>Log viewer not built</h1>"
+            "<p>Expected standalone log viewer assets in "
+            f"{STANDALONE_LOG_VIEWER_DIST_DIR}</p></body></html>",
             status_code=404,
         )
 
-    content = html_path.read_text(encoding="utf-8")
-
-    # Inject the API URL so the log viewer can connect to this server's WebSocket
-    # The log viewer JavaScript expects window.__ATOPILE_API_URL__ to be set
-    host = request.headers.get("host", "127.0.0.1")
-    # Ensure we use http (not https) for local server
-    api_url = f"http://{host}"
+    content = LOG_VIEWER_HTML_PATH.read_text(encoding="utf-8")
+    api_url = str(request.base_url).rstrip("/")
     inject_script = f"""<script>
     window.__ATOPILE_API_URL__ = "{api_url}";
     </script>
     """
-    # Insert the script right after <head>
     content = content.replace("<head>", f"<head>\n    {inject_script}", 1)
-
-    return HTMLResponse(content=content)
-
-
-@router.websocket("/ws/state")
-async def websocket_state_stub(websocket: WebSocket):
-    """
-    Stub WebSocket endpoint for /ws/state.
-
-    The log viewer UI (shared with the main build server) tries to connect to
-    /ws/state for app state updates. In the test runner context, we don't need
-    this connection, so we accept and immediately close it gracefully.
-
-    Without this stub, WebSocket requests would fall through to the StaticFiles
-    catch-all mount, which only handles HTTP and throws an assertion error.
-    """
-    await websocket.accept()
-    try:
-        # Just wait for the client to disconnect
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        pass
+    return HTMLResponse(content)
 
 
-# Include the logs WebSocket router from atopile.server
 router.include_router(logs_router)

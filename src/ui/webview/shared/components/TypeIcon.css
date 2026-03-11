@@ -1,0 +1,18 @@
+/* ============================================
+   TypeIcon — ato type icon color classes
+   Shared across StructurePanel, LibraryPanel, etc.
+   ============================================ */
+
+.type-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
+.type-icon.type-interface { color: #6cb6ff; }
+.type-icon.type-module { color: var(--ato-orange, #f95015); }
+.type-icon.type-component { color: #4ade80; }
+.type-icon.type-parameter { color: #a855f7; }
+.type-icon.type-trait { color: #f59e0b; }
