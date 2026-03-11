@@ -2624,6 +2624,73 @@ class TestRetypeRuntime:
             f"got {leaf_type}"
         )
 
+    def test_triple_nested_retype_outermost_wins(self):
+        """Three nested modules each retype the same field.
+
+        The outermost (highest in hierarchy) cross-instance retype should
+        be the one that sticks at runtime, and independent instances of
+        the inner modules should retain their own retypes.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module SlotBase:
+                x = new Electrical
+
+            module SlotA:
+                a = new Electrical
+
+            module SlotB:
+                b = new Electrical
+
+            module SlotC:
+                c = new Electrical
+
+            module Level1:
+                slot = new SlotBase
+                slot -> SlotA
+
+            module Level2:
+                l1 = new Level1
+                l1.slot -> SlotB
+
+            module App:
+                l2 = new Level2
+                l2.l1.slot -> SlotC
+
+                # Independent instances to verify isolation
+                standalone_l1 = new Level1
+                standalone_l2 = new Level2
+            """,
+            "App",
+        )
+
+        # Outermost retype (SlotC) should win at l2.l1.slot
+        slot = _get_child(_get_child(_get_child(app_instance, "l2"), "l1"), "slot")
+        slot_type = _get_type_name(slot)
+        assert "SlotC" in slot_type, (
+            f"Outermost retype (SlotC) should win, got {slot_type}"
+        )
+
+        # standalone Level1 should still have SlotA (its own retype)
+        standalone_l1_slot = _get_child(
+            _get_child(app_instance, "standalone_l1"), "slot"
+        )
+        standalone_l1_type = _get_type_name(standalone_l1_slot)
+        assert "SlotA" in standalone_l1_type, (
+            f"standalone_l1.slot should be SlotA, got {standalone_l1_type}"
+        )
+
+        # standalone Level2 should have SlotB (its own retype, not SlotC)
+        standalone_l2_slot = _get_child(
+            _get_child(_get_child(app_instance, "standalone_l2"), "l1"), "slot"
+        )
+        standalone_l2_type = _get_type_name(standalone_l2_slot)
+        assert "SlotB" in standalone_l2_type, (
+            f"standalone_l2.l1.slot should be SlotB, got {standalone_l2_type}"
+        )
+
 
 class TestRetypeInstanceIsolation:
     """Tests that retype on one instance does NOT affect sibling instances.
