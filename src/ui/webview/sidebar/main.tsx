@@ -28,8 +28,6 @@ import "./sidebar.css";
 const POST_CONNECT_DISCONNECT_GRACE_MS = 5_000;
 const logger = createWebviewLogger("Sidebar");
 
-
-
 function DisconnectedOverlay({
   isConnected,
   startupError,
@@ -98,8 +96,7 @@ function App() {
   const projects = WebviewRpcClient.useSubscribe("projects");
   const connected = WebviewRpcClient.useSubscribe("connected");
   const coreStatus = WebviewRpcClient.useSubscribe("coreStatus");
-  const currentBuilds = WebviewRpcClient.useSubscribe("currentBuilds");
-  const previousBuilds = WebviewRpcClient.useSubscribe("previousBuilds");
+  const queueBuilds = WebviewRpcClient.useSubscribe("queueBuilds");
   const sidebarDetails = WebviewRpcClient.useSubscribe("sidebarDetails");
   const structureData = WebviewRpcClient.useSubscribe("structureData");
 
@@ -149,27 +146,15 @@ function App() {
 
   const projectBuilds = useMemo(() => {
     const project = projectState.selectedProject;
-    // Active builds for this project
-    const active = currentBuilds.filter((b) => b.projectRoot === project);
-    const hasActiveBuild = (build: Build) =>
-      active.some((activeBuild) => sameTarget(activeBuild.target, build.target));
+    if (!project) return [];
 
-    // For targets without an active build, pick the latest previous build
-    const latestPrevious = new Map<string, Build>();
-    for (const b of previousBuilds) {
-      const key = b.buildId ?? (b.target
-        ? `${b.target.root}:${b.name}`
-        : `${b.projectRoot}:${b.name}`);
-      if (b.projectRoot === project && !hasActiveBuild(b) && !latestPrevious.has(key)) {
-        latestPrevious.set(key, b);
-      }
-    }
-
-    return [...active, ...latestPrevious.values()].map((b) => ({
-      ...b,
-      currentStage: getCurrentStage(b),
-    }));
-  }, [currentBuilds, previousBuilds, projectState.selectedProject]);
+    return queueBuilds
+      .filter((build) => build.projectRoot === project)
+      .map((b) => ({
+        ...b,
+        currentStage: getCurrentStage(b),
+      }));
+  }, [projectState.selectedProject, queueBuilds]);
 
   const isBuilding = useMemo(
     () =>

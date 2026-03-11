@@ -1,5 +1,5 @@
 import type { RpcTransport } from "../../shared/rpcTransport";
-import { vscode } from "./vscodeApi";
+import { getVscodeApi } from "./vscodeApi";
 
 export class PostMessageTransport implements RpcTransport {
   onMessage: ((data: string) => void) | null = null;
@@ -18,6 +18,10 @@ export class PostMessageTransport implements RpcTransport {
   }
 
   send(data: string): void {
+    const vscode = getVscodeApi();
+    if (!vscode) {
+      throw new Error("VS Code API is not available");
+    }
     vscode.postMessage({ type: "rpc:send", data });
   }
 

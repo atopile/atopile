@@ -118,12 +118,10 @@ export function BuildQueueItem({
     if (build.target) {
       rpcClient?.sendAction("selectTarget", { target: build.target });
     }
-    if (build.buildId) {
-      rpcClient?.sendAction("setLogViewCurrentId", {
-        buildId: build.buildId,
-        stage: stage ?? null,
-      });
-    }
+    rpcClient?.sendAction("setLogViewCurrentId", {
+      buildId: build.buildId,
+      stage: stage ?? null,
+    });
     try {
       await rpcClient?.requestAction("vscode.showLogsView");
     } catch (error) {

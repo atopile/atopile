@@ -684,10 +684,14 @@ def same_target(
     left: ResolvedBuildTarget | None,
     right: ResolvedBuildTarget | None,
 ) -> bool:
-    """Compare targets by root and name."""
+    """Compare targets by resolved identity."""
     if left is None or right is None:
         return False
-    return left.name == right.name and Path(left.root) == Path(right.root)
+    return (
+        left.name == right.name
+        and Path(left.root) == Path(right.root)
+        and left.entry == right.entry
+    )
 
 
 def is_selected_target(

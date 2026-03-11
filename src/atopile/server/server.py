@@ -36,12 +36,13 @@ import websockets
 
 from atopile.dataclasses import AppContext
 from atopile.layout_server.__main__ import create_app_for_service
+from atopile.logging import get_logger
 from atopile.model.build_queue import _build_queue
 from atopile.model.sqlite import BuildHistory, Logs
 from atopile.server.domains.layout import layout_service
 from atopile.server.ui.websocket import CoreSocket
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:

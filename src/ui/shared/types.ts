@@ -50,6 +50,7 @@ export function sameTarget(
   return (
     left.name === right.name
     && normalizePath(left.root) === normalizePath(right.root)
+    && left.entry === right.entry
   );
 }
 

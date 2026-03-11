@@ -8,9 +8,10 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from atopile.server.routes.logs import router as logs_router
 from test.runner.baselines import (
     fetch_remote_report,
     get_branch_base,
@@ -29,6 +30,11 @@ router = APIRouter()
 aggregator = None  # type: ignore
 REPORT_HTML_PATH = Path("artifacts/test-report.html")
 REMOTE_BASELINES_DIR = Path("artifacts/baselines/remote")
+WEBVIEW_DIST_DIR = (
+    Path(__file__).parent.parent.parent / "src" / "vscode-atopile" / "webview-dist"
+)
+STANDALONE_LOG_VIEWER_DIST_DIR = WEBVIEW_DIST_DIR / "panel-logs-standalone"
+LOG_VIEWER_HTML_PATH = Path(__file__).with_name("log_viewer.html")
 
 
 def set_globals(agg_ref, report_path, remote_dir):
@@ -233,31 +239,25 @@ async def get_baseline_status(commit: str):
 
 @router.get("/logs")
 async def serve_log_viewer(request: Request):
-    """Fail fast: the standalone log viewer was removed with the webview rewrite."""
-    _ = request
-    return HTMLResponse(
-        content="<html><body><h1>Log viewer unavailable</h1>"
-        "<p>Use the VS Code logs panel instead.</p></body></html>",
-        status_code=410,
-    )
+    """Serve the test runner log viewer page, adapted from mainline."""
+    script_path = STANDALONE_LOG_VIEWER_DIST_DIR / "index.js"
+    style_path = STANDALONE_LOG_VIEWER_DIST_DIR / "index.css"
+    if not script_path.exists() or not style_path.exists():
+        return HTMLResponse(
+            content="<html><body><h1>Log viewer not built</h1>"
+            "<p>Expected standalone log viewer assets in "
+            f"{STANDALONE_LOG_VIEWER_DIST_DIR}</p></body></html>",
+            status_code=404,
+        )
 
-
-@router.websocket("/ws/state")
-async def websocket_state_stub(websocket: WebSocket):
+    content = LOG_VIEWER_HTML_PATH.read_text(encoding="utf-8")
+    api_url = str(request.base_url).rstrip("/")
+    inject_script = f"""<script>
+    window.__ATOPILE_API_URL__ = "{api_url}";
+    </script>
     """
-    Stub WebSocket endpoint for /ws/state.
+    content = content.replace("<head>", f"<head>\n    {inject_script}", 1)
+    return HTMLResponse(content)
 
-    The log viewer UI (shared with the core server) tries to connect to
-    /ws/state for app state updates. In the test runner context, we don't need
-    this connection, so we accept and immediately close it gracefully.
 
-    Without this stub, WebSocket requests would fall through to the StaticFiles
-    catch-all mount, which only handles HTTP and throws an assertion error.
-    """
-    await websocket.accept()
-    try:
-        # Just wait for the client to disconnect
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        pass
+router.include_router(logs_router)

@@ -279,7 +279,8 @@ class BuildHistory:
                             SELECT rowid, ROW_NUMBER() OVER (
                                 PARTITION BY
                                     json_extract(target, '$.root'),
-                                    name
+                                    name,
+                                    json_extract(target, '$.entry')
                                 ORDER BY started_at DESC
                             ) AS rn
                             FROM build_history
@@ -312,7 +313,8 @@ class BuildHistory:
                             SELECT rowid, ROW_NUMBER() OVER (
                                 PARTITION BY
                                     json_extract(target, '$.root'),
-                                    name
+                                    name,
+                                    json_extract(target, '$.entry')
                                 ORDER BY started_at DESC
                             ) AS rn
                             FROM build_history

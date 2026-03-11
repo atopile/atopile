@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import logging
 from pathlib import Path
 from typing import Any, cast
 
@@ -37,6 +36,7 @@ from atopile.dataclasses import (
     UiSidebarDetails,
     UpdateBuildTargetRequest,
 )
+from atopile.logging import get_logger
 from atopile.model import (
     artifacts,
     builds,
@@ -52,6 +52,7 @@ from atopile.model.build_queue import BuildQueue, _build_queue
 from atopile.model.builds import (
     get_active_builds,
     get_finished_builds,
+    get_queue_builds,
     handle_start_build,
     resolve_layout_path,
 )
@@ -63,7 +64,7 @@ from atopile.server.domains.vscode_bridge import VscodeBridge
 from atopile.server.ui import remote_assets, sidebar
 from atopile.server.ui.store import Store
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 STREAM_POLL_INTERVAL = 0.25  # seconds
 EXTENSION_SESSION_ID = "extension"
@@ -93,6 +94,7 @@ class CoreSocket:
         )
         self._store.set("current_builds", get_active_builds())
         self._store.set("previous_builds", get_finished_builds())
+        self._store.set("queue_builds", get_queue_builds())
         self.bind_build_queue(_build_queue)
 
     # -- Client lifecycle --------------------------------------------------
@@ -366,8 +368,8 @@ class CoreSocket:
                 self._store.merge(
                     "project_state",
                     {
-                        "logViewBuildId": msg.get("buildId") or None,
-                        "logViewStage": msg.get("stage") or None,
+                        "logViewBuildId": str(msg.get("buildId") or "") or None,
+                        "logViewStage": str(msg.get("stage") or "") or None,
                     },
                 )
                 return
@@ -652,7 +654,15 @@ class CoreSocket:
                     include_targets=msg.get("includeTargets", []),
                     exclude_targets=msg.get("excludeTargets", []),
                 )
-                handle_start_build(request)
+                enqueued_builds = handle_start_build(request)
+                if enqueued_builds:
+                    self._store.merge(
+                        "project_state",
+                        {
+                            "logViewBuildId": enqueued_builds[0].build_id,
+                            "logViewStage": None,
+                        },
+                    )
                 return
 
             case "cancelBuild":
@@ -1099,6 +1109,8 @@ class CoreSocket:
 
         if logs:
             payload = UiLogsStreamMessage(
+                build_id=build_id,
+                stage=stage,
                 logs=[UiLogEntry.model_validate(log) for log in logs],
                 last_id=new_last_id,
             ).model_dump(mode="json")
@@ -1123,6 +1135,7 @@ class CoreSocket:
     async def _push_builds(self) -> None:
         self._store.set("current_builds", get_active_builds())
         self._store.set("previous_builds", get_finished_builds())
+        self._store.set("queue_builds", get_queue_builds())
         self._sync_selected_build()
 
     # -- Broadcasting ------------------------------------------------------

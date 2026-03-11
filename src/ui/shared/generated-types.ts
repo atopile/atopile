@@ -540,6 +540,7 @@ export interface UiLogEntry {
   audience: UiAudience;
   loggerName: string;
   message: string;
+  testName: string | null;
   stage: string | null;
   sourceFile: string | null;
   sourceLine: number | null;
@@ -555,6 +556,8 @@ export interface UiLogsErrorMessage {
 
 export interface UiLogsStreamMessage {
   type: "logs_stream";
+  buildId: string;
+  stage: string | null;
   logs: UiLogEntry[];
   lastId: number;
 }
@@ -680,6 +683,7 @@ export interface UiStore {
   projectFiles: FileNode[];
   currentBuilds: Build[];
   previousBuilds: Build[];
+  queueBuilds: Build[];
   selectedBuild: Build | null;
   packagesSummary: PackagesSummaryData;
   partsSearch: UiPartsSearchData;
@@ -705,6 +709,14 @@ export interface UiStructureData {
 export interface UiSubscribeMessage {
   type: "subscribe";
   keys: StoreKey[];
+}
+
+export interface UiTestLogRequest {
+  testRunId: string;
+  testName: string | null;
+  logLevels: UiLogLevel[] | null;
+  audience: UiAudience | null;
+  count: number | null;
 }
 
 export interface UiVariable {
@@ -738,7 +750,7 @@ export interface UpdateBuildTargetResponse {
   target: string | null;
 }
 
-export const STORE_KEYS = ["blobAsset", "bomData", "buildsByProjectData", "coreStatus", "currentBuilds", "entryCheck", "extensionSettings", "fileAction", "installedParts", "layoutData", "lcscPartsData", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "selectedBuild", "sidebarDetails", "stdlibData", "structureData", "variablesData"] as const;
+export const STORE_KEYS = ["blobAsset", "bomData", "buildsByProjectData", "coreStatus", "currentBuilds", "entryCheck", "extensionSettings", "fileAction", "installedParts", "layoutData", "lcscPartsData", "packagesSummary", "partsSearch", "previousBuilds", "projectFiles", "projectState", "projects", "queueBuilds", "selectedBuild", "sidebarDetails", "stdlibData", "structureData", "variablesData"] as const;
 export type StoreKey = typeof STORE_KEYS[number];
 
 export const DEFAULT_Build: Build = {
@@ -992,6 +1004,7 @@ export const DEFAULT_UiLogEntry: UiLogEntry = {
   "sourceFile": null,
   "sourceLine": null,
   "stage": null,
+  "testName": null,
   "timestamp": ""
 };
 
@@ -1000,8 +1013,10 @@ export function createUiLogEntry(): UiLogEntry {
 }
 
 export const DEFAULT_UiLogsStreamMessage: UiLogsStreamMessage = {
+  "buildId": "",
   "lastId": 0,
   "logs": [],
+  "stage": null,
   "type": "logs_stream"
 };
 
@@ -1244,6 +1259,7 @@ export const DEFAULT_UiStore: UiStore = {
     "selectedTarget": null
   },
   "projects": [],
+  "queueBuilds": [],
   "selectedBuild": null,
   "sidebarDetails": {
     "migration": {
@@ -1301,6 +1317,18 @@ export const DEFAULT_UiStructureData: UiStructureData = {
 
 export function createUiStructureData(): UiStructureData {
   return cloneGenerated(DEFAULT_UiStructureData);
+}
+
+export const DEFAULT_UiTestLogRequest: UiTestLogRequest = {
+  "audience": null,
+  "count": null,
+  "logLevels": null,
+  "testName": null,
+  "testRunId": ""
+};
+
+export function createUiTestLogRequest(): UiTestLogRequest {
+  return cloneGenerated(DEFAULT_UiTestLogRequest);
 }
 
 export const DEFAULT_UiVariable: UiVariable = {

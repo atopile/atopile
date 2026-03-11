@@ -57,7 +57,7 @@ from test.runner.report import (
 from test.runner.report import (
     set_globals as set_report_globals,
 )
-from test.runner.ui import LOG_VIEWER_DIST_DIR
+from test.runner.ui import WEBVIEW_DIST_DIR
 from test.runner.ui import router as ui_router
 from test.runner.ui import set_globals as set_ui_globals
 
@@ -117,15 +117,11 @@ aggregator: TestAggregator | None = None
 app = FastAPI()
 app.include_router(orchestrator_router)
 app.include_router(ui_router)
-
-# Mount log viewer static assets at root (must be last - acts as fallback)
-# Specific routes like /logs, /report take precedence over this catch-all
-# Only mount if the directory exists (it won't in CI where frontend isn't built)
-if LOG_VIEWER_DIST_DIR.exists():
+if WEBVIEW_DIST_DIR.exists():
     app.mount(
-        "/",
-        StaticFiles(directory=LOG_VIEWER_DIST_DIR, html=False),
-        name="log-viewer-static",
+        "/webview-dist",
+        StaticFiles(directory=WEBVIEW_DIST_DIR, html=False),
+        name="webview-dist",
     )
 
 

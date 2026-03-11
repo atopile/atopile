@@ -56,6 +56,7 @@ class UiStore(CamelModel):
     project_files: list[FileNode] = Field(default_factory=list)
     current_builds: list[Build] = Field(default_factory=list)
     previous_builds: list[Build] = Field(default_factory=list)
+    queue_builds: list[Build] = Field(default_factory=list)
     selected_build: Build | None = None
     packages_summary: PackagesSummaryData = Field(
         default_factory=lambda: PackagesSummaryData(

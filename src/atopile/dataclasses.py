@@ -289,31 +289,25 @@ class Log:
         python_traceback: str | None = None
         objects: Any | None = None
 
-    class BuildEntryPydantic(_BaseEntryPydantic):
-        """Pydantic model for build log entry (API serialization)."""
-
-        stage: str | None = None
-
-    class TestEntryPydantic(_BaseEntryPydantic):
-        """Pydantic model for test log entry (API serialization)."""
+    class EntryPydantic(_BaseEntryPydantic):
+        """Pydantic model for build/test log entry serialization."""
 
         test_name: str | None = None
+        stage: str | None = None
 
     # -------------------------------------------------------------------------
     # Pydantic models for log entry results
     # -------------------------------------------------------------------------
 
-    class BuildResult(BaseModel):
-        """Response containing build log entries."""
+    class Result(BaseModel):
+        """Response containing log entries."""
 
-        type: Literal["logs_result"] = "logs_result"
-        logs: list["Log.BuildEntryPydantic"]
-
-    class TestResult(BaseModel):
-        """Response containing test log entries."""
-
-        type: Literal["test_logs_result"] = "test_logs_result"
-        logs: list["Log.TestEntryPydantic"]
+        type: Literal["logs_result", "test_logs_result"]
+        build_id: str
+        test_run_id: str
+        stage: str | None = None
+        test_name: str | None = None
+        logs: list["Log.EntryPydantic"]
 
     class Error(BaseModel):
         """Error response for log queries."""
@@ -348,29 +342,22 @@ class Log:
 
         id: int  # Database row id for cursor
 
-    class BuildStreamEntryPydantic(_BaseStreamEntryPydantic):
-        """Build log entry with id for streaming (cursor tracking)."""
-
-        stage: str | None = None
-
-    class TestStreamEntryPydantic(_BaseStreamEntryPydantic):
-        """Test log entry with id for streaming."""
+    class StreamEntryPydantic(_BaseStreamEntryPydantic):
+        """Build/test log entry with id for streaming."""
 
         test_name: str | None = None
+        stage: str | None = None
 
-    class BuildStreamResult(BaseModel):
+    class StreamResult(BaseModel):
         """Streaming response with cursor."""
 
-        type: Literal["logs_stream"] = "logs_stream"
-        logs: list["Log.BuildStreamEntryPydantic"]
+        type: Literal["logs_stream", "test_logs_stream"]
+        build_id: str
+        test_run_id: str
+        stage: str | None = None
+        test_name: str | None = None
+        logs: list["Log.StreamEntryPydantic"]
         last_id: int  # Highest id returned - client sends this back as after_id
-
-    class TestStreamResult(BaseModel):
-        """Streaming response for test logs."""
-
-        type: Literal["test_logs_stream"] = "test_logs_stream"
-        logs: list["Log.TestStreamEntryPydantic"]
-        last_id: int
 
 
 # Set default values for dataclass fields after Log class is fully defined
@@ -1386,6 +1373,7 @@ class UiLogEntry(CamelModel):
     audience: UiAudience = UiAudience.USER
     logger_name: str = ""
     message: str = ""
+    test_name: str | None = None
     stage: str | None = None
     source_file: str | None = None
     source_line: int | None = None
@@ -1404,10 +1392,22 @@ class UiBuildLogRequest(CamelModel):
     count: int | None = None
 
 
+class UiTestLogRequest(CamelModel):
+    """Request payload for standalone or test-focused log views."""
+
+    test_run_id: str = ""
+    test_name: str | None = None
+    log_levels: list[UiLogLevel] | None = None
+    audience: UiAudience | None = None
+    count: int | None = None
+
+
 class UiLogsStreamMessage(CamelModel):
     """Streamed log message for the VS Code logs panel."""
 
     type: Literal["logs_stream"] = "logs_stream"
+    build_id: str = ""
+    stage: str | None = None
     logs: list[UiLogEntry] = Field(default_factory=list)
     last_id: int = 0
 

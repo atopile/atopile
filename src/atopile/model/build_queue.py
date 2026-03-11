@@ -4,7 +4,6 @@ Build queue and active build tracking.
 
 from __future__ import annotations
 
-import logging
 import os
 import queue
 import shutil
@@ -23,6 +22,7 @@ from atopile.dataclasses import (
     ResolvedBuildTarget,
     StageStatus,
 )
+from atopile.logging import get_logger
 from atopile.model import projects
 from atopile.model.sqlite import BUILD_HISTORY_DB, BuildHistory, Logs
 
@@ -70,7 +70,7 @@ BuildResultMsg = (
     | BuildOutputMsg
 )
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 # Build queue configuration
 MAX_CONCURRENT_BUILDS = 4

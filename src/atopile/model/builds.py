@@ -50,6 +50,11 @@ def get_finished_builds() -> list[dict]:
     return [b.model_dump() for b in BuildHistory.get_finished()]
 
 
+def get_queue_builds() -> list[dict]:
+    """Get the latest build for each target for queue/sidebar display."""
+    return [b.model_dump() for b in BuildHistory.get_latest_per_target()]
+
+
 def get_selected_build(
     target: ResolvedBuildTarget | None,
 ) -> Build | None:
@@ -119,8 +124,8 @@ def resolve_layout_path(request: OpenLayoutRequest) -> Path:
     return layout_path
 
 
-def handle_start_build(request: BuildRequest) -> None:
-    """Validate and enqueue a build. Raises ValueError on invalid request."""
+def handle_start_build(request: BuildRequest) -> list[Build]:
+    """Validate and enqueue builds. Raises ValueError on invalid request."""
     error = validate_build_request(request)
     if error:
         raise ValueError(error)
@@ -136,25 +141,32 @@ def handle_start_build(request: BuildRequest) -> None:
     if not targets:
         raise ValueError("No build targets resolved")
 
+    enqueued: list[Build] = []
     for target in targets:
-        if _build_queue.is_duplicate(request.project_root, target):
+        duplicate_build_id = _build_queue.is_duplicate(request.project_root, target)
+        if duplicate_build_id:
+            duplicate_build = BuildHistory.get(duplicate_build_id)
+            if duplicate_build is not None:
+                enqueued.append(duplicate_build)
             continue
         started_at = time.time()
         build_id = generate_build_id(target.root, target.name, started_at)
-        _build_queue.enqueue(
-            Build(
-                build_id=build_id,
-                project_root=request.project_root,
-                name=target.name,
-                target=target,
-                standalone=request.standalone,
-                frozen=request.frozen,
-                include_targets=request.include_targets,
-                exclude_targets=request.exclude_targets,
-                status=BuildStatus.QUEUED,
-                started_at=started_at,
-            )
+        build = Build(
+            build_id=build_id,
+            project_root=request.project_root,
+            name=target.name,
+            target=target,
+            standalone=request.standalone,
+            frozen=request.frozen,
+            include_targets=request.include_targets,
+            exclude_targets=request.exclude_targets,
+            status=BuildStatus.QUEUED,
+            started_at=started_at,
         )
+        _build_queue.enqueue(build)
+        enqueued.append(build)
+
+    return enqueued
 
 
 def handle_cancel_build(build_id: str) -> dict:
@@ -265,6 +277,7 @@ __all__ = [
     "MaxConcurrentRequest",
     "get_active_builds",
     "get_finished_builds",
+    "get_queue_builds",
     "handle_start_build",
     "handle_cancel_build",
     "handle_get_build_queue_status",

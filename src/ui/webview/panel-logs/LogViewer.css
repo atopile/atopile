@@ -103,6 +103,22 @@
 .lv-logger-trigger { min-width: 120px; }
 .lv-autoscroll-btn { height: var(--lv-control-height); min-width: 56px; }
 .lv-build-select { min-width: 200px; max-width: 400px; }
+.lv-target-summary {
+  display: flex;
+  align-items: center;
+  height: var(--lv-control-height);
+  min-width: 220px;
+  max-width: 420px;
+  padding: 0 var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* Column Headers */
 .lv-column-headers {

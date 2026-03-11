@@ -574,13 +574,14 @@ class AtoLogger(logging.Logger):
         prev_active_build = cls._active_build_logger
         prev_active_test = cls._active_test_logger
         prev_active_unscoped = cls._active_unscoped_logger
+        preserved_test_logger = prev_active_test if kind is None else None
 
         if reset_root:
             root.handlers = []
             root.setLevel(logging.WARNING)
 
         cls._active_build_logger = None
-        cls._active_test_logger = None
+        cls._active_test_logger = preserved_test_logger
         cls._active_unscoped_logger = None
 
         if kind is not None:
@@ -884,7 +885,7 @@ class ConsoleLogHandler(RichHandler):
 
 
 class _DBLogFilter(logging.Filter):
-    """Exclude noisy third-party loggers from DB storage."""
+    """Exclude noisy third-party debug logs from DB storage."""
 
     _excluded_prefixes = ("httpcore", "httpx", "http11", "connection")
 
