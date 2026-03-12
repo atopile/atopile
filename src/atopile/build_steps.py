@@ -30,30 +30,6 @@ from atopile.errors import (
 from atopile.logging import AtoLogger, get_logger
 from atopile.logging_utils import get_status_style, print_bar
 from faebryk.core.solver.solver import Solver
-from faebryk.exporters.bom.jlcpcb import write_bom
-from faebryk.exporters.bom.json_bom import write_json_bom
-from faebryk.exporters.documentation.datasheets import export_datasheets
-
-# from faebryk.exporters.documentation.i2c import export_i2c_tree
-from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
-from faebryk.exporters.pcb.kicad.artifacts import (
-    KicadCliExportError,
-    export_3d_board_render,
-    export_dxf,
-    export_gerber,
-    export_glb,
-    export_pcb_summary,
-    export_pick_and_place,
-    export_step,
-    export_svg,
-    githash_layout,
-)
-from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
-from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
-    convert_kicad_pick_and_place_to_jlcpcb,
-)
-from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
-from faebryk.exporters.power_tree.power_tree import export_power_tree
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import (
     attach_random_designators,
@@ -158,6 +134,8 @@ class Tags(StrEnum):
 
 @contextlib.contextmanager
 def _githash_layout(layout: Path) -> Generator[Path, None, None]:
+    from faebryk.exporters.pcb.kicad.artifacts import githash_layout
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_layout = githash_layout(layout, Path(tmpdir) / layout.name)
         yield tmp_layout
@@ -704,6 +682,8 @@ def post_solve_checks(ctx: BuildStepContext) -> None:
     "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
 )
 def update_pcb(ctx: BuildStepContext) -> None:
+    from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
+
     app = ctx.require_app()
     pcb = ctx.require_pcb()
 
@@ -869,6 +849,9 @@ def build_design(ctx: BuildStepContext) -> None:
 )
 def generate_bom(ctx: BuildStepContext) -> None:
     """Generate a BOM for the project in both CSV and JSON formats."""
+    from faebryk.exporters.bom.jlcpcb import write_bom
+    from faebryk.exporters.bom.json_bom import write_json_bom
+
     app = ctx.require_app()
     pickable_parts = [
         part
@@ -899,6 +882,8 @@ def generate_bom(ctx: BuildStepContext) -> None:
 )
 def generate_glb(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
+    from faebryk.exporters.pcb.kicad.artifacts import KicadCliExportError, export_glb
+
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
@@ -920,6 +905,8 @@ def generate_glb(ctx: BuildStepContext) -> None:
 )
 def generate_glb_only(ctx: BuildStepContext) -> None:
     """Generate GLB from existing layout without rebuilding. For fast 3D preview."""
+    from faebryk.exporters.pcb.kicad.artifacts import KicadCliExportError, export_glb
+
     layout_path = config.build.paths.layout
     if not layout_path.exists():
         raise UserException(
@@ -945,6 +932,8 @@ def generate_glb_only(ctx: BuildStepContext) -> None:
 )
 def generate_step(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D model as STEP."""
+    from faebryk.exporters.pcb.kicad.artifacts import KicadCliExportError, export_step
+
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
@@ -976,6 +965,11 @@ def generate_3d_models(ctx: BuildStepContext) -> None:
 )
 def generate_3d_render(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D rendered image."""
+    from faebryk.exporters.pcb.kicad.artifacts import (
+        KicadCliExportError,
+        export_3d_board_render,
+    )
+
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
@@ -996,6 +990,8 @@ def generate_3d_render(ctx: BuildStepContext) -> None:
 )
 def generate_2d_render(ctx: BuildStepContext) -> None:
     """Generate PCBA 2D rendered image."""
+    from faebryk.exporters.pcb.kicad.artifacts import KicadCliExportError, export_svg
+
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
@@ -1023,6 +1019,18 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
     - Pick and place (default and JLCPCB)
     - Testpoint-location
     """
+    from faebryk.exporters.pcb.kicad.artifacts import (
+        KicadCliExportError,
+        export_dxf,
+        export_gerber,
+        export_pcb_summary,
+        export_pick_and_place,
+    )
+    from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
+        convert_kicad_pick_and_place_to_jlcpcb,
+    )
+    from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
+
     app = ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
@@ -1118,6 +1126,10 @@ def generate_manifest(ctx: BuildStepContext) -> None:
 )
 def generate_variable_report(ctx: BuildStepContext) -> None:
     """Generate a report of all the variable values in the design."""
+    from faebryk.exporters.parameters.parameters_to_file import (
+        export_parameters_to_file,
+    )
+
     app = ctx.require_app()
     solver = ctx.require_solver()
     export_parameters_to_file(
@@ -1135,6 +1147,8 @@ def generate_variable_report(ctx: BuildStepContext) -> None:
 )
 def generate_power_tree(ctx: BuildStepContext) -> None:
     """Generate power tree visualization and data exports."""
+    from faebryk.exporters.power_tree.power_tree import export_power_tree
+
     app = ctx.require_app()
     solver = ctx.require_solver()
     output_dir = config.build.paths.output_base.parent
@@ -1151,6 +1165,8 @@ def generate_power_tree(ctx: BuildStepContext) -> None:
     produces_artifact=True,
 )
 def generate_datasheets(ctx: BuildStepContext) -> None:
+    from faebryk.exporters.documentation.datasheets import export_datasheets
+
     app = ctx.require_app()
     export_datasheets(
         app, config.build.paths.documentation / "datasheets", progress=None
