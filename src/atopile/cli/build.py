@@ -154,76 +154,6 @@ def _run_build_queue(
         return results
 
 
-def _run_single_build_inprocess(
-    build_name: str,
-) -> int:
-    """
-    Run a single build in-process (no subprocess).
-
-    Avoids the overhead of spawning a child Python process that re-imports
-    everything. For a single build target, this saves ~0.5s of startup time.
-
-    Returns 0 on success, 1 on failure.
-    """
-    from atopile import buildutil
-    from atopile.buildutil import BuildStepContext
-    from atopile.config import config
-    from atopile.dataclasses import StageStatus
-    from atopile.errors import iter_leaf_exceptions
-    from atopile.logging_utils import BuildPrinter
-
-    ctx = BuildStepContext(build=None)
-    started_at = time.time()
-    exit_code = 0
-
-    try:
-        with config.select_build(build_name):
-            buildutil.build(ctx=ctx)
-    except Exception as exc:
-        for e in iter_leaf_exceptions(exc):
-            logger.error(e, exc_info=e)
-        exit_code = 1
-
-    elapsed = time.time() - started_at
-    warnings = sum(1 for s in ctx.completed_stages if s.status == StageStatus.WARNING)
-    errors = sum(
-        1
-        for s in ctx.completed_stages
-        if s.status in (StageStatus.FAILED, StageStatus.ERROR)
-    )
-    status = (
-        BuildStatus.FAILED
-        if exit_code != 0
-        else BuildStatus.WARNING
-        if warnings > 0
-        else BuildStatus.SUCCESS
-    )
-
-    build_obj = Build(
-        name=build_name,
-        display_name=f"{config.project.paths.root.name}:{build_name}",
-        status=status,
-        stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
-        elapsed_seconds=elapsed,
-        started_at=started_at,
-        return_code=exit_code,
-        warnings=warnings,
-        errors=errors,
-    )
-
-    printer = BuildPrinter(verbose=False)
-    printer.print_summary([build_obj])
-
-    if exit_code == 0:
-        logger.info("Build successful! 🚀")
-    else:
-        from atopile.errors import log_discord_banner
-
-        log_discord_banner()
-
-    return exit_code
-
-
 def _run_single_build() -> None:
     """
     Run a single build target (worker mode).
@@ -576,9 +506,46 @@ def build(
     build_names = list(config.selected_builds)
     project_root = config.project.paths.root
 
-    # Fast path: single build runs in-process to avoid subprocess overhead
+    # Single build: run in-process to avoid subprocess import overhead (~0.5s)
     if len(build_names) == 1:
-        build_exit_code = _run_single_build_inprocess(build_names[0])
+        from atopile import buildutil
+        from atopile.buildutil import BuildStepContext
+        from atopile.errors import iter_leaf_exceptions
+        from atopile.logging_utils import BuildPrinter
+
+        build_name = build_names[0]
+        ctx = BuildStepContext(build=None)
+        started_at = time.time()
+        build_exit_code = 0
+
+        try:
+            with config.select_build(build_name):
+                buildutil.build(ctx=ctx)
+        except Exception as exc:
+            for e in iter_leaf_exceptions(exc):
+                logger.error(e, exc_info=e)
+            build_exit_code = 1
+
+        elapsed = time.time() - started_at
+        status = BuildStatus.from_return_code(
+            build_exit_code,
+            sum(1 for s in ctx.completed_stages if s.status.value == "warning"),
+        )
+        build_obj = Build(
+            name=build_name,
+            display_name=f"{config.project.paths.root.name}:{build_name}",
+            status=status,
+            stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
+            elapsed_seconds=elapsed,
+            started_at=started_at,
+            return_code=build_exit_code,
+        )
+        BuildPrinter(verbose=False).print_summary([build_obj])
+        build_exit_code = _report_build_results(
+            failed=[build_name] if build_exit_code != 0 else [],
+            total=1,
+            failed_names=[build_name] if build_exit_code != 0 else [],
+        )
     else:
         timestamp = generate_build_timestamp()
         builds: list[Build] = []
