@@ -33,12 +33,16 @@ def save_part_info_to_pcb(app: fabll.Node):
     Save parameters to footprints (by copying them to descriptive properties).
     """
 
+    logger.info("Saving part info to PCB")
+
     nodes = app.get_children(
         direct_only=False,
         types=fabll.Node,
         include_root=True,
         required_trait=F.Pickable.has_part_picked,
     )
+
+    logger.debug(f"Found {len(nodes)} nodes with part picked")
 
     if len(nodes) == 0:
         logger.warning("No nodes with part picked found")
@@ -68,12 +72,17 @@ def save_part_info_to_pcb(app: fabll.Node):
             lit = p.get_trait(F.Parameters.is_parameter_operatable).try_extract_subset()
             if lit is None:
                 continue
+            serialized = lit.serialize()
+            if serialized is None:
+                continue
             data[f"{Properties.param_prefix}{p.get_name()}"] = json.dumps(
-                lit.serialize(), ensure_ascii=False
+                serialized, ensure_ascii=False
             )
         fabll.Traits.create_and_add_instance_to(node, F.SerializableMetadata).setup(
             data
         )
+
+    logger.info("Part info saved to PCB")
 
 
 def test_save_part_info_to_pcb():

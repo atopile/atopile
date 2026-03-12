@@ -11,6 +11,10 @@ from atopile.build_steps import Muster, MusterTarget
 from atopile.buildutil import BuildStepContext
 from faebryk.core.solver.solver import Solver
 
+pytestmark = [
+    pytest.mark.ato_logging(kind="build", context=""),
+]
+
 
 class _InducedFailure(Exception):
     pass

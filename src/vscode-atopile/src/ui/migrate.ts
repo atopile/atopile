@@ -8,6 +8,14 @@ import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
 import { traceVerbose } from '../common/log/logging';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
+import { renderTemplate, serializeJsonForHtml } from '../common/template';
+// @ts-ignore
+import * as _migrateTemplateText from './migrate.hbs';
+// @ts-ignore
+import * as _notBuiltTemplateText from '../providers/webview-not-built.hbs';
+
+const migrateTemplateText: string = (_migrateTemplateText as any).default || _migrateTemplateText;
+const notBuiltTemplateText: string = (_notBuiltTemplateText as any).default || _notBuiltTemplateText;
 
 const PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
 
@@ -67,25 +75,9 @@ function getProdHtml(webview: vscode.Webview, extensionPath: string, projectRoot
   const baseCssPath = path.join(webviewsDir, 'index.css');
 
   if (!fs.existsSync(jsPath)) {
-    return `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8">
-  <style>
-    body {
-      display: flex; align-items: center; justify-content: center;
-      height: 100vh; margin: 0;
-      background: var(--vscode-editor-background);
-      color: var(--vscode-foreground);
-      font-family: var(--vscode-font-family);
-      text-align: center; padding: 16px;
-    }
-    code { background: var(--vscode-textCodeBlock-background); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <div><p>Webview not built.</p><p>Run <code>npm run build</code> in the webviews directory.</p></div>
-</body>
-</html>`;
+    return renderTemplate(notBuiltTemplateText, {
+      buildCommand: 'npm run build',
+    });
   }
 
   const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
@@ -100,31 +92,23 @@ function getProdHtml(webview: vscode.Webview, extensionPath: string, projectRoot
   const wsUrl = backendServer.wsUrl;
   const wsOrigin = getWsOrigin(wsUrl);
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    style-src ${webview.cspSource} 'unsafe-inline';
-    script-src ${webview.cspSource} 'nonce-${nonce}';
-    font-src ${webview.cspSource};
-    img-src ${webview.cspSource} data: https: http:;
-    connect-src ${apiUrl} ${wsOrigin};
-  ">
-  <title>Migrate Project</title>
-  ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
-  ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
-  <script nonce="${nonce}">
-    window.__ATOPILE_API_URL__ = '${apiUrl}';
-    window.__ATOPILE_WS_URL__ = '${wsOrigin}';
-    window.__ATOPILE_MIGRATE_PROJECT__ = ${JSON.stringify(projectRoot)};
-  </script>
-</head>
-<body>
-  <div id="root"></div>
-  <script nonce="${nonce}" type="module" src="${jsUri}"></script>
-</body>
-</html>`;
+  const csp = [
+    "default-src 'none'",
+    `style-src ${webview.cspSource} 'unsafe-inline'`,
+    `script-src ${webview.cspSource} 'nonce-${nonce}'`,
+    `font-src ${webview.cspSource}`,
+    `img-src ${webview.cspSource} data: https: http:`,
+    `connect-src ${apiUrl} ${wsOrigin}`,
+  ].join('; ');
+
+  return renderTemplate(migrateTemplateText, {
+    csp,
+    nonce,
+    baseCssLink: baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : '',
+    cssLink: cssUri ? `<link rel="stylesheet" href="${cssUri}">` : '',
+    apiUrlJson: serializeJsonForHtml(apiUrl),
+    wsOriginJson: serializeJsonForHtml(wsOrigin),
+    projectRootJson: serializeJsonForHtml(projectRoot),
+    jsUri: jsUri.toString(),
+  });
 }

@@ -24,12 +24,16 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.node import TraitNotFound
 from faebryk.libs.geometry.basic import Geometry
-from faebryk.libs.kicad.fileformats import UUID, Property, kicad
+from faebryk.libs.kicad.fileformats import (
+    UUID,
+    Property,
+    kicad,
+    strip_duplicate_ref_texts,
+)
 from faebryk.libs.nets import (
     bind_fbrk_nets_to_kicad_nets,
 )
 from faebryk.libs.util import (
-    FuncSet,
     groupby,
     not_none,
     yield_missing,
@@ -241,10 +245,19 @@ class PCB_Transformer:
                 )
                 leads_t = [n.get_trait(F.Lead.is_lead) for n in lead_nodes]
                 pads_t = g_fp.get_pads()
+
+                # Pre-extract pad names to avoid repeated graph traversals
+                pad_names = {id(p): p.pad_name for p in pads_t}
+                pads_sorted = sorted(pads_t, key=lambda x: pad_names[id(x)])
+
                 for lead_t in leads_t:
                     if not lead_t.has_trait(F.Lead.has_associated_pads):
                         try:
-                            lead_t.find_matching_pad(pads_t)
+                            lead_t.find_matching_pad(
+                                pads_sorted,
+                                _presorted=True,
+                                _pad_names=pad_names,
+                            )
                         except F.Lead.LeadPadMatchException:
                             logger.warning(
                                 f"Could not match lead {lead_t.get_lead_name()} to pad"
@@ -332,24 +345,20 @@ class PCB_Transformer:
         fabll.Traits.create_and_add_instance_to(
             node=g_fp, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
         ).setup(pcb_fp, self)
-        # get the kicad pcb footprint pads
-        pcb_pads = FuncSet[kicad.pcb.Pad](pcb_fp.pads)
-        # get the fabll footprint pads (is_pad trait) and compare the names with
-        # the kicad pcb footprint pads
 
-        for fpad in g_fp.get_pads():
-            pads = [
-                pad
-                for pad in pcb_pads
-                if pad.name == fpad.pad_name or pad.name == fpad.pad_number
-            ]
-            pcb_pads -= FuncSet(pads)
+        # Pre-extract pad names/numbers to avoid repeated graph traversals
+        g_pads = g_fp.get_pads()
+        fpad_info = [(fpad, fpad.pad_name, fpad.pad_number) for fpad in g_pads]
+
+        # Build a lookup from pcb pad name -> list of pcb pads
+        pcb_pad_by_name: dict[str, list[kicad.pcb.Pad]] = {}
+        for pad in pcb_fp.pads:
+            pcb_pad_by_name.setdefault(pad.name, []).append(pad)
+
+        for fpad, fname, fnumber in fpad_info:
+            pads = pcb_pad_by_name.get(fname) or pcb_pad_by_name.get(fnumber) or []
             if not pads:
-                logger.warning(
-                    f"No PCB pads for pad: "
-                    f"name: {fpad.pad_name}, "
-                    f"number: {fpad.pad_number}"
-                )
+                logger.warning(f"No PCB pads for pad: name: {fname}, number: {fnumber}")
                 continue
 
             # bind the kicad pcb pads to the fabll pad (is_pad trait)
@@ -360,8 +369,12 @@ class PCB_Transformer:
         # This may leave some pads on the PCB unlinked to the design
         # This is useful for things like mounting holes, but checks
         # linking less robustly
-        if pcb_pads and logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"No pads in design for PCB pads: {pcb_pads}")
+        if logger.isEnabledFor(logging.DEBUG):
+            matched_names = {fname for _, fname, fnumber in fpad_info}
+            matched_names |= {fnumber for _, fname, fnumber in fpad_info}
+            unmatched = [p for p in pcb_fp.pads if p.name not in matched_names]
+            if unmatched:
+                logger.debug(f"No pads in design for PCB pads: {unmatched}")
 
     def bind_net(self, kicad_net: KiCadPCBNet, f_net: "F.Net"):
         """
@@ -1506,6 +1519,10 @@ class PCB_Transformer:
 
         lib_attrs = self._fp_common_fields_dict(lib_footprint)
 
+        # strip duplicate reference texts
+        if "fp_texts" in lib_attrs:
+            lib_attrs["fp_texts"] = strip_duplicate_ref_texts(lib_attrs["fp_texts"])
+
         lib_attrs["pads"] = [
             kicad.pcb.Pad(
                 **{
@@ -1896,7 +1913,10 @@ class PCB_Transformer:
             footprint, lib_footprint, "propertys", keep_pcb_obj_if_not_in_lib=True
         )
         Property.checksum.delete_checksum(footprint)
-        # fp_texts
+        # fp_texts: strip duplicate reference texts from both sides before merge
+        lib_footprint = kicad.copy(lib_footprint)
+        lib_footprint.fp_texts = strip_duplicate_ref_texts(lib_footprint.fp_texts)
+        footprint.fp_texts = strip_duplicate_ref_texts(footprint.fp_texts)
         PCB_Transformer.footprint_container_merge(footprint, lib_footprint, "fp_texts")
 
         # Move back to original layer(flip) and angle

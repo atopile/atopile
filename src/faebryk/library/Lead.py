@@ -29,26 +29,36 @@ class is_lead(fabll.Node):
         return owner.get_name()
 
     def find_matching_pad(
-        self, pads: list[F.Footprints.is_pad], associate: bool = True
+        self,
+        pads: list[F.Footprints.is_pad],
+        associate: bool = True,
+        _presorted: bool = False,
+        _pad_names: dict[int, str] | None = None,
     ) -> F.Footprints.is_pad:
         """
         Find matching pads for this lead based on the available attach_to_pad traits.
         Defaults to matching the lead instance name to the pad name.
         Returns the first matched pad, but associates all matched pads to the lead.
+
+        Performance: pass _presorted=True and _pad_names (id(pad)->name) to avoid
+        repeated graph traversals for pad_name when called in a loop.
         """
-        pads = sorted(pads, key=lambda x: x.pad_name)
+        if not _presorted:
+            pads = sorted(pads, key=lambda x: x.pad_name)
         matched_pads: list[F.Footprints.is_pad] = []
 
         if self.has_trait(can_attach_to_pad_by_name):
             matched_pads = self.get_trait(can_attach_to_pad_by_name).find_matching_pad(
-                pads
+                pads, _pad_names=_pad_names
             )
         elif self.has_trait(can_attach_to_any_pad):
             pad = self.get_trait(can_attach_to_any_pad).find_matching_pad(pads)
             matched_pads = [pad] if pad else []
         else:
+            lead_name = self.get_lead_name()
             for pad in pads:
-                if self.get_lead_name() == pad.pad_name:
+                pname = _pad_names[id(pad)] if _pad_names else pad.pad_name
+                if lead_name == pname:
                     matched_pads.append(pad)
                     break
 
@@ -58,7 +68,6 @@ class is_lead(fabll.Node):
                     node=self, trait=has_associated_pads
                 ).setup(pads=matched_pads)
             return matched_pads[0]
-
         raise LeadPadMatchException(
             f"No matching pad found for lead: {self.get_lead_name()}"
         )
@@ -138,7 +147,9 @@ class can_attach_to_pad_by_name(fabll.Node):
         return self
 
     def find_matching_pad(
-        self, pads: list[F.Footprints.is_pad]
+        self,
+        pads: list[F.Footprints.is_pad],
+        _pad_names: dict[int, str] | None = None,
     ) -> list[F.Footprints.is_pad]:
         """
         Find matching pads for this lead based on name match by regex.
@@ -147,12 +158,14 @@ class can_attach_to_pad_by_name(fabll.Node):
         regex = self.compiled_regex
         matched_pads: list[F.Footprints.is_pad] = []
         for pad in pads:
-            if regex.match(pad.pad_name):
+            pname = _pad_names[id(pad)] if _pad_names else pad.pad_name
+            if regex.match(pname):
                 matched_pads.append(pad)
 
         if not matched_pads:
             for pad in pads:
-                if regex.match(pad.pad_number):
+                pnum = pad.pad_number  # pad_number is less commonly cached
+                if regex.match(pnum):
                     matched_pads.append(pad)
 
         if matched_pads:

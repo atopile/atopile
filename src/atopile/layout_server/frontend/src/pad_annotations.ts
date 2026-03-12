@@ -39,6 +39,13 @@ export type LayerAnnotationGeometry = {
     numbers: NumberGeometry[];
 };
 
+type AnnotationCacheEntry = {
+    x: number;
+    y: number;
+    r: number;
+    layerGeometry: Map<string, LayerAnnotationGeometry>;
+};
+
 function estimateStrokeTextAdvance(text: string): number {
     if (!text) return 0.6;
     const narrow = new Set(["1", "I", "i", "l", "|", "!", ".", ",", ":", ";", "'", "`"]);
@@ -136,76 +143,96 @@ function resolvePad(fp: FootprintModel, padIndex: number, padName: string): PadM
     return null;
 }
 
+const annotationCache = new WeakMap<FootprintModel, AnnotationCacheEntry>();
+
 export function buildPadAnnotationGeometry(
     fp: FootprintModel,
     hiddenLayers?: Set<string>,
 ): Map<string, LayerAnnotationGeometry> {
     const hidden = hiddenLayers ?? new Set<string>();
-    const layerGeometry = new Map<string, LayerAnnotationGeometry>();
-    const ensureLayerGeometry = (layerName: string): LayerAnnotationGeometry => {
-        let entry = layerGeometry.get(layerName);
-        if (!entry) {
-            entry = { names: [], numbers: [] };
-            layerGeometry.set(layerName, entry);
-        }
-        return entry;
-    };
+    const cached = annotationCache.get(fp);
+    let layerGeometry = cached?.layerGeometry;
+    const cacheValid = !!cached && cached.x === fp.at.x && cached.y === fp.at.y && cached.r === fp.at.r;
 
-    for (const annotation of fp.pad_names) {
-        if (!annotation.text.trim()) continue;
-        const pad = resolvePad(fp, annotation.pad_index, annotation.pad);
-        if (!pad) continue;
-        const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
-        const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
-        const fitted = fitPadNameLabel(annotation.text, bboxW, bboxH);
-        if (!fitted) continue;
-        const [displayText, [charW, charH, thickness]] = fitted;
-        const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
-        const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
-        for (const layerName of annotation.layer_ids) {
-            if (hidden.has(layerName)) continue;
-            ensureLayerGeometry(layerName).names.push({
-                text: displayText,
-                x: worldCenter.x,
-                y: worldCenter.y,
-                rotation: textRotation,
-                charW,
-                charH,
-                thickness,
-            });
+    if (!cacheValid || !layerGeometry) {
+        layerGeometry = new Map<string, LayerAnnotationGeometry>();
+        const ensureLayerGeometry = (layerName: string): LayerAnnotationGeometry => {
+            let entry = layerGeometry!.get(layerName);
+            if (!entry) {
+                entry = { names: [], numbers: [] };
+                layerGeometry!.set(layerName, entry);
+            }
+            return entry;
+        };
+
+        for (const annotation of fp.pad_names) {
+            if (!annotation.text.trim()) continue;
+            const pad = resolvePad(fp, annotation.pad_index, annotation.pad);
+            if (!pad) continue;
+            const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
+            const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
+            const fitted = fitPadNameLabel(annotation.text, bboxW, bboxH);
+            if (!fitted) continue;
+            const [displayText, [charW, charH, thickness]] = fitted;
+            const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+            const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
+            for (const layerName of annotation.layer_ids) {
+                ensureLayerGeometry(layerName).names.push({
+                    text: displayText,
+                    x: worldCenter.x,
+                    y: worldCenter.y,
+                    rotation: textRotation,
+                    charW,
+                    charH,
+                    thickness,
+                });
+            }
         }
+
+        for (const annotation of fp.pad_numbers) {
+            if (!annotation.text.trim()) continue;
+            const pad = resolvePad(fp, annotation.pad_index, annotation.pad);
+            if (!pad) continue;
+            const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
+            const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
+            const badgeDiameter = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_SIZE_RATIO, 0.18);
+            const badgeRadius = badgeDiameter / 2;
+            const margin = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_MARGIN_RATIO, 0.03);
+            const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+            const badgeCenterX = worldCenter.x - (bboxW / 2) + margin + badgeRadius;
+            const badgeCenterY = worldCenter.y - (bboxH / 2) + margin + badgeRadius;
+            const labelFit = fitTextInsideBox(
+                annotation.text,
+                badgeDiameter * 0.92,
+                badgeDiameter * 0.92,
+                PAD_NUMBER_MIN_CHAR_H,
+                PAD_NUMBER_CHAR_SCALE,
+            );
+            for (const layerName of annotation.layer_ids) {
+                ensureLayerGeometry(layerName).numbers.push({
+                    text: annotation.text,
+                    badgeCenterX,
+                    badgeCenterY,
+                    badgeRadius,
+                    labelFit,
+                });
+            }
+        }
+        annotationCache.set(fp, {
+            x: fp.at.x,
+            y: fp.at.y,
+            r: fp.at.r,
+            layerGeometry,
+        });
     }
 
-    for (const annotation of fp.pad_numbers) {
-        if (!annotation.text.trim()) continue;
-        const pad = resolvePad(fp, annotation.pad_index, annotation.pad);
-        if (!pad) continue;
-        const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
-        const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
-        const badgeDiameter = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_SIZE_RATIO, 0.18);
-        const badgeRadius = badgeDiameter / 2;
-        const margin = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_MARGIN_RATIO, 0.03);
-        const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
-        const badgeCenterX = worldCenter.x - (bboxW / 2) + margin + badgeRadius;
-        const badgeCenterY = worldCenter.y - (bboxH / 2) + margin + badgeRadius;
-        const labelFit = fitTextInsideBox(
-            annotation.text,
-            badgeDiameter * 0.92,
-            badgeDiameter * 0.92,
-            PAD_NUMBER_MIN_CHAR_H,
-            PAD_NUMBER_CHAR_SCALE,
-        );
-        for (const layerName of annotation.layer_ids) {
-            if (hidden.has(layerName)) continue;
-            ensureLayerGeometry(layerName).numbers.push({
-                text: annotation.text,
-                badgeCenterX,
-                badgeCenterY,
-                badgeRadius,
-                labelFit,
-            });
+    if (hidden.size === 0) return layerGeometry;
+
+    const filtered = new Map<string, LayerAnnotationGeometry>();
+    for (const [layerName, geom] of layerGeometry.entries()) {
+        if (!hidden.has(layerName)) {
+            filtered.set(layerName, geom);
         }
     }
-
-    return layerGeometry;
+    return filtered;
 }

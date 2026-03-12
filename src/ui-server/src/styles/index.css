@@ -4,6 +4,9 @@
    Import order matters - variables first, then base, then components
    ============================================ */
 
+/* Fonts (must be before variables so font-family references resolve) */
+@import './_fonts.css';
+
 /* Core */
 @import './_variables.css';
 @import './_base.css';

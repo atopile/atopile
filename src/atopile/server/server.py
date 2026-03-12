@@ -40,13 +40,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from atopile.dataclasses import AppContext, EventType
-from atopile.model.build_queue import _build_queue
+from atopile.model.build_queue import _build_queue, set_build_subprocess_ato_binary
 from atopile.model.model_state import model_state
-from atopile.model.sqlite import BuildHistory
+from atopile.model.sqlite import AgentLogs, BuildHistory
 from atopile.server.connections import server_state
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import projects as projects_domain
-from atopile.server.events import event_bus
+from atopile.server.events import INTERNAL_EVENT_BUILD_COMPLETED, event_bus
 from atopile.server.file_watcher import FileChangeResult, FileWatcher
 
 log = logging.getLogger(__name__)
@@ -358,15 +358,15 @@ def cleanup_server(exc: BaseException | None = None) -> None:
     try:
         _build_queue.stop()
     except Exception:
-        pass
+        log.exception("Failed to stop build queue during cleanup")
 
     # 2. Flush logs to database
     try:
-        from atopile.logging import BuildLogger
+        from atopile.logging import AtoLogger
 
-        BuildLogger.close_all()
+        AtoLogger.close_all()
     except Exception:
-        pass
+        log.exception("Failed to close logging contexts during cleanup")
 
     # 3. Capture exception for telemetry (if provided)
     try:
@@ -376,13 +376,13 @@ def cleanup_server(exc: BaseException | None = None) -> None:
             telemetry.capture_exception(exc)
         telemetry._flush_telemetry_on_exit()
     except Exception:
-        pass
+        log.exception("Failed to flush telemetry during cleanup")
 
     # 4. Flush logging handlers
     try:
         logging.shutdown()
     except Exception:
-        pass
+        log.exception("Failed to shutdown logging handlers during cleanup")
 
 
 def _fatal_error(msg: str, exc: BaseException | None = None) -> None:
@@ -427,15 +427,30 @@ class CrashOnErrorMiddleware(BaseHTTPMiddleware):
 
 def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
     """
-    Handle uncaught exceptions in asyncio tasks by crashing the server.
+    Handle uncaught exceptions in asyncio tasks.
 
-    This ensures background task failures are visible instead of being
-    silently logged and ignored.
+    WebSocket disconnects (ConnectionClosedError, CancelledError) are normal
+    and should not crash the server. Other exceptions are fatal.
     """
     exc = context.get("exception")
     msg = context.get("message", "Unknown asyncio error")
 
-    # Log the full context for debugging
+    # Expected lifecycle exceptions from websocket disconnects/cancellation
+    # should not crash the entire backend process.
+    if isinstance(exc, asyncio.CancelledError):
+        log.debug("Ignoring asyncio cancellation in task: %s", msg)
+        return
+
+    try:
+        from websockets.exceptions import ConnectionClosed
+
+        if isinstance(exc, ConnectionClosed):
+            log.warning("Ignoring websocket close in asyncio task: %s", msg)
+            return
+    except Exception:
+        # If websockets import fails, continue with fatal handling below.
+        pass
+
     log.critical("Uncaught exception in asyncio task: %s", msg)
     if exc:
         _fatal_error(f"Asyncio task crashed: {msg}", exc)
@@ -487,8 +502,9 @@ def create_app(
     )
     app.state.ctx = ctx
 
-    # Initialize build history database
+    # Initialize databases
     BuildHistory.init_db()
+    AgentLogs.init_db()
 
     @app.on_event("startup")
     async def on_startup():
@@ -507,6 +523,11 @@ def create_app(
 
         # Configure model_state with workspace paths
         model_state.set_workspace_paths(ctx.workspace_paths)
+        set_build_subprocess_ato_binary(
+            (ctx.ato_local_path or ctx.ato_binary_path)
+            if ctx.ato_source == "explicit-path"
+            else None
+        )
 
         # Configure event_bus with event loop and emitter
         event_bus.set_event_loop(loop)
@@ -524,6 +545,23 @@ def create_app(
             )
             event_bus.emit_sync(
                 EventType.BOM_CHANGED, {"project_root": build.project_root}
+            )
+            event_bus.emit_internal(
+                INTERNAL_EVENT_BUILD_COMPLETED,
+                {
+                    "project_root": build.project_root or "",
+                    "build_id": build.build_id or "",
+                    "target": build.target or "default",
+                    "status": (
+                        build.status.value
+                        if hasattr(build.status, "value")
+                        else str(build.status)
+                    ),
+                    "warnings": build.warnings,
+                    "errors": build.errors,
+                    "error": build.error,
+                    "elapsed_seconds": build.elapsed_seconds,
+                },
             )
 
         _build_queue.on_change = _handle_build_change
@@ -552,6 +590,9 @@ def create_app(
         """Simple health check endpoint."""
         return {"status": "ok"}
 
+    from atopile.server.routes import (
+        agent as agent_routes,
+    )
     from atopile.server.routes import (
         artifacts as artifacts_routes,
     )
@@ -594,6 +635,7 @@ def create_app(
 
     app.include_router(ws_routes.router)
     app.include_router(logs_routes.router)
+    app.include_router(agent_routes.router)
     app.include_router(projects_routes.router)
     app.include_router(builds_routes.router)
     app.include_router(artifacts_routes.router)
@@ -667,6 +709,7 @@ class DashboardServer:
     def __init__(
         self,
         port: Optional[int] = None,
+        host: str = "127.0.0.1",
         workspace_paths: Optional[list[Path]] = None,
         ato_source: Optional[str] = None,
         ato_local_path: Optional[str] = None,
@@ -675,6 +718,7 @@ class DashboardServer:
         ato_from_spec: Optional[str] = None,
     ):
         self.port = port or find_free_port()
+        self.host = host
         self.workspace_paths = workspace_paths or []
         self.app = create_app(
             workspace_paths=self.workspace_paths,
@@ -696,7 +740,7 @@ class DashboardServer:
         """Start the server in a background thread."""
         config = uvicorn.Config(
             self.app,
-            host="127.0.0.1",
+            host=self.host,
             port=self.port,
             log_level="warning",
             ws_max_size=2 * 1024 * 1024,
@@ -725,6 +769,7 @@ class DashboardServer:
 
 def start_dashboard_server(
     port: Optional[int] = None,
+    host: str = "127.0.0.1",
     workspace_paths: Optional[list[Path]] = None,
 ) -> tuple[DashboardServer, str]:
     """
@@ -732,12 +777,13 @@ def start_dashboard_server(
 
     Args:
         port: Port to use (defaults to a free port)
+        host: Host to bind to (default 127.0.0.1)
         workspace_paths: Workspace paths to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    server = DashboardServer(port=port, workspace_paths=workspace_paths)
+    server = DashboardServer(port=port, host=host, workspace_paths=workspace_paths)
     server.start()
     return server, server.url
 
@@ -761,6 +807,7 @@ def is_atopile_server_running(port: int) -> bool:
 
 def run_server(
     port: int,
+    host: str = "127.0.0.1",
     workspace_paths: Optional[list[Path]] = None,
     force: bool = False,
     ato_source: Optional[str] = None,
@@ -775,6 +822,7 @@ def run_server(
 
     Args:
         port: Port to run the server on
+        host: Host to bind the server to (default 127.0.0.1)
         workspace_paths: Workspace paths to scan for projects
         force: Kill existing server on the port if True
         ato_source: Source of the atopile binary
@@ -792,8 +840,9 @@ def run_server(
     try:
         _run_server_impl(
             port,
-            workspace_paths,
-            force,
+            host=host,
+            workspace_paths=workspace_paths,
+            force=force,
             ato_source=ato_source,
             ato_binary_path=ato_binary_path,
             ato_local_path=ato_local_path,
@@ -814,8 +863,9 @@ def run_server(
 
 def _run_server_impl(
     port: int,
-    workspace_paths: Optional[list[Path]],
-    force: bool,
+    host: str = "127.0.0.1",
+    workspace_paths: Optional[list[Path]] = None,
+    force: bool = False,
     ato_source: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
     ato_local_path: Optional[str] = None,
@@ -868,6 +918,7 @@ def _run_server_impl(
     # Create and start server
     server = DashboardServer(
         port=port,
+        host=host,
         workspace_paths=workspace_paths,
         ato_source=ato_source,
         ato_local_path=ato_local_path,
@@ -876,7 +927,7 @@ def _run_server_impl(
         ato_from_spec=ato_from_spec,
     )
 
-    print(f"Starting dashboard server on http://localhost:{port}")
+    print(f"Starting dashboard server on http://{host}:{port}")
     print(f"Workspace paths: {', '.join(str(p) for p in workspace_paths)}")
     print("Press Ctrl+C to stop")
 
