@@ -577,7 +577,7 @@ def test_selftest_pretty_attributes() -> None:
     # Create graph with unit instances for computing expected value
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    Ohm.bind_typegraph(tg=tg).create_instance(g=g)
+    Ohm.bind_typegraph(tg=tg).as_type_node()
     expected = F.Literals.is_literal.deserialize(value_dict, g=g, tg=tg).pretty_str()
 
     pretty_from_str = _pretty_attributes({"resistance": str(value_dict)})

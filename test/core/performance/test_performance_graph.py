@@ -168,7 +168,7 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
                 .setup_from_center_rel(
                     1,
                     0.1,
-                    F.Units.Ohm.bind_typegraph(tg).create_instance(g=g).is_unit.get(),
+                    F.Units.Ohm.bind_typegraph(tg).as_type_node().is_unit.get(),
                 )
                 .can_be_operand.get(),
                 assert_=True,

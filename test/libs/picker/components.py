@@ -133,8 +133,8 @@ mfr_parts = [
                 .setup_from_singleton(
                     value=1e6,
                     unit=F.Units.VoltsPerSecond.bind_typegraph(tg=r.tg)
-                    .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .as_type_node()
+                    .is_unit.get(),
                 )
                 .is_literal.get()
                 .as_operand.get(),
@@ -234,8 +234,8 @@ lcsc_id_parts = [
                 .setup_from_singleton(
                     value=1e6,
                     unit=F.Units.VoltsPerSecond.bind_typegraph(tg=r.tg)
-                    .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .as_type_node()
+                    .is_unit.get(),
                 )
                 .is_literal.get()
                 .as_operand.get(),

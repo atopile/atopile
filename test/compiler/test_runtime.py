@@ -1723,10 +1723,8 @@ def test_assign_to_child_parameter():
     res_param = r.resistance.get()
     assert res_param.get_values() == [135000, 165000]
     # Ensure that the resistance parameter display units are correct
-    assert (
-        fabll.Traits(res_param.force_get_display_units()).get_obj_raw().get_type_name()
-        == "Ohm"
-    )
+    display_unit = res_param.force_get_display_units()
+    assert display_unit.serialize() == "Ω"
 
 
 def test_slice_non_list():
