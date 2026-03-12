@@ -746,6 +746,12 @@ class TestAggregator:
                     else ("-" if state == "queued" else "0ms"),
                     "start_time": safe_iso(t["start_time"]),
                     "finish_time": safe_iso(t["finish_time"]),
+                    "start_epoch": t["start_time"].timestamp()
+                    if t["start_time"]
+                    else None,
+                    "finish_epoch": t["finish_time"].timestamp()
+                    if t["finish_time"]
+                    else None,
                     "error_message": t["error_message"],
                     "error_type": error_type,
                     "error_summary": error_summary,
@@ -942,6 +948,7 @@ class TestAggregator:
             "generated_at": safe_iso(now),
             "run": {
                 "start_time": safe_iso(start_time),
+                "start_epoch": start_time.timestamp(),
                 "end_time": safe_iso(now if running == 0 and queued == 0 else None),
                 "duration_s": total_duration,
                 "runner_argv": list(sys.argv),
@@ -1409,6 +1416,41 @@ class TestAggregator:
             elif baseline.get("error"):
                 current_baseline_info = "-- Baseline error --"
 
+            # Build lightweight timeline data for the Gantt chart
+            timeline_entries = []
+            for t in tests:
+                if (
+                    t.get("start_epoch")
+                    and t.get("finish_epoch")
+                    and t.get("worker_id") is not None
+                ):
+                    entry = {
+                        "n": t["nodeid"],
+                        "fi": t["file"],
+                        "cl": t["class"],
+                        "f": t["function"],
+                        "p": t["params"],
+                        "w": t["worker_id"],
+                        "s": round(t["start_epoch"], 3),
+                        "e": round(t["finish_epoch"], 3),
+                        "o": t["status"],
+                        "d": round(t["duration_s"], 3),
+                        "m": round(t["memory_usage_mb"], 2),
+                        "mp": round(t["memory_peak_mb"], 2),
+                    }
+                    if t.get("error_message"):
+                        entry["err"] = t["error_message"][:300]
+                    if t.get("compare_status") and t["compare_status"] != "same":
+                        entry["cmp"] = t["compare_status"]
+                    if t.get("speedup_pct") is not None:
+                        entry["sp"] = round(t["speedup_pct"], 1)
+                        entry["sr"] = round(t["speedup_ratio"], 2)
+                    if t.get("baseline_duration_s") is not None:
+                        entry["bd"] = round(t["baseline_duration_s"], 3)
+                    timeline_entries.append(entry)
+            timeline_json = json.dumps(timeline_entries, separators=(",", ":"))
+            run_start_epoch = report["run"].get("start_epoch", 0)
+
             html_ = HTML_TEMPLATE.render(
                 status="Running"
                 if summary["running"] > 0 or summary["queued"] > 0
@@ -1444,6 +1486,8 @@ class TestAggregator:
                 current_baseline=current_baseline,
                 current_baseline_info=current_baseline_info,
                 test_run_id=self._test_run_id or "",
+                timeline_json=timeline_json,
+                run_start_epoch=run_start_epoch,
             )
         except Exception as e:
             print(f"Failed to format HTML report: {e}")

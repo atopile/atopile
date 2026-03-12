@@ -199,6 +199,11 @@ export class Editor {
         this.renderLoop.start();
     }
 
+    syncTheme() {
+        this.renderer.setClearColor(getComputedStyle(document.body).getPropertyValue("--vscode-editor-background"));
+        this.requestRedraw();
+    }
+
     private createTextOverlay(): HTMLCanvasElement {
         const overlay = document.createElement("canvas");
         overlay.style.position = "absolute";

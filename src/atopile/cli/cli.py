@@ -183,6 +183,7 @@ def cli(
         handler.tracebacks_suppress_map = {}  # Traceback through atopile infra
     elif verbose >= 3:
         logger.root.setLevel(logging.DEBUG)
+        handler.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
 
     # FIXME: this won't work properly when configs
@@ -196,12 +197,6 @@ def cli(
     # TODO use file to rate-limit check_for_update
     # if ctx.invoked_subcommand:
     #    check_for_update()
-
-    # Set up database logging for all CLI commands (not just builds)
-    # This ensures logs from validate, inspect, etc. are also stored in the database
-    from atopile.logging import BuildLogger
-
-    BuildLogger.setup_logging(enable_database=True, stage="cli")
 
     configure.setup()
 

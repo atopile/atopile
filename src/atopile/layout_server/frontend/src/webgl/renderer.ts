@@ -6,6 +6,31 @@ import {
     type TessPolylineResult, type TessCircleResult, type TessPolygonResult,
 } from "./tessellator";
 
+function parseCssColor(cssColor: string): [number, number, number, number] | null {
+    const color = cssColor.trim();
+    const hexMatch = color.match(/^#([0-9a-f]{6}|[0-9a-f]{8})$/i);
+    if (hexMatch) {
+        const hex = hexMatch[1]!;
+        const hasAlpha = hex.length === 8;
+        const r = parseInt(hex.slice(0, 2), 16) / 255;
+        const g = parseInt(hex.slice(2, 4), 16) / 255;
+        const b = parseInt(hex.slice(4, 6), 16) / 255;
+        const a = hasAlpha ? parseInt(hex.slice(6, 8), 16) / 255 : 1;
+        return [r, g, b, a];
+    }
+
+    const rgbMatch = color.match(/^rgba?\(([^)]+)\)$/i);
+    if (!rgbMatch) return null;
+
+    const [r, g, b, a = "1"] = rgbMatch[1]!.split(",").map(part => part.trim());
+    return [
+        Math.max(0, Math.min(255, Number(r))) / 255,
+        Math.max(0, Math.min(255, Number(g))) / 255,
+        Math.max(0, Math.min(255, Number(b))) / 255,
+        Math.max(0, Math.min(1, Number(a))),
+    ];
+}
+
 /** A set of GPU-uploaded primitives for one render layer */
 class PrimitiveSet {
     #polyline_data: Array<{ data: TessPolylineResult; ownerId: string | null }> = [];
@@ -290,7 +315,7 @@ export class Renderer {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.DEPTH_TEST);
         gl.depthFunc(gl.GREATER);
-        gl.clearColor(0.03, 0.05, 0.08, 1);
+        this.setClearColor(getComputedStyle(document.body).getPropertyValue("--vscode-editor-background"));
         gl.clearDepth(0);
 
         this.polylineShader = new ShaderProgram(gl, polyline_vert, polyline_frag);
@@ -299,6 +324,11 @@ export class Renderer {
         this.blitShader = new ShaderProgram(gl, blit_vert, blit_frag);
 
         this.update_size();
+    }
+
+    setClearColor(cssColor: string) {
+        const [r, g, b, a] = parseCssColor(cssColor) ?? [0.03, 0.05, 0.08, 1];
+        this.gl.clearColor(r, g, b, a);
     }
 
     update_size() {
