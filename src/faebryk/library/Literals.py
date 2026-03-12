@@ -3203,6 +3203,100 @@ class TestNumericSet:
         assert numeric_set.any() == 0.0
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Affine Form graph nodes (∃-quantified interval representation)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class AffineTermAttributes(fabll.NodeAttributes):
+    epsilon_id: int
+    coefficient: float
+
+
+class AffineTerm(fabll.Node[AffineTermAttributes]):
+    """Single noise term: coefficient × ε_id"""
+
+    Attributes = AffineTermAttributes
+
+    @classmethod
+    def MakeChild(cls, epsilon_id: int, coefficient: float) -> fabll._ChildField[Self]:
+        return fabll._ChildField(
+            cls,
+            attributes=AffineTermAttributes(
+                epsilon_id=epsilon_id, coefficient=coefficient
+            ),
+        )
+
+    def get_epsilon_id(self) -> int:
+        value = self.instance.node().get_attr(key="epsilon_id")
+        if value is None:
+            raise ValueError("AffineTerm has no epsilon_id")
+        return int(value)
+
+    def get_coefficient(self) -> float:
+        value = self.instance.node().get_attr(key="coefficient")
+        if value is None:
+            raise ValueError("AffineTerm has no coefficient")
+        return float(value)
+
+
+@dataclass
+class AffineFormAttributes(fabll.NodeAttributes):
+    center: float
+    delta: float
+
+
+class AffineForm(fabll.Node[AffineFormAttributes]):
+    """Uncertainty representation: center + Σ(coeff_i × ε_i) ± delta
+
+    Unlike NumericInterval which represents a value SET (∀-quantified),
+    AffineForm represents UNCERTAINTY about a single unknown value
+    (∃-quantified). Shared epsilon IDs between forms track parameter
+    correlation, so that R - R = 0 instead of [-range, range].
+    """
+
+    Attributes = AffineFormAttributes
+
+    terms = F.Collections.PointerSet.MakeChild()
+
+    def get_center(self) -> float:
+        value = self.instance.node().get_attr(key="center")
+        if value is None:
+            raise ValueError("AffineForm has no center")
+        return float(value)
+
+    def get_delta(self) -> float:
+        value = self.instance.node().get_attr(key="delta")
+        if value is None:
+            raise ValueError("AffineForm has no delta")
+        return float(value)
+
+    def get_terms(self) -> dict[int, float]:
+        """Get all noise terms as {epsilon_id: coefficient}."""
+        result: dict[int, float] = {}
+        for term_ref in self.terms.get().as_list():
+            term = term_ref.cast(AffineTerm)
+            result[term.get_epsilon_id()] = term.get_coefficient()
+        return result
+
+    def get_affine_data(self) -> "tuple[float, dict[int, float], float]":
+        """Extract pure-Python affine data tuple."""
+        return (self.get_center(), self.get_terms(), self.get_delta())
+
+    def outer_range(self) -> tuple[float, float]:
+        """Guaranteed superset of the true range."""
+        from faebryk.library.affine import outer_range
+
+        return outer_range(self.get_affine_data())
+
+    def inner_range(self) -> tuple[float, float] | None:
+        """Guaranteed subset of the true range, or None if delta too large."""
+        from faebryk.library.affine import inner_range
+
+        return inner_range(self.get_affine_data())
+
+
 class Numbers(fabll.Node):
     from faebryk.library.Parameters import can_be_operand as can_be_operandT
 
@@ -3210,6 +3304,7 @@ class Numbers(fabll.Node):
     can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
     numeric_set_ptr = F.Collections.Pointer.MakeChild()
     has_unit_ptr = F.Collections.Pointer.MakeChild()
+    affine_form_ptr = F.Collections.Pointer.MakeChild()
 
     @classmethod
     def MakeChild(
@@ -3538,6 +3633,87 @@ class Numbers(fabll.Node):
             min=max_value, max=max_value, unit=self.get_is_unit()
         )
 
+    def try_get_affine(self) -> AffineForm | None:
+        """Get the affine form if one is attached, else None."""
+        ref = self.affine_form_ptr.get().try_deref()
+        if ref is None:
+            return None
+        return AffineForm.bind_instance(ref.instance)
+
+    def set_affine(self, af: AffineForm) -> None:
+        """Attach an affine form to this Numbers literal."""
+        self.affine_form_ptr.get().point(af)
+
+    @staticmethod
+    def _tighten_numeric_set_with_affine(
+        numeric_set: NumericSet,
+        af: AffineForm,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> NumericSet:
+        """Return a new NumericSet tightened by the affine form's outer_range.
+
+        The affine outer_range is always a subset of or equal to the interval
+        arithmetic result, so this can only tighten, never widen.
+        Returns the original numeric_set if no tightening is possible.
+        """
+        af_lo, af_hi = af.outer_range()
+        ns_lo = numeric_set.get_min_value()
+        ns_hi = numeric_set.get_max_value()
+        new_lo = max(ns_lo, af_lo)
+        new_hi = min(ns_hi, af_hi)
+        if new_lo > new_hi:
+            return numeric_set
+        if new_lo != ns_lo or new_hi != ns_hi:
+            return NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+                values=[(new_lo, new_hi)]
+            )
+        return numeric_set
+
+    @staticmethod
+    def _make_result(
+        out_numeric_set: NumericSet,
+        unit: "is_unit",
+        af_data: "AffineData | None" = None,
+        *,
+        tighten: bool = False,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> "Numbers":
+        """Create Numbers result with optional affine form and tightening."""
+        from faebryk.library.affine import make_affine_form_node
+
+        af_node = None
+        if af_data is not None:
+            c, t, d = af_data
+            af_node = make_affine_form_node(c, t, d, g=g, tg=tg)
+            if tighten:
+                out_numeric_set = Numbers._tighten_numeric_set_with_affine(
+                    out_numeric_set, af_node, g=g, tg=tg
+                )
+
+        result = Numbers.create_instance(g=g, tg=tg)
+        result.setup(numeric_set=out_numeric_set, unit=unit)
+        if af_node is not None:
+            result.set_affine(af_node)
+        return result
+
+    def _try_collect_affine_data(
+        self, *others: "Numbers"
+    ) -> "tuple[AffineData, list[AffineData]] | None":
+        """Get affine data from self and all others, or None if any lack affine forms."""
+        self_af = self.try_get_affine()
+        if self_af is None:
+            return None
+        other_afs = [o.try_get_affine() for o in others]
+        if not all(af is not None for af in other_afs):
+            return None
+        return (
+            self_af.get_affine_data(),
+            [af.get_affine_data() for af in other_afs],  # type: ignore[union-attr]
+        )
+
     def is_singleton(self) -> bool:
         return self.get_numeric_set().is_singleton()
 
@@ -3851,6 +4027,8 @@ class Numbers(fabll.Node):
         tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """Arithmetically add two quantity sets. Units must be commensurable."""
+        from faebryk.library.affine import affine_add
+
         g = g or self.g
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set()
@@ -3859,10 +4037,21 @@ class Numbers(fabll.Node):
             out_numeric_set = out_numeric_set.op_add(
                 g=g, tg=tg, other=other_converted.get_numeric_set()
             )
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=self.get_is_unit(),
+
+        af_data = None
+        if collected := self._try_collect_affine_data(*others):
+            ad, other_ads = collected
+            for oad in other_ads:
+                ad = affine_add(ad, oad)
+            af_data = ad
+
+        return Numbers._make_result(
+            out_numeric_set,
+            self.get_is_unit(),
+            af_data,
+            tighten=True,
+            g=g,
+            tg=tg,
         )
 
     def op_mul_intervals(
@@ -3876,6 +4065,7 @@ class Numbers(fabll.Node):
         Result unit is self.unit * other.unit.
         """
         from faebryk.library.Units import is_unit
+        from faebryk.library.affine import EpsilonAllocator, affine_multiply
 
         g = g or self.g
         tg = tg or self.tg
@@ -3890,10 +4080,21 @@ class Numbers(fabll.Node):
                 out_unit, g=g, tg=tg, other=other.get_is_unit()
             )
 
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=out_unit,
+        af_data = None
+        if collected := self._try_collect_affine_data(*others):
+            ad, other_ads = collected
+            alloc = EpsilonAllocator()
+            for oad in other_ads:
+                ad = affine_multiply(ad, oad, alloc)
+            af_data = ad
+
+        return Numbers._make_result(
+            out_numeric_set,
+            out_unit,
+            af_data,
+            tighten=True,
+            g=g,
+            tg=tg,
         )
 
     def op_negate(
@@ -3906,13 +4107,21 @@ class Numbers(fabll.Node):
         Arithmetically negate this quantity set (multiply by -1).
         Unit remains the same.
         """
+        from faebryk.library.affine import affine_negate
+
         g = g or self.g
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_negate(g=g, tg=tg)
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=self.get_is_unit(),
+
+        self_af = self.try_get_affine()
+        af_data = affine_negate(self_af.get_affine_data()) if self_af else None
+
+        return Numbers._make_result(
+            out_numeric_set,
+            self.get_is_unit(),
+            af_data,
+            g=g,
+            tg=tg,
         )
 
     def op_subtract_intervals(
@@ -3927,13 +4136,11 @@ class Numbers(fabll.Node):
         subtrahend = others[1:]
         """
         from faebryk.library.Units import is_unit
+        from faebryk.library.affine import affine_subtract
 
         g = g or self.g
         tg = tg or self.tg
-        minuend = self
-        out_numeric_set = minuend.get_numeric_set()
-
-        out_numeric_set = minuend.get_numeric_set()
+        out_numeric_set = self.get_numeric_set()
         for subtrahend in subtrahends:
             if not is_unit.is_commensurable_with(
                 self.get_is_unit(), subtrahend.get_is_unit()
@@ -3948,9 +4155,21 @@ class Numbers(fabll.Node):
             out_numeric_set = out_numeric_set.op_subtract(
                 g=g, tg=tg, other=subtrahend.get_numeric_set()
             )
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set, unit=minuend.get_is_unit()
+
+        af_data = None
+        if collected := self._try_collect_affine_data(*subtrahends):
+            ad, other_ads = collected
+            for oad in other_ads:
+                ad = affine_subtract(ad, oad)
+            af_data = ad
+
+        return Numbers._make_result(
+            out_numeric_set,
+            self.get_is_unit(),
+            af_data,
+            tighten=True,
+            g=g,
+            tg=tg,
         )
 
     def op_invert(
@@ -3964,15 +4183,24 @@ class Numbers(fabll.Node):
         Unit is also inverted.
         """
         from faebryk.library.Units import is_unit
+        from faebryk.library.affine import EpsilonAllocator, affine_reciprocal
 
         g = g or self.g
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_invert(g=g, tg=tg)
         inverted_unit = is_unit.op_invert(self.get_is_unit(), g=g, tg=tg)
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=inverted_unit,
+
+        af_data = None
+        self_af = self.try_get_affine()
+        if self_af is not None:
+            af_data = affine_reciprocal(self_af.get_affine_data(), EpsilonAllocator())
+
+        return Numbers._make_result(
+            out_numeric_set,
+            inverted_unit,
+            af_data,
+            g=g,
+            tg=tg,
         )
 
     def op_div_intervals(
@@ -3987,12 +4215,16 @@ class Numbers(fabll.Node):
         Unlike add/subtract, division doesn't require commensurable units.
         """
         from faebryk.library.Units import is_unit
+        from faebryk.library.affine import (
+            EpsilonAllocator,
+            affine_multiply,
+            affine_reciprocal,
+        )
 
         g = g or self.g
         tg = tg or self.tg
-        numerator = self
-        out_numeric_set = numerator.get_numeric_set()
-        out_unit = numerator.get_is_unit()
+        out_numeric_set = self.get_numeric_set()
+        out_unit = self.get_is_unit()
 
         for denominator in denominators:
             out_numeric_set = out_numeric_set.op_div_intervals(
@@ -4002,10 +4234,25 @@ class Numbers(fabll.Node):
                 out_unit, g=g, tg=tg, other=denominator.get_is_unit()
             )
 
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=out_unit,
+        af_data = None
+        if collected := self._try_collect_affine_data(*denominators):
+            ad, denom_ads = collected
+            alloc = EpsilonAllocator()
+            for dad in denom_ads:
+                inv = affine_reciprocal(dad, alloc)
+                if inv is None:
+                    break
+                ad = affine_multiply(ad, inv, alloc)
+            else:
+                af_data = ad
+
+        return Numbers._make_result(
+            out_numeric_set,
+            out_unit,
+            af_data,
+            tighten=True,
+            g=g,
+            tg=tg,
         )
 
     def op_pow_intervals(
@@ -4024,28 +4271,39 @@ class Numbers(fabll.Node):
 
         g = g or self.g
         tg = tg or self.tg
-        base = self
         if not is_unit.is_dimensionless(exponent.get_is_unit()):
             raise ValueError("exponent must have dimensionless units")
 
         exp_numeric = exponent.get_numeric_set()
         if not exp_numeric.is_singleton():
-            if not is_unit.is_dimensionless(base.get_is_unit()):
+            if not is_unit.is_dimensionless(self.get_is_unit()):
                 raise ValueError(
                     "base must have dimensionless units when exponent is an interval"
                 )
 
-        # Get the exponent value for unit calculation (use min value)
         exp_value = int(exp_numeric.get_min_value())
         result_unit = is_unit.op_power(
-            base.get_is_unit(), g=g, tg=tg, exponent=exp_value
+            self.get_is_unit(), g=g, tg=tg, exponent=exp_value
         )
+        out_numeric_set = self.get_numeric_set().op_pow(g=g, tg=tg, other=exp_numeric)
 
-        out_numeric_set = base.get_numeric_set().op_pow(g=g, tg=tg, other=exp_numeric)
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=result_unit,
+        af_data = None
+        if exp_numeric.is_singleton():
+            from faebryk.library.affine import EpsilonAllocator, affine_power
+
+            self_af = self.try_get_affine()
+            if self_af is not None:
+                af_data = affine_power(
+                    self_af.get_affine_data(), exp_value, EpsilonAllocator()
+                )
+
+        return Numbers._make_result(
+            out_numeric_set,
+            result_unit,
+            af_data,
+            tighten=True,
+            g=g,
+            tg=tg,
         )
 
     def op_round(
@@ -4059,13 +4317,25 @@ class Numbers(fabll.Node):
         Round this quantity set to the specified number of decimal places.
         Unit remains the same.
         """
+        from faebryk.library.affine import EpsilonAllocator, affine_round
+
         g = g or self.g
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_round(ndigits=ndigits, g=g, tg=tg)
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=self.get_is_unit(),
+
+        self_af = self.try_get_affine()
+        af_data = (
+            affine_round(self_af.get_affine_data(), EpsilonAllocator())
+            if self_af
+            else None
+        )
+
+        return Numbers._make_result(
+            out_numeric_set,
+            self.get_is_unit(),
+            af_data,
+            g=g,
+            tg=tg,
         )
 
     def op_abs(
@@ -4075,13 +4345,25 @@ class Numbers(fabll.Node):
         Take the absolute value of this quantity set.
         Unit remains the same.
         """
+        from faebryk.library.affine import EpsilonAllocator, affine_abs
+
         g = g or self.g
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_abs(g=g, tg=tg)
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=self.get_is_unit(),
+
+        self_af = self.try_get_affine()
+        af_data = (
+            affine_abs(self_af.get_affine_data(), EpsilonAllocator())
+            if self_af
+            else None
+        )
+
+        return Numbers._make_result(
+            out_numeric_set,
+            self.get_is_unit(),
+            af_data,
+            g=g,
+            tg=tg,
         )
 
     def op_log(
@@ -4095,15 +4377,25 @@ class Numbers(fabll.Node):
         Take the natural logarithm of this quantity set.
         Unit remains the same (should be dimensionless for physical meaning).
         """
+        from faebryk.library.affine import EpsilonAllocator, affine_log
+
         g = g or self.g
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_log(
             base=base.get_numeric_set() if base is not None else None, g=g, tg=tg
         )
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=self.get_is_unit(),
+
+        af_data = None
+        self_af = self.try_get_affine()
+        if self_af is not None and base is None:
+            af_data = affine_log(self_af.get_affine_data(), EpsilonAllocator())
+
+        return Numbers._make_result(
+            out_numeric_set,
+            self.get_is_unit(),
+            af_data,
+            g=g,
+            tg=tg,
         )
 
     def op_sqrt(
@@ -4128,17 +4420,27 @@ class Numbers(fabll.Node):
         Input must be in radians.
         Result is dimensionless.
         """
+        from faebryk.library.Units import Dimensionless
+        from faebryk.library.affine import EpsilonAllocator, affine_sin
+
         g = g or self.g
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_sin(g=g, tg=tg)
-        # Result is dimensionless
-        from faebryk.library.Units import Dimensionless
+
+        self_af = self.try_get_affine()
+        af_data = (
+            affine_sin(self_af.get_affine_data(), EpsilonAllocator())
+            if self_af
+            else None
+        )
 
         dimensionless_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=dimensionless_unit.is_unit.get(),
+        return Numbers._make_result(
+            out_numeric_set,
+            dimensionless_unit.is_unit.get(),
+            af_data,
+            g=g,
+            tg=tg,
         )
 
     def op_cos(

@@ -23,6 +23,7 @@ from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
+import faebryk.library.affine as affine
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.bus_parameter_utils as bus_parameter_utils
 import faebryk.library.Literals as Literals
@@ -126,6 +127,7 @@ __all__ = [
     "Logic",
     "Mechanical",
     "Signal",
+    "affine",
     "is_app_root",
     "bus_parameter_utils",
     "Literals",

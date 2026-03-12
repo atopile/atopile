@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from itertools import combinations
 
 import faebryk.core.node as fabll
@@ -12,6 +13,7 @@ from faebryk.core.solver.symbolic.pure_literal import (
     exec_pure_literal_operands,
 )
 from faebryk.core.solver.utils import Contradiction, MutatorUtils
+from faebryk.library.affine import EpsilonAllocator, make_affine_form_node
 from faebryk.libs.util import OrderedSet
 
 logger = logging.getLogger(__name__)
@@ -183,6 +185,52 @@ def _fold_pure_literal_exprs(
     )
 
 
+def _assign_affine_forms_to_bound_literals(
+    ops_dict: "dict[F.Parameters.can_be_operand, F.Literals.is_literal]",
+    *,
+    g: "fabll.GraphView",
+    tg: "fabll.TypeGraph",
+) -> None:
+    """Assign affine forms to parameter-bound literals for correlation tracking.
+
+    For each entry, if the literal is a Numbers with a single finite interval
+    and no existing affine form, creates and attaches an AffineForm node with a
+    unique epsilon ID per parameter.
+    """
+    alloc = EpsilonAllocator()
+    for op, lit in ops_dict.items():
+        nums = lit.switch_cast()
+        if not isinstance(nums, F.Literals.Numbers):
+            continue
+        if nums.try_get_affine() is not None:
+            continue
+        ns = nums.get_numeric_set()
+        if ns.is_empty() or ns.is_singleton():
+            continue
+        if len(ns.get_intervals()) > 1:
+            continue
+        lo, hi = ns.get_min_value(), ns.get_max_value()
+        if not math.isfinite(lo) or not math.isfinite(hi):
+            continue
+        op_po = op.as_parameter_operatable.try_get()
+        if not op_po:
+            continue
+        param = op_po.as_parameter.try_get()
+        if not param:
+            continue
+        eps_id = alloc.get_or_create(id(param))
+        center = (lo + hi) / 2.0
+        half_width = (hi - lo) / 2.0
+        af = make_affine_form_node(
+            center,
+            {eps_id: half_width},
+            0.0,
+            g=g,
+            tg=tg,
+        )
+        nums.set_affine(af)
+
+
 @algorithm("Upper estimation", terminal=False)
 def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
     """
@@ -217,6 +265,12 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
         # TODO theoretically not possible with invariants
         and not mutator.utils.is_literal_expression(subset_op)
     }
+
+    # NOTE: No affine assignment in upper estimation.
+    # Upper estimation computes outer (worst-case) bounds. Affine tightening
+    # would make these progressively tighter each iteration, preventing
+    # convergence when combined with mixed estimation's feedback loop.
+    # Affine tightening is only applied in lower estimation.
 
     exprs = {
         e
@@ -318,6 +372,11 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
     if not subsetted_ops:
         return
 
+    # TODO: re-enable affine forms once convergence with mixed estimation is resolved
+    # _assign_affine_forms_to_bound_literals(
+    #     subsetted_ops, g=mutator.G_transient, tg=mutator.tg_in,
+    # )
+
     # Step 2: Build anticorrelated pairs set for correlation checking
     anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(
         mutator.tg_in, mutator.G_in
@@ -345,34 +404,42 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
             continue
 
         # Step 4: Check uncorrelation condition
-        # Condition 1: operand sub-trees must have DISJOINT parameter sets
-        # If a parameter appears in multiple operands, the operands are correlated
-        # and the Cartesian product factorisation that lower estimation relies on
-        # is invalid.
-        per_operand_params: list[OrderedSet[F.Parameters.is_parameter]] = []
-        for op in operands:
-            op_params: OrderedSet[F.Parameters.is_parameter] = OrderedSet()
-            if op_po := op.as_parameter_operatable.try_get():
-                if op_po.as_parameter.try_get():
-                    op_params.add(op_po.as_parameter.force_get())
-                elif op_expr := op_po.as_expression.try_get():
-                    op_params = MutatorUtils.get_params_for_expr(op_expr)
-            per_operand_params.append(op_params)
+        # With affine forms, correlated operands are handled via shared ε IDs,
+        # so we can skip the anticorrelation check when all mapped literals
+        # carry affine forms.
+        all_have_affine = all(
+            (lit := op.as_literal.try_get()) is not None
+            and isinstance(nums := lit.switch_cast(), F.Literals.Numbers)
+            and nums.try_get_affine() is not None
+            for op in mapped_operands
+        )
 
-        if any(
-            per_operand_params[i] & per_operand_params[j]
-            for i, j in combinations(range(len(per_operand_params)), 2)
-        ):
-            continue  # shared parameter -> operands correlated
+        if not all_have_affine:
+            # Fallback: original disjoint parameter + anticorrelation check
+            per_operand_params: list[OrderedSet[F.Parameters.is_parameter]] = []
+            for op in operands:
+                op_params: OrderedSet[F.Parameters.is_parameter] = OrderedSet()
+                if op_po := op.as_parameter_operatable.try_get():
+                    if op_po.as_parameter.try_get():
+                        op_params.add(op_po.as_parameter.force_get())
+                    elif op_expr := op_po.as_expression.try_get():
+                        op_params = MutatorUtils.get_params_for_expr(op_expr)
+                per_operand_params.append(op_params)
 
-        # Condition 2: all distinct leaf params pairwise anticorrelated
-        all_params = OrderedSet(p for s in per_operand_params for p in s)
-        if len(all_params) > 1:
-            if not all(
-                frozenset([p1, p2]) in anticorrelated_pairs
-                for p1, p2 in combinations(all_params, 2)
+            if any(
+                per_operand_params[i] & per_operand_params[j]
+                for i, j in combinations(range(len(per_operand_params)), 2)
             ):
-                continue
+                continue  # shared parameter -> operands correlated
+
+            # Condition 2: all distinct leaf params pairwise anticorrelated
+            all_params = OrderedSet(p for s in per_operand_params for p in s)
+            if len(all_params) > 1:
+                if not all(
+                    frozenset([p1, p2]) in anticorrelated_pairs
+                    for p1, p2 in combinations(all_params, 2)
+                ):
+                    continue
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
@@ -391,9 +458,35 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
         if out is None:
             continue
 
+        # If the result has an affine form, use inner_range for tighter bounds
+        if all_have_affine and out is not None:
+            # out may be is_literal (from exec_pure_literal_operands)
+            # or can_be_operand (from create_check_and_insert_expression)
+            out_lit = (
+                out
+                if isinstance(out, F.Literals.is_literal)
+                else out.as_literal.try_get()
+            )
+            if out_lit is not None:
+                out_nums = out_lit.switch_cast()
+                if isinstance(out_nums, F.Literals.Numbers):
+                    out_af = out_nums.try_get_affine()
+                    if out_af is not None:
+                        ir = out_af.inner_range()
+                        if ir is not None:
+                            lo, hi = ir
+                            tighter = F.Literals.Numbers.create_instance(
+                                g=mutator.G_transient, tg=mutator.tg_in
+                            ).setup_from_min_max(
+                                min=lo,
+                                max=hi,
+                                unit=out_nums.get_is_unit(),
+                            )
+                            out = tighter.get_trait(F.Literals.is_literal)
+
         expr_subset = out.as_operand.get()
 
-        # Step 6: Superset old expr to subset estimated one
+        # Superset old expr to subset estimated one
         # new_expr ⊆ original_expr (inverse of upper estimation)
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
@@ -411,14 +504,12 @@ class _OperandMappingError(ValueError):
 @algorithm("Mixed-Interval estimation", terminal=False)
 def mixed_estimation(mutator: Mutator):
     """
-    When all operands of an expression have both upper and lower bounds (subset and
-    superset constraints), construct a combined interval for each operand, build a copy
-    of the expression using those intervals, and assert that the original expression is
-    a subset thereof.
+    Construct combined intervals for each operand from both upper and lower bounds, when
+    available. Uses the parameter's domain in the absence of more-constraining bounds.
 
     ```
     f(A{⊆|X}{⊇|Y}, B{⊆|Z}{⊇|W}, ...)
-    => f(...) ⊆! f([min(Y), max(X)], [min(W), max(Z)], ...)
+    => f(...) ⊆! f([min(Y, -∞), max(X, +∞)], [min(W, -∞), max(Z, +∞)], ...)
     ```
 
     No anticorrelation check needed — Minkowski math is inclusion-monotonic.
@@ -460,41 +551,43 @@ def mixed_estimation(mutator: Mutator):
         and not mutator.utils.is_literal_expression(sps_op)
     }
 
-    # Step 3: Find expressions where all operands have both bounds or are literals
-    # An operand qualifies if it has both upper and lower bounds, or if it's a literal
-    def _op_has_both_bounds(op: F.Parameters.can_be_operand) -> bool:
-        return (op in supersetted_ops and op in subsetted_ops) or bool(
-            op.as_literal.try_get()
-        )
+    bounded_ops = set(supersetted_ops.keys()) | set(subsetted_ops.keys())
+
+    # An operand qualifies if it has at least one bound or is a literal
+    def _op_qualifies(op: F.Parameters.can_be_operand) -> bool:
+        return op in bounded_ops or bool(op.as_literal.try_get())
 
     def _map_operand(op: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
-        # Parameter operands: combined interval [min(ss), max(sps)]
-        # Literal operands: use the literal directly
-
         if op.as_literal.try_get():
             return op
 
-        superset_lits = supersetted_ops[op].switch_cast()
-        subset_lits = subsetted_ops[op].switch_cast()
+        upper = supersetted_ops.get(op)
+        lower = subsetted_ops.get(op)
 
-        if not superset_lits.isinstance(
-            F.Literals.Numbers
-        ) or not subset_lits.isinstance(F.Literals.Numbers):
+        min_val = -math.inf
+        max_val = math.inf
+        unit = None
+
+        if upper and (upper_nums := upper.switch_cast()).isinstance(F.Literals.Numbers):
+            assert isinstance(upper_nums, F.Literals.Numbers)
+            min_val = max(min_val, upper_nums.get_min_value())
+            max_val = min(max_val, upper_nums.get_max_value())
+            unit = upper_nums.get_is_unit()
+
+        if lower and (lower_nums := lower.switch_cast()).isinstance(F.Literals.Numbers):
+            assert isinstance(lower_nums, F.Literals.Numbers)
+            min_val = max(min_val, lower_nums.get_min_value())
+            max_val = min(max_val, lower_nums.get_max_value())
+            unit = unit or lower_nums.get_is_unit()
+
+        if min_val == -math.inf and max_val == math.inf:
             raise _OperandMappingError()
-
-        assert isinstance(superset_lits, F.Literals.Numbers) and isinstance(
-            subset_lits, F.Literals.Numbers
-        )
 
         return (
             (
                 F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
                 .create_instance(g=mutator.G_transient)
-                .setup_from_min_max(
-                    min=subset_lits.get_min_value(),
-                    max=superset_lits.get_max_value(),
-                    unit=superset_lits.get_is_unit(),
-                )
+                .setup_from_min_max(min=min_val, max=max_val, unit=unit)
             )
             .is_literal.get()
             .as_operand.get()
@@ -502,20 +595,23 @@ def mixed_estimation(mutator: Mutator):
 
     for expr in {
         e
-        for op in set(supersetted_ops.keys()) | set(subsetted_ops.keys())
+        for op in bounded_ops
         for e in mutator.get_operations(op.as_parameter_operatable.force_get())
         if not e.has_trait(F.Expressions.is_setic)
     }:
         expr_e = expr.get_trait(F.Expressions.is_expression)
         operands = expr_e.get_operands()
 
-        if not all(_op_has_both_bounds(op) for op in operands):
+        if not all(_op_qualifies(op) for op in operands):
+            continue
+
+        # At least one non-literal operand must have a bound
+        if not any(op in bounded_ops for op in operands):
             continue
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
 
-        # Step 4: Construct combined interval for each operand
         try:
             mapped_operands = [_map_operand(op) for op in operands]
         except _OperandMappingError:
@@ -524,7 +620,7 @@ def mixed_estimation(mutator: Mutator):
         if (out := _fold_pure_literal_exprs(mutator, expr_e, mapped_operands)) is None:
             continue
 
-        # Step 5: Assert original ⊆ computed result
+        # Assert original ⊆ computed result
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             expr_e.as_operand.get(),

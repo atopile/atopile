@@ -228,6 +228,57 @@ class ResistorVoltageDivider(fabll.Node):
             ],
             assert_=True,
         ),
+        # r_bottom = r_top * ratio / (1 - ratio)
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+            [
+                _r_bot_helper := F.Expressions.Divide.MakeChild(
+                    [
+                        _r_bot_helper_mul := F.Expressions.Multiply.MakeChild(
+                            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+                            [ratio],
+                        )
+                    ],
+                    [
+                        _r_bot_helper_sub := F.Expressions.Subtract.MakeChild(
+                            [
+                                _lit_one_b := F.Literals.Numbers.MakeChild_SingleValue(
+                                    value=1.0, unit=F.Units.Dimensionless
+                                )
+                            ],
+                            [ratio],
+                        )
+                    ],
+                )
+            ],
+            assert_=True,
+        ),
+        # r_top = r_bottom * (1 - ratio) / ratio
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+            [
+                _r_top_helper := F.Expressions.Divide.MakeChild(
+                    [
+                        _r_top_helper_mul := F.Expressions.Multiply.MakeChild(
+                            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+                            [
+                                _r_top_helper_sub := F.Expressions.Subtract.MakeChild(
+                                    [
+                                        _lit_one_t
+                                        := F.Literals.Numbers.MakeChild_SingleValue(
+                                            value=1.0, unit=F.Units.Dimensionless
+                                        )
+                                    ],
+                                    [ratio],
+                                )
+                            ],
+                        )
+                    ],
+                    [ratio],
+                )
+            ],
+            assert_=True,
+        ),
         F.Expressions.Is.MakeChild(
             [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
             [
@@ -674,20 +725,10 @@ class TestVdivSolver:
             f" {expected_ratio.pretty_str()}"
         )
 
-        # Without backtracking, the first resistor pick may be incompatible
-        # with the ratio/voltage constraints. Either the solver detects this
-        # and raises a Contradiction, or the picks are valid.
-        from faebryk.core.solver.utils import Contradiction
-
         pick_solver = Solver()
-        try:
-            pick_parts_recursively(rdiv, pick_solver)
-        except Contradiction:
-            # Contradiction detected — the solver correctly identified
-            # that the picked values are incompatible with the constraints.
-            return
+        pick_parts_recursively(rdiv, pick_solver)
 
-        # If no contradiction, verify the picks are actually valid
+        # Verify the picks are actually valid
         r0_po = (
             rdiv.chain.get()
             .resistors[0]
@@ -791,30 +832,22 @@ class TestVdivSolver:
         #   r_bottom = total_R × ratio ≈ [1791Ω, 2.23MΩ]
         #   r_top = total_R − r_bottom ≈ [0Ω, 10.5MΩ] (uncorrelated)
         expected_r_top = not_none(
-            fabll.Traits(
-                E.lit_op_range(((0, E.U.Ohm), (10500000, E.U.Ohm)))
-            )
+            fabll.Traits(E.lit_op_range(((0, E.U.Ohm), (10500000, E.U.Ohm))))
             .get_obj_raw()
             .try_cast(F.Literals.Numbers)
         )
         expected_r_bottom = not_none(
-            fabll.Traits(
-                E.lit_op_range(((1791, E.U.Ohm), (2233000, E.U.Ohm)))
-            )
+            fabll.Traits(E.lit_op_range(((1791, E.U.Ohm), (2233000, E.U.Ohm))))
             .get_obj_raw()
             .try_cast(F.Literals.Numbers)
         )
         expected_ratio = not_none(
-            fabll.Traits(
-                E.lit_op_range(((0.188, E.U.dl), (0.213, E.U.dl)))
-            )
+            fabll.Traits(E.lit_op_range(((0.188, E.U.dl), (0.213, E.U.dl))))
             .get_obj_raw()
             .try_cast(F.Literals.Numbers)
         )
         expected_total_r = not_none(
-            fabll.Traits(
-                E.lit_op_range(((9500, E.U.Ohm), (10500000, E.U.Ohm)))
-            )
+            fabll.Traits(E.lit_op_range(((9500, E.U.Ohm), (10500000, E.U.Ohm))))
             .get_obj_raw()
             .try_cast(F.Literals.Numbers)
         )
@@ -1130,5 +1163,3 @@ class TestVdivSolver:
         r_bottom = vdiv.chain.get().resistors[1].get()
         assert r_top.has_trait(F.Pickable.has_part_picked)
         assert r_bottom.has_trait(F.Pickable.has_part_picked)
-
-
