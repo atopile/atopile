@@ -1,73 +1,35 @@
 """
-Serve commands for local backend/frontend development.
+Serve commands for the core server.
+
+The core server reads its port from ATOPILE_CORE_SERVER_PORT,
+set by the VS Code extension.
 """
 
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
-import sys
-from pathlib import Path
 from typing import Optional
 
 import typer
 
-DEFAULT_DASHBOARD_PORT = 8501
+CORE_SERVER_PORT_ENV = "ATOPILE_CORE_SERVER_PORT"
 
 serve_app = typer.Typer(no_args_is_help=True)
 
 
-def _install_nodejs() -> Optional[int]:
-    if sys.platform == "darwin":
-        if shutil.which("brew"):
-            return subprocess.run(["brew", "install", "node"]).returncode
-        return None
-    if sys.platform.startswith("linux"):
-        if shutil.which("apt-get"):
-            return subprocess.run(
-                ["sudo", "apt-get", "install", "-y", "nodejs", "npm"]
-            ).returncode
-        if shutil.which("dnf"):
-            return subprocess.run(
-                ["sudo", "dnf", "install", "-y", "nodejs", "npm"]
-            ).returncode
-        if shutil.which("yum"):
-            return subprocess.run(
-                ["sudo", "yum", "install", "-y", "nodejs", "npm"]
-            ).returncode
-        if shutil.which("pacman"):
-            return subprocess.run(
-                ["sudo", "pacman", "-S", "--noconfirm", "nodejs", "npm"]
-            ).returncode
-        return None
-    if sys.platform == "win32":
-        if shutil.which("choco"):
-            return subprocess.run(["choco", "install", "-y", "nodejs"]).returncode
-        if shutil.which("winget"):
-            return subprocess.run(
-                ["winget", "install", "-e", "--id", "OpenJS.NodeJS"]
-            ).returncode
-        return None
-    return None
+def _require_env_port(name: str) -> int:
+    """Read a required port from an environment variable."""
+    raw = os.environ.get(name)
+    if not raw:
+        raise typer.BadParameter(f"Environment variable {name} is required")
+    try:
+        return int(raw)
+    except ValueError:
+        raise typer.BadParameter(f"{name}={raw!r} is not a valid port number")
 
 
 @serve_app.command()
-def backend(
-    port: int = typer.Option(
-        DEFAULT_DASHBOARD_PORT,
-        help="Port to run the backend server on",
-    ),
-    host: str = typer.Option(
-        "127.0.0.1",
-        help="Host to bind the backend server to (use 0.0.0.0 for Docker)",
-    ),
-    workspace: Optional[list[Path]] = typer.Option(
-        None,
-        "--workspace",
-        "-w",
-        help="Workspace path to scan for projects (can be specified multiple times)",
-    ),
+def core(
     force: bool = typer.Option(
         False,
         "--force",
@@ -100,91 +62,18 @@ def backend(
         help="The pip/uv spec used to install atopile"
         " (e.g., 'atopile==0.14.0' or git URL)",
     ),
-    no_gen: bool = typer.Option(
-        False,
-        "--no-gen",
-        help="Skip TypeScript type generation from Pydantic models",
-    ),
 ) -> None:
-    """Start the backend server in the current terminal."""
-    from atopile.server.server import run_server
+    """Start the core server in the current terminal."""
+    from atopile.dataclasses import AppContext
+    from atopile.server.server import CoreServer
 
-    workspace_paths = list(workspace) if workspace else None
-    run_server(
-        port=port,
-        host=host,
-        workspace_paths=workspace_paths,
-        force=force,
+    port = _require_env_port(CORE_SERVER_PORT_ENV)
+    ctx = AppContext(
         ato_source=ato_source,
-        ato_binary_path=ato_binary_path,
         ato_local_path=ato_local_path,
+        ato_binary_path=ato_binary_path,
         ato_from_branch=ato_from_branch,
         ato_from_spec=ato_from_spec,
-        no_gen=no_gen,
     )
 
-
-@serve_app.command()
-def frontend(
-    port: int = typer.Option(5173, help="Port to run the UI server on"),
-    host: str = typer.Option("127.0.0.1", help="Host to bind the UI server to"),
-    backend: Optional[str] = typer.Option(
-        None,
-        "--backend",
-        "-b",
-        help=f"Backend host:port (e.g. localhost:{DEFAULT_DASHBOARD_PORT}).",
-    ),
-) -> None:
-    """Start the UI server (Vite) in the current terminal."""
-    repo_root = Path(__file__).resolve().parents[3]
-    ui_server_dir = repo_root / "src" / "ui-server"
-
-    if not ui_server_dir.exists():
-        raise typer.BadParameter(f"UI server not found at {ui_server_dir}")
-
-    if not shutil.which("npm"):
-        if not typer.confirm(
-            "npm not found. Attempt to install Node.js now?", default=False
-        ):
-            raise typer.BadParameter("npm is required to serve the frontend.")
-        result = _install_nodejs()
-        if result is None:
-            raise typer.BadParameter(
-                "No supported package manager found. Install Node.js from https://nodejs.org/"
-            )
-        if result != 0:
-            raise typer.Exit(result)
-        if not shutil.which("npm"):
-            raise typer.BadParameter(
-                "npm is still missing after installation attempt. Install Node.js from https://nodejs.org/"
-            )
-
-    node_modules_dir = ui_server_dir / "node_modules"
-    vite_bin = node_modules_dir / ".bin" / ("vite.cmd" if os.name == "nt" else "vite")
-    if not node_modules_dir.exists() or not vite_bin.exists():
-        install_cmd = ["npm", "install"]
-        result = subprocess.run(install_cmd, cwd=str(ui_server_dir))
-        if result.returncode != 0:
-            raise typer.Exit(result.returncode)
-
-    dist_dir = ui_server_dir / "dist"
-    if not dist_dir.exists():
-        build_cmd = ["npm", "run", "build"]
-        result = subprocess.run(build_cmd, cwd=str(ui_server_dir))
-        if result.returncode != 0:
-            raise typer.Exit(result.returncode)
-
-    if backend:
-        backend_host = backend if "://" in backend else f"http://{backend}"
-    else:
-        backend_host = f"http://localhost:{DEFAULT_DASHBOARD_PORT}"
-
-    ws_host = backend_host.replace("http://", "ws://").replace("https://", "wss://")
-    env = os.environ.copy()
-    env["VITE_API_URL"] = backend_host
-    env["VITE_WS_URL"] = f"{ws_host}/ws/state"
-
-    print(f"Frontend connecting to backend at {backend_host}")
-
-    cmd = ["npm", "run", "dev", "--", "--host", host, "--port", str(port)]
-    raise typer.Exit(subprocess.run(cmd, cwd=str(ui_server_dir), env=env).returncode)
+    CoreServer(port=port, force=force, ctx=ctx).run()

@@ -6,8 +6,8 @@
         {
             "label": "vscode-extension: watch",
             "type": "npm",
-            "script": "watch",
-            "problemMatcher": ["$ts-webpack-watch", "$tslint-webpack-watch"],
+            "script": "watch:extension",
+            "problemMatcher": "$esbuild-watch",
             "isBackground": true,
             "presentation": {
                 "reveal": "never",

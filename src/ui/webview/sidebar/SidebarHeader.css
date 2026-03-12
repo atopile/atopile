@@ -1,0 +1,107 @@
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+  height: 35px;
+  min-height: 35px;
+  padding: 0 var(--spacing-xs);
+  border-bottom: 1px solid var(--accent);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+  position: relative;
+}
+
+.sidebar-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.sidebar-logo {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.sidebar-title {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.version-badge {
+  margin-left: 0;
+  font-size: var(--font-size-xxs);
+  padding: 1px 5px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-health {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+}
+
+.sidebar-health-success {
+  color: var(--ctp-green);
+  background: color-mix(in srgb, var(--ctp-green) 15%, transparent);
+}
+
+.sidebar-health-warning {
+  color: var(--ctp-yellow);
+  background: color-mix(in srgb, var(--ctp-yellow) 15%, transparent);
+}
+
+.sidebar-health-error {
+  color: var(--ctp-red);
+  background: color-mix(in srgb, var(--ctp-red) 15%, transparent);
+}
+
+.sidebar-health-loading {
+  color: var(--ctp-blue);
+  background: color-mix(in srgb, var(--ctp-blue) 15%, transparent);
+}
+
+.sidebar-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.sidebar-settings-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.spin {
+  animation: sidebar-spin 1s linear infinite;
+}
+
+@keyframes sidebar-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}

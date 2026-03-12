@@ -1,0 +1,53 @@
+/* LibraryPanel — uses shared sidebar-panel, sidebar-panel-scroll, type-icon from PanelLayout.css + TypeIcon.css */
+
+.library-group {
+  margin-bottom: var(--spacing-sm);
+}
+
+.library-item {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-xs);
+  overflow: hidden;
+}
+
+.library-item-header {
+  font-size: var(--font-size-sm);
+}
+
+.library-item-detail {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.library-item-description {
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.library-children {
+  padding-left: var(--spacing-sm);
+}
+
+.library-child-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 2px 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.library-child-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-child-type {
+  color: var(--text-muted);
+  font-size: var(--font-size-xxs);
+  margin-left: auto;
+  flex-shrink: 0;
+}

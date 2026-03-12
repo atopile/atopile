@@ -29,10 +29,8 @@ from atopile.cli import (
     install,
     kicad_ipc,
     lsp,
-    mcp,
     package,
     serve,
-    view,
 )
 from atopile.errors import (
     UserException,
@@ -205,14 +203,12 @@ app.command()(build.build)
 app.add_typer(create.create_app, name="create")
 app.command(deprecated=True, hidden=True)(install.install)
 app.command()(inspect_.inspect)
-app.command()(view.view)
 app.add_typer(package.package_app, name="package", hidden=True)
 app.add_typer(install.dependencies_app, name="dependencies", help="Manage dependencies")
 app.command(rich_help_panel="Shortcuts")(install.sync)
 app.command(rich_help_panel="Shortcuts")(install.add)
 app.command(rich_help_panel="Shortcuts")(install.remove)
 app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
-app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
 app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
 app.add_typer(dev.dev_app, name="dev", hidden=True)
 app.add_typer(serve.serve_app, name="serve")

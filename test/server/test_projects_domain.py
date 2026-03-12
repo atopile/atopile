@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from atopile.server.domains import projects as projects_domain
+from atopile.model import projects as projects_domain
 from faebryk.libs.package.dist import Dist
 
 

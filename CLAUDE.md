@@ -28,6 +28,8 @@ zig, graph, faebryk, fabll, domain-layer, build-server, frontend
 
 # Tooling
 
+- use `bun` for JS/TS tooling in this repo
+- do not use `npm` or invoke `vite` directly
 - testing is done via `ato dev test`
 
 # Pull Requests
@@ -49,15 +51,15 @@ Skills are located in `.claude/skills/`.
 │ └── SKILL.md
 ├── compiler
 │ └── SKILL.md
-├── dev
+├── core-dev
 │ └── SKILL.md
 ├── domain-layer
+│ └── SKILL.md
+├── extension-dev
 │ └── SKILL.md
 ├── fabll
 │ └── SKILL.md
 ├── faebryk
-│ └── SKILL.md
-├── frontend
 │ └── SKILL.md
 ├── graph
 │ └── SKILL.md
@@ -68,8 +70,6 @@ Skills are located in `.claude/skills/`.
 ├── pyzig
 │ └── SKILL.md
 ├── sexp
-│ └── SKILL.md
-├── atopile-skills
 │ └── SKILL.md
 └── solver
   └── SKILL.md

@@ -1,0 +1,5 @@
+/* PartsPanel — uses shared sidebar-panel, sidebar-panel-scroll, panel-tabs, card-row from PanelLayout.css */
+
+.part-stock-ok { color: var(--success); }
+.part-stock-low { color: var(--warning); }
+.part-stock-none { color: var(--error); }

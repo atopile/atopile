@@ -18,7 +18,6 @@ from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict
 
-from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # =============================================================================
@@ -56,40 +55,6 @@ class StageStatus(str, Enum):
     SKIPPED = "skipped"
 
 
-class EventType(StrEnum):
-    """Event types emitted to WebSocket clients."""
-
-    # Data state changes - client should refetch
-    PROJECTS_CHANGED = "projects_changed"
-    PACKAGES_CHANGED = "packages_changed"
-    PACKAGES_DOWNLOADS_UPDATED = "packages_downloads_updated"
-    PARTS_CHANGED = "parts_changed"
-    STDLIB_CHANGED = "stdlib_changed"
-    BOM_CHANGED = "bom_changed"
-    VARIABLES_CHANGED = "variables_changed"
-    BUILDS_CHANGED = "builds_changed"
-    PROBLEMS_CHANGED = "problems_changed"
-
-    # File watcher notifications
-    PROJECT_FILES_CHANGED = "project_files_changed"
-    PROJECT_MODULES_CHANGED = "project_modules_changed"
-    PROJECT_DEPENDENCIES_CHANGED = "project_dependencies_changed"
-
-    # Configuration changes
-    ATOPILE_CONFIG_CHANGED = "atopile_config_changed"
-
-    # Package integrity
-    PACKAGE_MODIFIED = "package_modified"
-
-    # Shared UI state
-    LOG_VIEW_CURRENT_ID_CHANGED = "log_view_current_id_changed"
-
-    # Action requests (frontend should handle)
-    OPEN_LAYOUT = "open_layout"
-    OPEN_KICAD = "open_kicad"
-    OPEN_3D = "open_3d"
-
-
 # =============================================================================
 # Build-related Dataclasses (from logging.py)
 # =============================================================================
@@ -119,7 +84,6 @@ class StageCompleteEvent:
     infos: int
     warnings: int
     errors: int
-    alerts: int
     log_name: str
     description: str
 
@@ -356,31 +320,25 @@ class Log:
         python_traceback: str | None = None
         objects: Any | None = None
 
-    class BuildEntryPydantic(_BaseEntryPydantic):
-        """Pydantic model for build log entry (API serialization)."""
-
-        stage: str | None = None
-
-    class TestEntryPydantic(_BaseEntryPydantic):
-        """Pydantic model for test log entry (API serialization)."""
+    class EntryPydantic(_BaseEntryPydantic):
+        """Pydantic model for build/test log entry serialization."""
 
         test_name: str | None = None
+        stage: str | None = None
 
     # -------------------------------------------------------------------------
     # Pydantic models for log entry results
     # -------------------------------------------------------------------------
 
-    class BuildResult(BaseModel):
-        """Response containing build log entries."""
+    class Result(BaseModel):
+        """Response containing log entries."""
 
-        type: Literal["logs_result"] = "logs_result"
-        logs: list["Log.BuildEntryPydantic"]
-
-    class TestResult(BaseModel):
-        """Response containing test log entries."""
-
-        type: Literal["test_logs_result"] = "test_logs_result"
-        logs: list["Log.TestEntryPydantic"]
+        type: Literal["logs_result", "test_logs_result"]
+        build_id: str
+        test_run_id: str
+        stage: str | None = None
+        test_name: str | None = None
+        logs: list["Log.EntryPydantic"]
 
     class Error(BaseModel):
         """Error response for log queries."""
@@ -415,29 +373,22 @@ class Log:
 
         id: int  # Database row id for cursor
 
-    class BuildStreamEntryPydantic(_BaseStreamEntryPydantic):
-        """Build log entry with id for streaming (cursor tracking)."""
-
-        stage: str | None = None
-
-    class TestStreamEntryPydantic(_BaseStreamEntryPydantic):
-        """Test log entry with id for streaming."""
+    class StreamEntryPydantic(_BaseStreamEntryPydantic):
+        """Build/test log entry with id for streaming."""
 
         test_name: str | None = None
+        stage: str | None = None
 
-    class BuildStreamResult(BaseModel):
+    class StreamResult(BaseModel):
         """Streaming response with cursor."""
 
-        type: Literal["logs_stream"] = "logs_stream"
-        logs: list["Log.BuildStreamEntryPydantic"]
+        type: Literal["logs_stream", "test_logs_stream"]
+        build_id: str
+        test_run_id: str
+        stage: str | None = None
+        test_name: str | None = None
+        logs: list["Log.StreamEntryPydantic"]
         last_id: int  # Highest id returned - client sends this back as after_id
-
-    class TestStreamResult(BaseModel):
-        """Streaming response for test logs."""
-
-        type: Literal["test_logs_stream"] = "test_logs_stream"
-        logs: list["Log.TestStreamEntryPydantic"]
-        last_id: int
 
 
 # Set default values for dataclass fields after Log class is fully defined
@@ -456,7 +407,35 @@ class CamelModel(BaseModel):
     model_config = ConfigDict(
         alias_generator=_to_camel,
         populate_by_name=True,
+        serialize_by_alias=True,
     )
+
+
+# =============================================================================
+# File Explorer Models
+# =============================================================================
+
+
+class FileNode(CamelModel):
+    """A node in the project file tree. Has children if folder, None if file."""
+
+    name: str
+    children: list["FileNode"] | None = None
+
+
+# =============================================================================
+# Shared Project/Build Models
+# =============================================================================
+
+
+class ResolvedBuildTarget(CamelModel):
+    """A build target with resolved artifact paths."""
+
+    name: str = "default"
+    entry: str = ""
+    pcb_path: str = ""
+    model_path: str = ""
+    root: str
 
 
 # =============================================================================
@@ -469,21 +448,18 @@ class BuildStage(CamelModel):
 
     name: str
     stage_id: str = ""
-    display_name: Optional[str] = None
     elapsed_seconds: float = 0.0
     status: StageStatus = StageStatus.PENDING
     infos: int = 0
     warnings: int = 0
     errors: int = 0
-    alerts: int = 0
 
 
 class Build(CamelModel):
     """A build (active, queued, or completed)."""
 
     # Core identification
-    name: str
-    display_name: str
+    name: str = "default"
     project_name: Optional[str] = None
     build_id: Optional[str] = None
 
@@ -497,24 +473,17 @@ class Build(CamelModel):
 
     # Context
     project_root: Optional[str] = None
-    target: Optional[str] = None
-    entry: Optional[str] = None
+    target: Optional[ResolvedBuildTarget] = None
     started_at: Optional[float] = None
 
     # Active build fields
-    timestamp: Optional[str] = None
     standalone: bool = False
     frozen: bool | None = False
 
     # Stages and logs
-    stages: list[dict[str, Any]] = Field(default_factory=list)
+    stages: list[BuildStage] = Field(default_factory=list)
     # Total number of stages - set by subprocess at build start
     total_stages: Optional[int] = None
-    log_dir: Optional[str] = None
-    log_file: Optional[str] = None
-
-    # Queue info
-    queue_position: Optional[int] = None
 
     # Build options (used to construct subprocess command/env, not serialized)
     include_targets: list[str] = Field(default_factory=list, exclude=True)
@@ -529,16 +498,9 @@ class Build(CamelModel):
     def _fill_display_fields(cls, values: Any) -> Any:
         if not isinstance(values, dict):
             return values
-        target = values.get("target") or values.get("name") or "default"
-        values.setdefault("name", target)
         project_root = values.get("project_root")
         if project_root and not values.get("project_name"):
             values["project_name"] = Path(project_root).name
-        if not values.get("display_name"):
-            if values.get("project_name"):
-                values["display_name"] = f"{values['project_name']}:{values['name']}"
-            else:
-                values["display_name"] = values["name"]
         return values
 
 
@@ -546,69 +508,14 @@ class BuildRequest(CamelModel):
     """Request to start a build."""
 
     project_root: str
-    targets: list[str] = []  # Empty = all targets
+    targets: list[ResolvedBuildTarget] = Field(default_factory=list)
     frozen: bool = False
     # For standalone builds (entry point without ato.yaml build config)
     entry: Optional[str] = None  # e.g., "main.ato:App" - if set, runs standalone build
     standalone: bool = False  # Whether to use standalone mode
     # Muster targets to include (e.g., "all", "mfg-data") - defaults to "default"
-    include_targets: list[str] = []
-    exclude_targets: list[str] = []
-
-
-class BuildTargetInfo(CamelModel):
-    """Build target queued by a build request."""
-
-    target: str
-    build_id: str
-
-
-class BuildResponse(CamelModel):
-    """Response from build request."""
-
-    success: bool
-    message: str
-    build_targets: list[BuildTargetInfo] = Field(default_factory=list)
-
-
-class BuildTargetResponse(CamelModel):
-    """Response for build target status (one build_id = one target)."""
-
-    build_id: str
-    target: str
-    status: BuildStatus
-    project_root: str
-    return_code: Optional[int] = None
-    error: Optional[str] = None
-
-
-class BuildTargetStatus(CamelModel):
-    """Persisted status from last build of a target."""
-
-    status: BuildStatus
-    timestamp: str  # ISO format
-    elapsed_seconds: Optional[float] = None
-    warnings: int = 0
-    errors: int = 0
-    stages: Optional[list[dict]] = None
-    build_id: Optional[str] = None  # Build ID hash for reference
-
-
-class EventMessage(BaseModel):
-    """WebSocket event message payload."""
-
-    type: Literal["event"] = "event"
-    event: EventType
-    data: Optional[dict[str, Any]] = None
-
-
-class BuildTarget(CamelModel):
-    """A build target from ato.yaml."""
-
-    name: str
-    entry: str
-    root: str
-    last_build: Optional[BuildTargetStatus] = None
+    include_targets: list[str] = Field(default_factory=list)
+    exclude_targets: list[str] = Field(default_factory=list)
 
 
 class BuildsResponse(CamelModel):
@@ -633,10 +540,7 @@ class Project(CamelModel):
 
     root: str
     name: str
-    targets: list[BuildTarget]
-    display_path: Optional[str] = (
-        None  # Relative path for display (e.g., "packages/proj")
-    )
+    targets: list[ResolvedBuildTarget]
     needs_migration: bool = False
 
 
@@ -647,13 +551,8 @@ class ProjectsResponse(CamelModel):
     total: int
 
 
-class ModuleChild(BaseModel):
+class ModuleChild(CamelModel):
     """A child field within a module (interface, parameter, nested module, etc.)."""
-
-    model_config = ConfigDict(
-        alias_generator=_to_camel,
-        populate_by_name=True,
-    )
 
     name: str
     type_name: str  # The type name (e.g., "Electrical", "Resistor", "V")
@@ -664,7 +563,7 @@ class ModuleChild(BaseModel):
     spec: Optional[str] = None
 
 
-class ModuleDefinition(BaseModel):
+class ModuleDefinition(CamelModel):
     """A module/interface/component definition from an .ato file."""
 
     name: str
@@ -676,7 +575,7 @@ class ModuleDefinition(BaseModel):
     children: list[ModuleChild] = Field(default_factory=list)  # Nested children
 
 
-class ModulesResponse(BaseModel):
+class ModulesResponse(CamelModel):
     """Response for /api/modules endpoint."""
 
     modules: list[ModuleDefinition]
@@ -698,31 +597,31 @@ class DependencyInfo(CamelModel):
     status: Optional[str] = None
 
 
-class DependenciesResponse(BaseModel):
+class DependenciesResponse(CamelModel):
     """Response for /api/dependencies endpoint."""
 
     dependencies: list[DependencyInfo]
     total: int
 
 
-class CreateProjectRequest(BaseModel):
+class CreateProjectRequest(CamelModel):
     parent_directory: str
     name: str | None = None
 
 
-class CreateProjectResponse(BaseModel):
+class CreateProjectResponse(CamelModel):
     success: bool
     message: str
     project_root: str | None = None
     project_name: str | None = None
 
 
-class RenameProjectRequest(BaseModel):
+class RenameProjectRequest(CamelModel):
     project_root: str
     new_name: str
 
 
-class RenameProjectResponse(BaseModel):
+class RenameProjectResponse(CamelModel):
     success: bool
     message: str
     old_root: str
@@ -732,37 +631,37 @@ class RenameProjectResponse(BaseModel):
 # --- Build Target Management ---
 
 
-class AddBuildTargetRequest(BaseModel):
+class AddBuildTargetRequest(CamelModel):
     project_root: str
     name: str
     entry: str
 
 
-class AddBuildTargetResponse(BaseModel):
+class AddBuildTargetResponse(CamelModel):
     success: bool
     message: str
-    target: Optional[dict] = None
+    target: Optional[str] = None
 
 
-class UpdateBuildTargetRequest(BaseModel):
+class UpdateBuildTargetRequest(CamelModel):
     project_root: str
     old_name: str
     new_name: Optional[str] = None
     new_entry: Optional[str] = None
 
 
-class UpdateBuildTargetResponse(BaseModel):
+class UpdateBuildTargetResponse(CamelModel):
     success: bool
     message: str
-    target: Optional[dict] = None
+    target: Optional[str] = None
 
 
-class DeleteBuildTargetRequest(BaseModel):
+class DeleteBuildTargetRequest(CamelModel):
     project_root: str
     name: str
 
 
-class DeleteBuildTargetResponse(BaseModel):
+class DeleteBuildTargetResponse(CamelModel):
     success: bool
     message: str
 
@@ -779,6 +678,11 @@ class UpdateDependencyVersionRequest(BaseModel):
 class UpdateDependencyVersionResponse(BaseModel):
     success: bool
     message: str
+
+
+class OpenLayoutRequest(CamelModel):
+    project_root: str
+    target: ResolvedBuildTarget
 
 
 # =============================================================================
@@ -800,11 +704,9 @@ class PackageInfo(CamelModel):
     repository: Optional[str] = None
     license: Optional[str] = None
     installed: bool = False
-    installed_in: list[str] = Field(default_factory=list)  # List of project roots
     has_update: bool = False
     # Stats from registry (may be None if not fetched)
     downloads: Optional[int] = None
-    version_count: Optional[int] = None
     keywords: Optional[list[str]] = None
 
 
@@ -872,7 +774,6 @@ class PackageDetails(CamelModel):
     downloads_this_month: Optional[int] = None
     # Versions
     versions: list[PackageVersion] = Field(default_factory=list)
-    version_count: int = 0
     # Readme + build outputs
     readme: Optional[str] = None
     builds: Optional[list[str]] = None
@@ -882,12 +783,11 @@ class PackageDetails(CamelModel):
     # Installation status
     installed: bool = False
     installed_version: Optional[str] = None
-    installed_in: list[str] = Field(default_factory=list)
     # Dependencies
     dependencies: list[PackageDependency] = Field(default_factory=list)
 
 
-class PackageSummaryItem(BaseModel):
+class PackageSummaryItem(CamelModel):
     """Display-ready package info for the packages panel.
 
     This is the unified type sent from /api/packages/summary that merges
@@ -901,7 +801,6 @@ class PackageSummaryItem(BaseModel):
     # Installation status
     installed: bool
     version: Optional[str] = None  # Installed version
-    installed_in: list[str] = Field(default_factory=list)
 
     # Registry info (pre-merged)
     latest_version: Optional[str] = None
@@ -916,15 +815,7 @@ class PackageSummaryItem(BaseModel):
 
     # Stats
     downloads: Optional[int] = None
-    version_count: Optional[int] = None
     keywords: list[str] = Field(default_factory=list)
-
-
-class RegistryStatus(CamelModel):
-    """Status of the registry connection for error visibility."""
-
-    available: bool
-    error: Optional[str] = None
 
 
 class PackagesResponse(CamelModel):
@@ -934,13 +825,12 @@ class PackagesResponse(CamelModel):
     total: int
 
 
-class PackagesSummaryResponse(CamelModel):
-    """Response for /api/packages/summary endpoint."""
+class PackagesSummaryData(CamelModel):
+    """Package summary data for the packages panel."""
 
     packages: list[PackageSummaryItem]
     total: int
     installed_count: int
-    registry_status: RegistryStatus
 
 
 class RegistrySearchResponse(CamelModel):
@@ -989,48 +879,6 @@ class PackageInfoVeryBrief(CamelModel):
     summary: str
 
 
-# =============================================================================
-# Problem-related Pydantic Models
-# =============================================================================
-
-
-class Problem(BaseModel):
-    """A problem (error or warning) from a build log."""
-
-    id: str
-    level: Literal["error", "warning"]
-    message: str
-    file: Optional[str] = None
-    line: Optional[int] = None
-    column: Optional[int] = None
-    stage: Optional[str] = None
-    logger: Optional[str] = None
-    build_name: Optional[str] = None
-    project_name: Optional[str] = None
-    timestamp: Optional[str] = None
-    ato_traceback: Optional[str] = None
-    exc_info: Optional[str] = None
-
-
-class ProblemFilter(BaseModel):
-    """Filter settings for problems."""
-
-    levels: list[Literal["error", "warning"]] = Field(
-        default_factory=lambda: ["error", "warning"]
-    )
-    build_names: list[str] = Field(default_factory=list)
-    stage_ids: list[str] = Field(default_factory=list)
-
-
-class ProblemsResponse(BaseModel):
-    """Response for /api/problems endpoint."""
-
-    problems: list[Problem]
-    total: int
-    error_count: int
-    warning_count: int
-
-
 # Log-related models are now in the Log class above
 
 
@@ -1049,7 +897,7 @@ class StdLibItemType(str, Enum):
     PARAMETER = "parameter"
 
 
-class StdLibChild(BaseModel):
+class StdLibChild(CamelModel):
     """A child field within a standard library item."""
 
     name: str
@@ -1059,7 +907,7 @@ class StdLibChild(BaseModel):
     enum_values: list[str] = Field(default_factory=list)
 
 
-class StdLibItem(BaseModel):
+class StdLibItem(CamelModel):
     """A standard library item (module, interface, trait, etc.)."""
 
     id: str
@@ -1071,7 +919,7 @@ class StdLibItem(BaseModel):
     parameters: list[dict[str, str]] = Field(default_factory=list)
 
 
-class StdLibResponse(BaseModel):
+class StdLibData(CamelModel):
     """Response for /api/stdlib endpoint."""
 
     items: list[StdLibItem]
@@ -1164,6 +1012,535 @@ class VariablesData(BaseModel):
 
 
 # =============================================================================
+# VS Code UI Store Models
+# =============================================================================
+
+
+class UiCoreStatus(CamelModel):
+    """Core server status shared with the VS Code UI."""
+
+    error: str | None = None
+    uv_path: str = ""
+    ato_binary: str = ""
+    mode: Literal["local", "production"] = "production"
+    version: str = ""
+    core_server_port: int = 0
+
+
+class UiExtensionSettings(CamelModel):
+    """Extension settings mirrored into the backend store."""
+
+    dev_path: str = ""
+    auto_install: bool = True
+    enable_chat: bool = True
+
+
+class UiProjectState(CamelModel):
+    """UI selection state for the active project/target/file."""
+
+    selected_project_root: str | None = None
+    selected_target: ResolvedBuildTarget | None = None
+    active_file_path: str | None = None
+    log_view_build_id: str | None = None
+    log_view_stage: str | None = None
+
+
+class UiProjectFilesData(CamelModel):
+    """File tree for the currently selected project."""
+
+    project_root: str | None = None
+    files: list[FileNode] = Field(default_factory=list)
+
+
+class UiPartSearchItem(CamelModel):
+    """Display-ready part search result for the parts panel."""
+
+    lcsc: str = ""
+    mpn: str = ""
+    manufacturer: str = ""
+    description: str = ""
+    stock: int = 0
+    unit_cost: float | None = None
+    datasheet_url: str | None = None
+    package: str | None = None
+    is_basic: bool = False
+    is_preferred: bool = False
+    attributes: dict[str, str] = Field(default_factory=dict)
+
+
+class UiPartsSearchData(CamelModel):
+    """Parts search state for the sidebar."""
+
+    parts: list[UiPartSearchItem] = Field(default_factory=list)
+    error: str | None = None
+
+
+class UiInstalledPartItem(CamelModel):
+    """Installed project part shown in the parts panel."""
+
+    identifier: str = ""
+    manufacturer: str = ""
+    mpn: str = ""
+    lcsc: str | None = None
+    datasheet_url: str | None = None
+    description: str = ""
+    path: str = ""
+
+
+class UiInstalledPartsData(CamelModel):
+    """Installed parts state for the sidebar."""
+
+    parts: list[UiInstalledPartItem] = Field(default_factory=list)
+
+
+class UiPackageDetailState(CamelModel):
+    """Selected package detail state for the shared detail view."""
+
+    project_root: str | None = None
+    package_id: str | None = None
+    summary: PackageSummaryItem | None = None
+    details: PackageDetails | None = None
+    loading: bool = False
+    error: str | None = None
+    action_error: str | None = None
+
+
+class UiPartDetail(CamelModel):
+    """Expanded part detail shown in the shared detail view."""
+
+    identifier: str = ""
+    lcsc: str | None = None
+    mpn: str = ""
+    manufacturer: str = ""
+    description: str = ""
+    package: str | None = None
+    datasheet_url: str | None = None
+    path: str | None = None
+    stock: int | None = None
+    unit_cost: float | None = None
+    is_basic: bool = False
+    is_preferred: bool = False
+    attributes: dict[str, str] = Field(default_factory=dict)
+    footprint: str | None = None
+    image_url: str | None = None
+    import_statement: str | None = None
+    installed: bool = False
+
+
+class UiPartDetailState(CamelModel):
+    """Selected part detail state for the shared detail view."""
+
+    project_root: str | None = None
+    lcsc: str | None = None
+    part: UiPartDetail | None = None
+    loading: bool = False
+    error: str | None = None
+    action_error: str | None = None
+
+
+class UiMigrationStep(CamelModel):
+    """Migration step metadata for the shared detail view."""
+
+    id: str
+    label: str
+    description: str
+    topic: str
+    mandatory: bool = False
+    order: int = 100
+
+
+class UiMigrationTopic(CamelModel):
+    """Migration topic metadata for the shared detail view."""
+
+    id: str
+    label: str
+    icon: str
+
+
+class UiMigrationStepResult(CamelModel):
+    """Per-step execution state for a migration run."""
+
+    step_id: str
+    status: Literal["idle", "running", "success", "error"] = "idle"
+    error: str | None = None
+
+
+class UiMigrationState(CamelModel):
+    """Selected migration detail state for the shared detail view."""
+
+    project_root: str | None = None
+    project_name: str | None = None
+    needs_migration: bool = False
+    steps: list[UiMigrationStep] = Field(default_factory=list)
+    topics: list[UiMigrationTopic] = Field(default_factory=list)
+    step_results: list[UiMigrationStepResult] = Field(default_factory=list)
+    loading: bool = False
+    running: bool = False
+    completed: bool = False
+    error: str | None = None
+
+
+class UiSidebarDetails(CamelModel):
+    """Shared detail surface state for package, part, and migration flows."""
+
+    view: Literal["none", "package", "part", "migration"] = "none"
+    package: UiPackageDetailState = Field(default_factory=UiPackageDetailState)
+    part: UiPartDetailState = Field(default_factory=UiPartDetailState)
+    migration: UiMigrationState = Field(default_factory=UiMigrationState)
+
+
+class UiStructureData(CamelModel):
+    """Structure panel data."""
+
+    modules: list[ModuleDefinition] = Field(default_factory=list)
+    total: int = 0
+
+
+class UiVariable(CamelModel):
+    """Simplified variable row used by the VS Code variables panel."""
+
+    name: str = ""
+    spec: str | None = None
+    actual: str | None = None
+    tolerance: str | None = None
+    status: str | None = None
+
+
+class UiVariableNode(CamelModel):
+    """Simplified recursive variable node used by the VS Code variables panel."""
+
+    name: str = ""
+    variables: list[UiVariable] = Field(default_factory=list)
+    children: list["UiVariableNode"] = Field(default_factory=list)
+
+
+class UiVariablesData(CamelModel):
+    """Variables panel data for the VS Code UI store."""
+
+    nodes: list[UiVariableNode] = Field(default_factory=list)
+
+
+class UiBOMParameter(CamelModel):
+    """BOM parameter displayed in the VS Code UI."""
+
+    name: str = ""
+    value: str = ""
+    unit: str | None = None
+
+
+class UiBOMUsage(CamelModel):
+    """BOM usage location displayed in the VS Code UI."""
+
+    address: str = ""
+    designator: str = ""
+    line: int | None = None
+
+
+class UiBOMComponent(CamelModel):
+    """BOM component displayed in the VS Code UI."""
+
+    id: str = ""
+    lcsc: str | None = None
+    mpn: str = ""
+    manufacturer: str = ""
+    type: str | None = None
+    value: str = ""
+    package: str = ""
+    description: str = ""
+    source: str | None = None
+    stock: int | None = None
+    unit_cost: float | None = None
+    is_basic: bool | None = None
+    is_preferred: bool | None = None
+    quantity: int = 0
+    parameters: list[UiBOMParameter] = Field(default_factory=list)
+    usages: list[UiBOMUsage] = Field(default_factory=list)
+
+
+class UiBOMData(CamelModel):
+    """BOM panel data for the VS Code UI store."""
+
+    project_root: str | None = None
+    target: ResolvedBuildTarget | None = None
+    loading: bool = False
+    error: str | None = None
+    version: str | None = None
+    build_id: str | None = None
+    components: list[UiBOMComponent] = Field(default_factory=list)
+    total_quantity: int = 0
+    unique_parts: int = 0
+    estimated_cost: float | None = None
+    out_of_stock: int = 0
+
+
+class UiEntryCheckData(CamelModel):
+    """Entry validation state for the build target editor."""
+
+    project_root: str | None = None
+    entry: str = ""
+    file_exists: bool = False
+    module_exists: bool = False
+    target_exists: bool = False
+    loading: bool = False
+
+
+class UiLcscPartData(CamelModel):
+    """LCSC lookup data used to enrich BOM rows."""
+
+    manufacturer: str | None = None
+    mpn: str | None = None
+    description: str | None = None
+    stock: int | None = None
+    unit_cost: float | None = None
+    is_basic: bool | None = None
+    is_preferred: bool | None = None
+
+
+class UiLcscPartsData(CamelModel):
+    """State for BOM LCSC part enrichment requests."""
+
+    project_root: str | None = None
+    target: ResolvedBuildTarget | None = None
+    parts: dict[str, UiLcscPartData | None] = Field(default_factory=dict)
+    loading_ids: list[str] = Field(default_factory=list)
+
+
+class UiBuildsByProjectData(CamelModel):
+    """Recent builds query state for a selected project/target."""
+
+    project_root: str | None = None
+    target: ResolvedBuildTarget | None = None
+    limit: int = 0
+    builds: list[Build] = Field(default_factory=list)
+    loading: bool = False
+
+
+class UiLayoutData(CamelModel):
+    """Layout panel state for the active project selection."""
+
+    project_root: str | None = None
+    target: ResolvedBuildTarget | None = None
+    path: str | None = None
+    loading: bool = False
+    error: str | None = None
+
+
+class UiAgentToolTraceData(CamelModel):
+    name: str = ""
+    args: dict[str, Any] = Field(default_factory=dict)
+    ok: bool = True
+    result: dict[str, Any] = Field(default_factory=dict)
+    call_id: str | None = None
+    running: bool = False
+
+
+class UiAgentChecklistItemData(CamelModel):
+    id: str = ""
+    description: str = ""
+    criteria: str = ""
+    status: Literal["not_started", "doing", "done", "blocked"] = "not_started"
+    requirement_id: str | None = None
+
+
+class UiAgentChecklistData(CamelModel):
+    items: list[UiAgentChecklistItemData] = Field(default_factory=list)
+    created_at: float = 0.0
+
+
+class UiAgentDesignQuestionData(CamelModel):
+    id: str = ""
+    question: str = ""
+    options: list[str] = Field(default_factory=list)
+    default: str | None = None
+
+
+class UiAgentDesignQuestionsData(CamelModel):
+    context: str = ""
+    questions: list[UiAgentDesignQuestionData] = Field(default_factory=list)
+
+
+class UiAgentMessageData(CamelModel):
+    id: str = ""
+    role: Literal["user", "assistant", "system"] = "system"
+    content: str = ""
+    pending: bool = False
+    activity: str | None = None
+    tool_traces: list[UiAgentToolTraceData] = Field(default_factory=list)
+    checklist: UiAgentChecklistData | None = None
+    design_questions: UiAgentDesignQuestionsData | None = None
+
+
+class UiAgentSessionData(CamelModel):
+    """Canonical agent session summary mirrored into the UI store."""
+
+    session_id: str = ""
+    project_root: str = ""
+    messages: list[UiAgentMessageData] = Field(default_factory=list)
+    history: list[dict[str, str]] = Field(default_factory=list)
+    recent_selected_targets: list[str] = Field(default_factory=list)
+    active_run_id: str | None = None
+    active_run_status: str | None = None
+    active_run_stop_requested: bool = False
+    active_run_error: str | None = None
+    activity_label: str = "Ready"
+    error: str | None = None
+    run_started_at: float | None = None
+    created_at: float = 0.0
+    updated_at: float = 0.0
+
+
+class UiAgentMutation(CamelModel):
+    """Last acknowledged agent command or error."""
+
+    action: str | None = None
+    session_id: str | None = None
+    run_id: str | None = None
+    error: str | None = None
+    updated_at: float | None = None
+
+
+class UiAgentData(CamelModel):
+    """Canonical agent state for the VS Code UI store."""
+
+    loaded: bool = False
+    sessions: list[UiAgentSessionData] = Field(default_factory=list)
+    last_mutation: UiAgentMutation | None = None
+
+
+class UiBlobAssetData(CamelModel):
+    """Generic binary asset fetch state for UI previews."""
+
+    action: str | None = None
+    request_key: str = ""
+    content_type: str | None = None
+    filename: str | None = None
+    data: str | None = None
+    loading: bool = False
+    error: str | None = None
+
+
+class UiFileActionData(CamelModel):
+    """Last file tree mutation emitted by the backend."""
+
+    action: Literal[
+        "none", "create_file", "create_folder", "rename", "duplicate", "delete"
+    ] = "none"
+    path: str | None = None
+    is_folder: bool = False
+
+
+class UiLogLevel(StrEnum):
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    ALERT = "ALERT"
+
+
+class UiAudience(StrEnum):
+    USER = "user"
+    DEVELOPER = "developer"
+    AGENT = "agent"
+
+
+class UiLogEntry(CamelModel):
+    """Log entry as consumed by the VS Code logs panel."""
+
+    id: int | None = None
+    timestamp: str = ""
+    level: UiLogLevel = UiLogLevel.INFO
+    audience: UiAudience = UiAudience.USER
+    logger_name: str = ""
+    message: str = ""
+    test_name: str | None = None
+    stage: str | None = None
+    source_file: str | None = None
+    source_line: int | None = None
+    ato_traceback: str | None = None
+    python_traceback: str | None = None
+    objects: Any | None = None
+
+
+class UiBuildLogRequest(CamelModel):
+    """Request payload for the VS Code logs panel."""
+
+    build_id: str = ""
+    stage: str | None = None
+    log_levels: list[UiLogLevel] | None = None
+    audience: UiAudience | None = None
+    count: int | None = None
+
+
+class UiTestLogRequest(CamelModel):
+    """Request payload for standalone or test-focused log views."""
+
+    test_run_id: str = ""
+    test_name: str | None = None
+    log_levels: list[UiLogLevel] | None = None
+    audience: UiAudience | None = None
+    count: int | None = None
+
+
+class UiLogsStreamMessage(CamelModel):
+    """Streamed log message for the VS Code logs panel."""
+
+    type: Literal["logs_stream"] = "logs_stream"
+    build_id: str = ""
+    stage: str | None = None
+    logs: list[UiLogEntry] = Field(default_factory=list)
+    last_id: int = 0
+
+
+class UiLogsErrorMessage(CamelModel):
+    """Log stream error message for the VS Code logs panel."""
+
+    type: Literal["logs_error"] = "logs_error"
+    error: str
+
+
+class UiSubscribeMessage(CamelModel):
+    """Logical RPC subscribe message after transport/session routing."""
+
+    type: Literal["subscribe"] = "subscribe"
+    keys: list[str]
+
+
+class UiStateMessage(CamelModel):
+    """Logical RPC state message after transport/session routing."""
+
+    type: Literal["state"] = "state"
+    key: str
+    data: Any
+
+
+class UiActionMessage(CamelModel):
+    """Logical RPC action message after transport/session routing."""
+
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+        serialize_by_alias=True,
+        extra="allow",
+    )
+
+    type: Literal["action"] = "action"
+    action: str
+
+
+class UiActionResultMessage(CamelModel):
+    """Logical RPC action result after transport/session routing."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["action_result"] = "action_result"
+    request_id: str | None = None
+    action: str
+    ok: bool | None = None
+    result: Any = None
+    error: str | None = None
+
+
+# =============================================================================
 # atopile Configuration Pydantic Models
 # =============================================================================
 
@@ -1199,92 +1576,6 @@ class AtopileConfig(BaseModel):
 
 
 # =============================================================================
-# WebSocket State Manager Dataclass
-# =============================================================================
-
-
-@dataclass
-class ConnectedClient:
-    """A connected WebSocket client."""
-
-    client_id: str
-    websocket: WebSocket
-    subscribed: bool = True  # Whether to receive state updates
-
-
-# =============================================================================
-# MCP-related Pydantic Models
-# =============================================================================
-
-
-class Language(StrEnum):
-    FABLL = "fabll(python)"
-    ATO = "ato"
-
-
-class NodeType(StrEnum):
-    MODULE = "Module"
-    INTERFACE = "Interface"
-
-
-class NodeInfo(BaseModel):
-    name: str
-    docstring: str
-    locator: str
-    language: Language
-    code: str
-
-
-class NodeInfoOverview(BaseModel):
-    name: str
-    docstring: str
-    language: Language
-    type: NodeType
-
-
-class Result(BaseModel):
-    success: bool
-    project_dir: str
-
-
-class ErrorResult(Result):
-    error: str
-    error_message: str
-
-
-class BuildResult(Result):
-    target: str
-    logs: str
-
-
-class PackageVerifyResult(Result):
-    logs: str
-
-
-class CreatePartResult(Result):
-    manufacturer: str
-    part_number: str
-    description: str
-    supplier_id: str
-    stock: int
-    path: str
-    import_statement: str
-
-
-class CreatePartError(ErrorResult):
-    error: str
-    error_message: str
-
-
-class InstallPackageResult(Result):
-    installed_packages: list[str]
-
-
-class InstallPackageError(ErrorResult):
-    pass
-
-
-# =============================================================================
 # Build Steps Dataclasses
 # =============================================================================
 
@@ -1305,8 +1596,8 @@ class BuildReport:
 
 @dataclass
 class AppContext:
-    summary_file: Optional[Path] = None
     workspace_paths: list[Path] = field(default_factory=list)
+    summary_file: Optional[Path] = None
     # 'explicit-path', 'from-setting', or 'default'
     ato_source: Optional[str] = None
     # User's configured path (for explicit-path mode)
@@ -1318,24 +1609,15 @@ class AppContext:
     # The pip/uv spec (for from-setting mode)
     ato_from_spec: Optional[str] = None
 
-    @property
-    def workspace_path(self) -> Optional[Path]:
-        """Return the first workspace path, or None if no workspaces."""
-        return self.workspace_paths[0] if self.workspace_paths else None
-
-    @workspace_path.setter
-    def workspace_path(self, value: Optional[Path]) -> None:
-        """Set the first workspace path."""
-        if value is None:
-            self.workspace_paths = []
-        elif self.workspace_paths:
-            self.workspace_paths[0] = value
-        else:
-            self.workspace_paths = [value]
-
 
 @dataclass(frozen=True)
 class InstalledPackage:
     identifier: str
     version: str
     project_root: str
+
+
+FileNode.model_rebuild()
+ModuleChild.model_rebuild()
+StdLibChild.model_rebuild()
+UiVariableNode.model_rebuild()

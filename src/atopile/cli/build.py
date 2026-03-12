@@ -10,10 +10,11 @@ from pathlib import Path
 import typer
 from typing_extensions import Annotated
 
-from atopile.buildutil import generate_build_id, generate_build_timestamp
+from atopile.buildutil import generate_build_id
 from atopile.dataclasses import (
     Build,
     BuildStatus,
+    ResolvedBuildTarget,
 )
 from atopile.logging import get_logger
 from atopile.logging_utils import BuildPrinter, print_subprocess_output
@@ -69,9 +70,7 @@ def _run_build_queue(
     queue = BuildQueue(max_concurrent=max_concurrent)
 
     build_ids = [build.build_id for build in builds if build.build_id]
-    display_names = {
-        build.build_id: build.display_name for build in builds if build.build_id
-    }
+    display_names = {build.build_id: build.name for build in builds if build.build_id}
 
     for build in builds:
         queue.enqueue(build)
@@ -107,11 +106,11 @@ def _run_build_queue(
 
         def on_update() -> None:
             for build_id in build_ids:
-                build = queue.find_build(build_id)
+                build = BuildHistory.get(build_id)
                 if not build:
                     continue
 
-                display_name = display_names.get(build_id, build.display_name)
+                display_name = display_names.get(build_id, build.name)
 
                 # Build started
                 if (
@@ -145,9 +144,7 @@ def _run_build_queue(
 
         # Print build summary boxes after all builds complete
         completed_builds = [
-            queue.find_build(build_id)
-            for build_id in build_ids
-            if queue.find_build(build_id)
+            b for build_id in build_ids if (b := BuildHistory.get(build_id))
         ]
         printer.print_summary(completed_builds)
 
@@ -230,12 +227,11 @@ def _build_all_projects(
 
     logger.info("Found %d projects", len(projects))
 
-    # Collect build tasks from all projects
-    # Format: (build_name, project_root, project_name)
-    build_tasks: list[tuple[str, Path, str | None]] = []
+    builds: list[Build] = []
 
     for project_path in projects:
         project_name = project_path.name
+        resolved_project_root = str(project_path.resolve())
 
         # Load project config to get build targets
         project_config = ProjectConfig.from_path(project_path)
@@ -246,69 +242,68 @@ def _build_all_projects(
         # Get builds to run for this project
         if selected_builds:
             # Use specified builds if they exist in this project
-            builds = [b for b in selected_builds if b in project_config.builds]
+            build_names = [b for b in selected_builds if b in project_config.builds]
         else:
             # Build ALL targets in the project
-            builds = list(project_config.builds.keys())
+            build_names = list(project_config.builds.keys())
 
-        if not builds:
+        if not build_names:
             logger.warning("Skipping %s: no matching builds", project_name)
             continue
 
-        for build_name in builds:
-            build_tasks.append((build_name, project_path, project_name))
+        for build_name in build_names:
+            build_cfg = project_config.builds[build_name]
+            build_target = ResolvedBuildTarget(
+                name=build_name,
+                entry=build_cfg.address or "",
+                pcb_path=str(build_cfg.paths.layout),
+                model_path=str(build_cfg.paths.output_base.with_suffix(".pcba.glb")),
+                root=resolved_project_root,
+            )
+            started_at = time.time()
+            builds.append(
+                Build(
+                    build_id=generate_build_id(
+                        build_target.root, build_target.name, started_at
+                    ),
+                    name=build_target.name,
+                    project_root=build_target.root,
+                    project_name=project_name,
+                    target=build_target,
+                    frozen=frozen,
+                    status=BuildStatus.QUEUED,
+                    started_at=started_at,
+                    include_targets=targets or [],
+                    exclude_targets=exclude_targets or [],
+                    keep_picked_parts=keep_picked_parts,
+                    keep_net_names=keep_net_names,
+                    keep_designators=keep_designators,
+                    verbose=verbose,
+                )
+            )
 
-    if not build_tasks:
+    if not builds:
         logger.error("No builds to run")
         raise typer.Exit(1)
 
     logger.info(
         "Building %d targets across %d projects (max %d concurrent)",
-        len(build_tasks),
+        len(builds),
         len(projects),
         jobs,
     )
-
-    # Initialize build history database
-    timestamp = generate_build_timestamp()
-    builds: list[Build] = []
-    for build_name, project_root, project_name in build_tasks:
-        project_path = str(project_root.resolve())
-        build_id = generate_build_id(project_path, build_name, timestamp)
-        builds.append(
-            Build(
-                build_id=build_id,
-                name=build_name,
-                display_name=f"{project_name}/{build_name}"
-                if project_name
-                else build_name,
-                project_root=project_path,
-                project_name=project_name,
-                target=build_name,
-                timestamp=timestamp,
-                frozen=frozen,
-                status=BuildStatus.QUEUED,
-                started_at=time.time(),
-                include_targets=targets or [],
-                exclude_targets=exclude_targets or [],
-                keep_picked_parts=keep_picked_parts,
-                keep_net_names=keep_net_names,
-                keep_designators=keep_designators,
-                verbose=verbose,
-            )
-        )
 
     results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
 
     build_by_id = {build.build_id: build for build in builds if build.build_id}
     failed = [
-        build_by_id[build_id].display_name
+        build_by_id[build_id].name
         for build_id, code in results.items()
         if code != 0 and build_id in build_by_id
     ]
     exit_code = _report_build_results(
         failed=failed,
-        total=len(build_tasks),
+        total=len(builds),
         failed_names=failed[:10],
     )
     if exit_code != 0:
@@ -505,24 +500,43 @@ def build(
     # Get the list of builds to run
     build_names = list(config.selected_builds)
     project_root = config.project.paths.root
+    resolved_project_root = str(project_root.resolve())
 
-    timestamp = generate_build_timestamp()
     builds: list[Build] = []
     for build_name in build_names:
-        build_id = generate_build_id(str(project_root.resolve()), build_name, timestamp)
+        build_target = (
+            ResolvedBuildTarget(
+                name=build_name,
+                entry=entry or "",
+                pcb_path="",
+                model_path="",
+                root=resolved_project_root,
+            )
+            if standalone
+            else ResolvedBuildTarget(
+                name=build_name,
+                entry=config.project.builds[build_name].address or "",
+                pcb_path=str(config.project.builds[build_name].paths.layout),
+                model_path=str(
+                    config.project.builds[build_name].paths.output_base.with_suffix(
+                        ".pcba.glb"
+                    )
+                ),
+                root=resolved_project_root,
+            )
+        )
+        started_at = time.time()
+        build_id = generate_build_id(build_target.root, build_name, started_at)
         builds.append(
             Build(
                 build_id=build_id,
                 name=build_name,
-                display_name=build_name,
-                project_root=str(project_root.resolve()),
-                target=build_name,
-                entry=entry,
+                project_root=resolved_project_root,
+                target=build_target,
                 standalone=standalone,
-                timestamp=timestamp,
                 frozen=frozen,
                 status=BuildStatus.QUEUED,
-                started_at=time.time(),
+                started_at=started_at,
                 include_targets=target,
                 exclude_targets=exclude_target,
                 keep_picked_parts=keep_picked_parts,
@@ -536,7 +550,7 @@ def build(
 
     build_by_id = {build.build_id: build for build in builds if build.build_id}
     failed = [
-        build_by_id[build_id].display_name
+        build_by_id[build_id].name
         for build_id, code in results.items()
         if code != 0 and build_id in build_by_id
     ]

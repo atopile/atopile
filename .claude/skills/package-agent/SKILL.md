@@ -1,63 +1,44 @@
-# Package Agent
+---
+name: package-agent
+description: "Guidance for working on one local package project: package scope, wrapper boundaries, package-local dependencies, and nested-package validation."
+---
 
-You are a package specialist.
+# Scope
 
-Your job is to build or refine one package project into a generic, reusable atopile package.
-You are not designing the whole board.
+Own one local package project under `packages/<name>/`.
 
-## Scope
+Stay inside that package project unless the parent design must change to integrate the finished package.
 
-You own exactly one package project.
-Work inside that package project unless there is a clear, explicit reason to edit something else.
+# What A Local Package Is
 
-## Goals
+In the current repo, a local package is a nested project with:
 
-Build a package that is:
-- generic
-- reusable across designs
-- self-contained
-- minimal but complete
-- validated through its own package build target(s)
+- its own `ato.yaml`
+- its own `layouts/`
+- an entry `.ato` file
+- a file-dependency identifier added to the parent project
 
-## Wrapper Rules
+Import the package using that identifier, typically `local/<slug>/<file>.ato`.
 
-- Expose the chip or package's general capabilities, not one board's role names.
-- Prefer standard library interfaces and simple compositions of them.
-- Prefer arrays or repeated stdlib fields over inventing custom aggregate interfaces.
-- Keep top-level board-specific grouping in the parent design, not in the package wrapper.
-- Start with a minimal viable wrapper first. Add more interfaces or pin mappings later only if validation or integration proves they are needed.
+# Wrapper Rules
 
-## Supporting Parts
+- Keep the wrapper generic and reusable.
+- Expose capabilities, not board-role names.
+- Prefer stdlib interfaces and simple arrays/composition over custom aggregate interfaces.
+- Refine the generated wrapper in place instead of adding another wrapper layer.
 
-- If the package needs supporting passives, crystals, connectors, or regulators that belong to the package itself, install them inside the package project.
-- Keep package-local dependencies self-contained so the package build works in isolation.
+# Supporting Parts
 
-## Build Workflow
+If the package needs passives, crystals, regulators, or connectors to build correctly in isolation, install them into that package project with `parts_install(project_path=...)`.
 
-- Work step by step: make one coherent package change, run that package build target, fix the result, then continue.
-- Build package targets early and often.
-- Prefer fixing one concrete package build error at a time.
-- Use smaller package/submodule builds before assuming the full design will work.
-- Treat the package as a standalone reusable product, not just a helper for one board.
-- Keep the package buildable in isolation because that is what preserves layout reuse in larger assemblies and makes later publishing to the package store straightforward.
-- Stop when the package is coherent, builds, and is minimally complete.
+# Validation Workflow
 
-## Imports
+1. Read the wrapper and any imported raw part files.
+2. Make one coherent package change at a time.
+3. Use `workspace_list_targets` to discover the package targets.
+4. Run `build_run` with `project_path` pointing at the package project.
+5. Use `build_logs_search` to fix the next concrete failure.
 
-- Import package-local dependencies using the package project's own dependency/import structure.
-- Do not depend on the top-level design to make your package build pass.
+# Finish Bar
 
-## Good Examples
-
-Good package APIs:
-- MCU wrapper exposing `power`, `swd`, `uart`, `spi`, `i2c`, `usb`, `gpio`, `adc`
-- regulator wrapper exposing `power_in`, `power_out`, `enable`, `pgood`
-- motor-driver wrapper exposing `power`, `logic_power`, `phase_outputs`, `fault`, `current_sense`
-- sensor wrapper exposing `power`, `i2c` or `spi`, interrupt pins, reset pins
-
-## Avoid
-
-- Board-specific names like `weapon_motor`, `radio_input`, `battlebot_interfaces`
-- Creating extra wrapper aggregation layers instead of refining the package wrapper in place
-- Waiting for broad design approval loops
-- Treating an incomplete ideal wrapper as blocked work when a minimal generic wrapper can be built now
+Stop when the package is minimally complete, reusable, and validates through its own package target.

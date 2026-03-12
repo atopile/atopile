@@ -1,286 +1,258 @@
 #!/usr/bin/env python3
-"""
-Generate TypeScript types from Pydantic models.
+"""Generate TypeScript types from shared CamelModel schemas."""
 
-This script extracts JSON schemas from Pydantic models in atopile.dataclasses
-and converts them to TypeScript using quicktype.
+from __future__ import annotations
 
-Usage:
-    python scripts/generate_types.py
-
-The generated types are written to src/ui-server/src/types/gen/generated.ts
-"""
-
-import importlib
 import json
-import shutil
-import subprocess
-import sys
+import re
+import types
+from enum import Enum
 from pathlib import Path
+from typing import Annotated, Any, Literal, Union, get_args, get_origin
 
-# Models to export, grouped by source module.
-MODEL_SOURCES: dict[str, list[str]] = {
-    "atopile.dataclasses": [
-        # Project & build
-        "Project",
-        "BuildTarget",
-        "Build",
-        "BuildStage",
-        # Packages
-        "PackageInfo",
-        "PackageDetails",
-        "PackageVersion",
-        "DependencyInfo",
-        "SyncPackagesRequest",
-        "SyncPackagesResponse",
-        # Problems
-        "Problem",
-        "ProblemFilter",
-        # Standard library
-        "StdLibItem",
-        "StdLibChild",
-        # BOM
-        "BOMData",
-        "BOMComponent",
-        "BOMParameter",
-        "BOMUsage",
-        # Variables
-        "VariablesData",
-        "VariableNode",
-        "Variable",
-        # Modules
-        "ModuleDefinition",
-        "ModuleChild",
-        # Config & installation
-        "AtopileConfig",
-        "DetectedInstallation",
-        "InstallProgress",
-        # Events
-        "EventMessage",
-    ],
-    "atopile.server.schemas.agent_api": [
-        # Agent HTTP API requests/responses
-        "CreateSessionRequest",
-        "CreateSessionResponse",
-        "SendMessageRequest",
-        "ToolTraceResponse",
-        "ToolDirectoryItem",
-        "ToolSuggestion",
-        "ToolMemoryEntry",
-        "SendMessageResponse",
-        "ToolDirectoryResponse",
-        "ToolSuggestionsRequest",
-        "ToolSuggestionsResponse",
-        "SessionSkillsResponse",
-        "CreateRunRequest",
-        "CreateRunResponse",
-        "GetRunResponse",
-        "CancelRunResponse",
-        "SteerRunRequest",
-        "SteerRunResponse",
-        # Agent websocket event payload
-        "AgentProgressUsage",
-        "AgentProgressEventPayload",
-    ],
-}
+from pydantic import BaseModel
 
-GENERATED_HEADER = """\
-/**
- * AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
- *
- * This file is generated from Python Pydantic models in:
- *   src/atopile/dataclasses.py
- *   src/atopile/server/schemas/agent_api.py
- *
- * To regenerate, run:
- *   python scripts/generate_types.py
- *
- * The source of truth is the Python Pydantic models.
- */
+import atopile.dataclasses as dataclasses_module
+import atopile.server.ui.store as store_module
+from atopile.dataclasses import CamelModel
+from atopile.server.ui.store import STORE_SCHEMA
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-"""
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "src/ui/shared/generated-types.ts"
 
 
-def to_camel_case(snake_str: str) -> str:
-    """Convert snake_case to camelCase."""
-    components = snake_str.split("_")
-    return components[0] + "".join(x.title() for x in components[1:])
+def main() -> None:
+    models = discover_camel_models()
+    enums = discover_enums(models)
 
+    lines: list[str] = [
+        "// Generated from src/atopile/dataclasses.py by scripts/generate_types.py",
+        "// Do not edit by hand.",
+        "",
+        "type JsonPrimitive = string | number | boolean | null;",
+        "export type JsonValue ="
+        " JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };",
+        "",
+        "function cloneGenerated<T>(value: T): T {",
+        "  return JSON.parse(JSON.stringify(value)) as T;",
+        "}",
+        "",
+    ]
 
-def get_model_schema(model) -> dict:
-    """Get JSON schema for a single model, with camelCase field names."""
-    schema = model.model_json_schema(mode="serialization")
+    for enum_cls in enums:
+        lines.extend(render_enum(enum_cls))
+        lines.append("")
 
-    def convert_schema(obj, in_properties=False):
-        if isinstance(obj, dict):
-            result = {}
-            for k, v in obj.items():
-                # Rename $defs -> definitions for quicktype (draft-07) compatibility
-                if k == "$defs":
-                    new_key = "definitions"
-                elif in_properties and not k.startswith("$"):
-                    new_key = to_camel_case(k)
-                else:
-                    new_key = k
+    for model in models:
+        lines.extend(render_model(model))
+        lines.append("")
 
-                # Rewrite $ref paths from $defs to definitions
-                if k == "$ref" and isinstance(v, str):
-                    result[new_key] = v.replace("#/$defs/", "#/definitions/")
-                elif k == "properties":
-                    result[new_key] = convert_schema(v, in_properties=True)
-                elif k == "required" and isinstance(v, list):
-                    result[new_key] = [to_camel_case(name) for name in v]
-                else:
-                    result[new_key] = convert_schema(v, in_properties=False)
-            return result
-        elif isinstance(obj, list):
-            return [convert_schema(item, in_properties=False) for item in obj]
-        return obj
+    lines.extend(render_store_keys())
+    lines.append("")
 
-    return convert_schema(schema)
-
-
-def get_all_schemas() -> dict[str, dict]:
-    """Get schemas for all models."""
-    schemas = {}
-    for module_name, model_names in MODEL_SOURCES.items():
-        try:
-            module = importlib.import_module(module_name)
-        except Exception as exc:
-            print(f"Warning: Could not import module {module_name}: {exc}")
+    for model in models:
+        default = instantiate_default(model)
+        if default is None:
             continue
-
-        for model_name in model_names:
-            model = getattr(module, model_name, None)
-            if model is None:
-                print(f"Warning: Model {module_name}.{model_name} not found, skipping")
-                continue
-
-            schemas[model_name] = get_model_schema(model)
-
-    return schemas
-
-
-def ensure_node_deps(ui_server_dir: Path) -> bool:
-    """Run npm install if node_modules is missing. Returns False on failure."""
-    node_modules = ui_server_dir / "node_modules"
-    package_lock = ui_server_dir / "package-lock.json"
-    needs_install = not node_modules.exists() or (
-        package_lock.exists()
-        and package_lock.stat().st_mtime > node_modules.stat().st_mtime
-    )
-    if not needs_install:
-        return True
-
-    install_cmd = "ci" if package_lock.exists() else "install"
-    print(f"node_modules missing or stale, running npm {install_cmd}...")
-    npm = shutil.which("npm")
-    if npm is None:
-        print("Error: npm not found")
-        return False
-
-    result = subprocess.run(
-        [npm, install_cmd],
-        capture_output=True,
-        text=True,
-        cwd=ui_server_dir,
-        stdin=subprocess.DEVNULL,
-    )
-
-    if result.returncode != 0:
-        print(f"Error running npm {install_cmd}: {result.stderr}")
-        if result.stdout:
-            print(f"stdout: {result.stdout}")
-        return False
-
-    return True
-
-
-def run_quicktype(
-    schemas: dict[str, dict], output_path: Path, ui_server_dir: Path
-) -> bool:
-    """Convert JSON schemas to TypeScript using quicktype."""
-    npx = shutil.which("npx")
-    if npx is None:
-        print("Error: npx not found")
-        return False
-
-    # Write each schema to a temp file in cwd so quicktype gets simple
-    # relative paths (avoids Windows URI resolution issues with C:\ drive paths)
-    temp_files = []
-    try:
-        for name, schema in schemas.items():
-            schema["title"] = name
-            temp_path = ui_server_dir / f"{name}_schema.json"
-            temp_path.write_text(json.dumps(schema, indent=2))
-            temp_files.append(temp_path.name)
-
-        args = [
-            npx,
-            "quicktype",
-            "--lang",
-            "typescript",
-            "--src-lang",
-            "schema",
-            "--just-types",
-            "--no-enums",
-            "-o",
-            str(output_path),
-        ] + temp_files
-
-        print(f"Running quicktype with {len(temp_files)} schemas...")
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            cwd=ui_server_dir,
-            stdin=subprocess.DEVNULL,
+        payload = json.dumps(default, indent=2, sort_keys=True)
+        lines.extend(
+            [
+                f"export const DEFAULT_{model.__name__}: {model.__name__} = {payload};",
+                "",
+                f"export function create{model.__name__}(): {model.__name__} {{",
+                f"  return cloneGenerated(DEFAULT_{model.__name__});",
+                "}",
+                "",
+            ]
         )
 
-        if result.returncode != 0:
-            print(f"Error running quicktype: {result.stderr}")
-            if result.stdout:
-                print(f"stdout: {result.stdout}")
-            return False
-
-        return True
-
-    finally:
-        for f in temp_files:
-            (ui_server_dir / f).unlink(missing_ok=True)
+    OUT.write_text("\n".join(lines).rstrip() + "\n")
 
 
-def main():
-    """Main entry point."""
-    repo_root = Path(__file__).parent.parent
-    ui_server_dir = repo_root / "src" / "ui-server"
-    gen_dir = ui_server_dir / "src" / "types" / "gen"
-    output_path = gen_dir / "generated.ts"
-    gen_dir.mkdir(parents=True, exist_ok=True)
+def discover_camel_models() -> list[type[CamelModel]]:
+    models: list[type[CamelModel]] = []
+    for module in (dataclasses_module, store_module):
+        for value in vars(module).values():
+            if not isinstance(value, type):
+                continue
+            if not issubclass(value, CamelModel) or value is CamelModel:
+                continue
+            if value.__module__ != module.__name__:
+                continue
+            models.append(value)
+    return sorted(
+        {model.__name__: model for model in models}.values(),
+        key=lambda model: model.__name__,
+    )
 
-    print("Generating JSON schemas from Pydantic models...")
-    schemas = get_all_schemas()
-    print(f"Generated schemas for {len(schemas)} models")
 
-    # Save combined schema for debugging
-    (gen_dir / "schema.json").write_text(json.dumps(schemas, indent=2))
+def discover_enums(models: list[type[CamelModel]]) -> list[type[Enum]]:
+    enums: dict[str, type[Enum]] = {}
+    for model in models:
+        for field in model.model_fields.values():
+            collect_enums(field.annotation, enums)
+    return sorted(enums.values(), key=lambda enum_cls: enum_cls.__name__)
 
-    if not ensure_node_deps(ui_server_dir):
-        sys.exit(1)
 
-    print("Converting to TypeScript with quicktype...")
-    if not run_quicktype(schemas, output_path, ui_server_dir):
-        print("Failed to convert to TypeScript")
-        sys.exit(1)
+def collect_enums(annotation: Any, enums: dict[str, type[Enum]]) -> None:
+    if annotation is Any:
+        return
 
-    # Prepend header to generated file
-    content = output_path.read_text()
-    output_path.write_text(GENERATED_HEADER + content)
+    origin = get_origin(annotation)
+    if origin is Annotated:
+        collect_enums(get_args(annotation)[0], enums)
+        return
 
-    print(f"TypeScript types written to {output_path}")
-    print("Done!")
+    if origin in {Union, types.UnionType, list, tuple, set, frozenset}:
+        for arg in get_args(annotation):
+            collect_enums(arg, enums)
+        return
+
+    if origin in {dict, type(dict), Literal}:
+        return
+
+    if isinstance(annotation, type):
+        if issubclass(annotation, Enum):
+            enums[annotation.__name__] = annotation
+            return
+        if issubclass(annotation, BaseModel) and not issubclass(annotation, CamelModel):
+            raise RuntimeError(
+                "CamelModel field references non-CamelModel"
+                f" schema: {annotation.__name__}"
+            )
+
+
+def render_enum(enum_cls: type[Enum]) -> list[str]:
+    literals = " | ".join(json.dumps(member.value) for member in enum_cls)
+    return [f"export type {enum_cls.__name__} = {literals};"]
+
+
+def render_model(model: type[BaseModel]) -> list[str]:
+    lines = [f"export interface {model.__name__} {{"]
+    serialize_by_alias = bool(model.model_config.get("serialize_by_alias"))
+
+    for field_name, field in model.model_fields.items():
+        if field.exclude is True:
+            continue
+        ts_name = (
+            (field.serialization_alias or field_name)
+            if serialize_by_alias
+            else field_name
+        )
+        ts_type = override_model_field_ts_type(model.__name__, field_name)
+        if ts_type is None:
+            ts_type = annotation_to_ts(field.annotation)
+        lines.append(f"  {format_property_name(ts_name)}: {ts_type};")
+
+    if model.model_config.get("extra") == "allow":
+        lines.append("  [key: string]: unknown;")
+
+    lines.append("}")
+    return lines
+
+
+def override_model_field_ts_type(model_name: str, field_name: str) -> str | None:
+    if model_name == "UiSubscribeMessage" and field_name == "keys":
+        return "StoreKey[]"
+    if model_name == "UiStateMessage" and field_name == "key":
+        return "StoreKey"
+    return None
+
+
+def render_store_keys() -> list[str]:
+    store_fields = _all_store_fields()
+    keys = [store_field.wire_key for _, store_field in store_fields]
+    key_literals = ", ".join(json.dumps(key) for key in keys)
+    return [
+        f"export const STORE_KEYS = [{key_literals}] as const;",
+        "export type StoreKey = typeof STORE_KEYS[number];",
+    ]
+
+
+def _all_store_fields() -> list[Any]:
+    return sorted(
+        [
+            (field_name, store_field)
+            for field_name, store_field in STORE_SCHEMA.items()
+            if getattr(store_field, "wire_key", None)
+        ],
+        key=lambda item: item[0],
+    )
+
+
+def instantiate_default(model: type[BaseModel]) -> dict[str, Any] | list[Any] | None:
+    try:
+        instance = model()
+    except Exception:
+        return None
+    return instance.model_dump(mode="json")
+
+
+def annotation_to_ts(annotation: Any) -> str:
+    if annotation is Any:
+        return "unknown"
+
+    origin = get_origin(annotation)
+    if origin is Annotated:
+        return annotation_to_ts(get_args(annotation)[0])
+
+    if origin in {list, tuple, set, frozenset}:
+        item_type = annotation_to_ts(
+            get_args(annotation)[0] if get_args(annotation) else Any
+        )
+        return f"{wrap_array_item(item_type)}[]"
+
+    if origin in {dict, type(dict)}:
+        args = get_args(annotation)
+        value_type = annotation_to_ts(args[1] if len(args) == 2 else Any)
+        return f"Record<string, {value_type}>"
+
+    if origin in {Union, types.UnionType}:
+        return join_union(annotation_to_ts(arg) for arg in get_args(annotation))
+
+    if origin is Literal:
+        return " | ".join(json.dumps(arg) for arg in get_args(annotation))
+
+    if isinstance(annotation, type):
+        if issubclass(annotation, BaseModel):
+            if not issubclass(annotation, CamelModel):
+                raise RuntimeError(
+                    "CamelModel field references non-CamelModel"
+                    f" schema: {annotation.__name__}"
+                )
+            return annotation.__name__
+        if issubclass(annotation, Enum):
+            return annotation.__name__
+        if annotation is str:
+            return "string"
+        if annotation in {int, float}:
+            return "number"
+        if annotation is bool:
+            return "boolean"
+        if annotation is type(None):
+            return "null"
+
+    return "unknown"
+
+
+def join_union(items: Any) -> str:
+    seen: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.append(item)
+    return " | ".join(seen) if seen else "unknown"
+
+
+def wrap_array_item(item_type: str) -> str:
+    if " | " in item_type or " & " in item_type:
+        return f"({item_type})"
+    return item_type
+
+
+def format_property_name(name: str) -> str:
+    if re.match(r"^[A-Za-z_$][A-Za-z0-9_$]*$", name):
+        return name
+    return json.dumps(name)
 
 
 if __name__ == "__main__":

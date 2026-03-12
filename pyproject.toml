@@ -121,10 +121,9 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 artifacts = [
     "**/viewer/dist",
-    "**/visualizer/web/dist",
     "**/dashboard/web/dist",
 ]
-packages = ["src/faebryk", "src/atopile"]
+packages = ["src/faebryk", "src/atopile", "src/ui"]
 exclude = ["**/.zig-cache", "**/.zig-cache/**", "**/zig-out", "**/zig-out/**"]
 
 [tool.hatch.build.targets.wheel.hooks.scikit-build]
@@ -134,7 +133,6 @@ cmake.source-dir = "src/faebryk/core"
 [tool.hatch.build.targets.sdist]
 artifacts = [
     "**/viewer/dist",
-    "**/visualizer/web/dist",
     "**/dashboard/web/dist",
 ]
 
