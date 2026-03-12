@@ -154,6 +154,76 @@ def _run_build_queue(
         return results
 
 
+def _run_single_build_inprocess(
+    build_name: str,
+) -> int:
+    """
+    Run a single build in-process (no subprocess).
+
+    Avoids the overhead of spawning a child Python process that re-imports
+    everything. For a single build target, this saves ~0.5s of startup time.
+
+    Returns 0 on success, 1 on failure.
+    """
+    from atopile import buildutil
+    from atopile.buildutil import BuildStepContext
+    from atopile.config import config
+    from atopile.dataclasses import StageStatus
+    from atopile.errors import iter_leaf_exceptions
+    from atopile.logging_utils import BuildPrinter
+
+    ctx = BuildStepContext(build=None)
+    started_at = time.time()
+    exit_code = 0
+
+    try:
+        with config.select_build(build_name):
+            buildutil.build(ctx=ctx)
+    except Exception as exc:
+        for e in iter_leaf_exceptions(exc):
+            logger.error(e, exc_info=e)
+        exit_code = 1
+
+    elapsed = time.time() - started_at
+    warnings = sum(1 for s in ctx.completed_stages if s.status == StageStatus.WARNING)
+    errors = sum(
+        1
+        for s in ctx.completed_stages
+        if s.status in (StageStatus.FAILED, StageStatus.ERROR)
+    )
+    status = (
+        BuildStatus.FAILED
+        if exit_code != 0
+        else BuildStatus.WARNING
+        if warnings > 0
+        else BuildStatus.SUCCESS
+    )
+
+    build_obj = Build(
+        name=build_name,
+        display_name=f"{config.project.paths.root.name}:{build_name}",
+        status=status,
+        stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
+        elapsed_seconds=elapsed,
+        started_at=started_at,
+        return_code=exit_code,
+        warnings=warnings,
+        errors=errors,
+    )
+
+    printer = BuildPrinter(verbose=False)
+    printer.print_summary([build_obj])
+
+    if exit_code == 0:
+        logger.info("Build successful! 🚀")
+    else:
+        from atopile.errors import log_discord_banner
+
+        log_discord_banner()
+
+    return exit_code
+
+
 def _run_single_build() -> None:
     """
     Run a single build target (worker mode).
@@ -506,46 +576,52 @@ def build(
     build_names = list(config.selected_builds)
     project_root = config.project.paths.root
 
-    timestamp = generate_build_timestamp()
-    builds: list[Build] = []
-    for build_name in build_names:
-        build_id = generate_build_id(str(project_root.resolve()), build_name, timestamp)
-        builds.append(
-            Build(
-                build_id=build_id,
-                name=build_name,
-                display_name=build_name,
-                project_root=str(project_root.resolve()),
-                target=build_name,
-                entry=entry,
-                standalone=standalone,
-                timestamp=timestamp,
-                frozen=frozen,
-                status=BuildStatus.QUEUED,
-                started_at=time.time(),
-                include_targets=target,
-                exclude_targets=exclude_target,
-                keep_picked_parts=keep_picked_parts,
-                keep_net_names=keep_net_names,
-                keep_designators=keep_designators,
-                verbose=verbose,
+    # Fast path: single build runs in-process to avoid subprocess overhead
+    if len(build_names) == 1:
+        build_exit_code = _run_single_build_inprocess(build_names[0])
+    else:
+        timestamp = generate_build_timestamp()
+        builds: list[Build] = []
+        for build_name in build_names:
+            build_id = generate_build_id(
+                str(project_root.resolve()), build_name, timestamp
             )
+            builds.append(
+                Build(
+                    build_id=build_id,
+                    name=build_name,
+                    display_name=build_name,
+                    project_root=str(project_root.resolve()),
+                    target=build_name,
+                    entry=entry,
+                    standalone=standalone,
+                    timestamp=timestamp,
+                    frozen=frozen,
+                    status=BuildStatus.QUEUED,
+                    started_at=time.time(),
+                    include_targets=target,
+                    exclude_targets=exclude_target,
+                    keep_picked_parts=keep_picked_parts,
+                    keep_net_names=keep_net_names,
+                    keep_designators=keep_designators,
+                    verbose=verbose,
+                )
+            )
+
+        results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
+
+        build_by_id = {build.build_id: build for build in builds if build.build_id}
+        failed = [
+            build_by_id[build_id].display_name
+            for build_id, code in results.items()
+            if code != 0 and build_id in build_by_id
+        ]
+
+        build_exit_code = _report_build_results(
+            failed=failed,
+            total=len(build_names),
+            failed_names=failed,
         )
-
-    results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
-
-    build_by_id = {build.build_id: build for build in builds if build.build_id}
-    failed = [
-        build_by_id[build_id].display_name
-        for build_id, code in results.items()
-        if code != 0 and build_id in build_by_id
-    ]
-
-    build_exit_code = _report_build_results(
-        failed=failed,
-        total=len(build_names),
-        failed_names=failed,
-    )
 
     # Open layouts if requested
     for build_name in build_names:
