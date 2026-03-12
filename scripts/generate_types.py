@@ -11,51 +11,78 @@ Usage:
 The generated types are written to src/ui-server/src/types/gen/generated.ts
 """
 
+import importlib
 import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-# Models to export, grouped by domain
-MODELS_TO_EXPORT = [
-    # Project & build
-    "Project",
-    "BuildTarget",
-    "Build",
-    "BuildStage",
-    # Packages
-    "PackageInfo",
-    "PackageDetails",
-    "PackageVersion",
-    "DependencyInfo",
-    "SyncPackagesRequest",
-    "SyncPackagesResponse",
-    # Problems
-    "Problem",
-    "ProblemFilter",
-    # Standard library
-    "StdLibItem",
-    "StdLibChild",
-    # BOM
-    "BOMData",
-    "BOMComponent",
-    "BOMParameter",
-    "BOMUsage",
-    # Variables
-    "VariablesData",
-    "VariableNode",
-    "Variable",
-    # Modules
-    "ModuleDefinition",
-    "ModuleChild",
-    # Config & installation
-    "AtopileConfig",
-    "DetectedInstallation",
-    "InstallProgress",
-    # Events
-    "EventMessage",
-]
+# Models to export, grouped by source module.
+MODEL_SOURCES: dict[str, list[str]] = {
+    "atopile.dataclasses": [
+        # Project & build
+        "Project",
+        "BuildTarget",
+        "Build",
+        "BuildStage",
+        # Packages
+        "PackageInfo",
+        "PackageDetails",
+        "PackageVersion",
+        "DependencyInfo",
+        "SyncPackagesRequest",
+        "SyncPackagesResponse",
+        # Problems
+        "Problem",
+        "ProblemFilter",
+        # Standard library
+        "StdLibItem",
+        "StdLibChild",
+        # BOM
+        "BOMData",
+        "BOMComponent",
+        "BOMParameter",
+        "BOMUsage",
+        # Variables
+        "VariablesData",
+        "VariableNode",
+        "Variable",
+        # Modules
+        "ModuleDefinition",
+        "ModuleChild",
+        # Config & installation
+        "AtopileConfig",
+        "DetectedInstallation",
+        "InstallProgress",
+        # Events
+        "EventMessage",
+    ],
+    "atopile.server.schemas.agent_api": [
+        # Agent HTTP API requests/responses
+        "CreateSessionRequest",
+        "CreateSessionResponse",
+        "SendMessageRequest",
+        "ToolTraceResponse",
+        "ToolDirectoryItem",
+        "ToolSuggestion",
+        "ToolMemoryEntry",
+        "SendMessageResponse",
+        "ToolDirectoryResponse",
+        "ToolSuggestionsRequest",
+        "ToolSuggestionsResponse",
+        "SessionSkillsResponse",
+        "CreateRunRequest",
+        "CreateRunResponse",
+        "GetRunResponse",
+        "CancelRunResponse",
+        "SteerRunRequest",
+        "SteerRunResponse",
+        # Agent websocket event payload
+        "AgentProgressUsage",
+        "AgentProgressEventPayload",
+    ],
+}
 
 GENERATED_HEADER = """\
 /**
@@ -63,6 +90,7 @@ GENERATED_HEADER = """\
  *
  * This file is generated from Python Pydantic models in:
  *   src/atopile/dataclasses.py
+ *   src/atopile/server/schemas/agent_api.py
  *
  * To regenerate, run:
  *   python scripts/generate_types.py
@@ -116,16 +144,21 @@ def get_model_schema(model) -> dict:
 
 def get_all_schemas() -> dict[str, dict]:
     """Get schemas for all models."""
-    from atopile import dataclasses as dc
-
     schemas = {}
-    for model_name in MODELS_TO_EXPORT:
-        model = getattr(dc, model_name, None)
-        if model is None:
-            print(f"Warning: Model {model_name} not found, skipping")
+    for module_name, model_names in MODEL_SOURCES.items():
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:
+            print(f"Warning: Could not import module {module_name}: {exc}")
             continue
 
-        schemas[model_name] = get_model_schema(model)
+        for model_name in model_names:
+            model = getattr(module, model_name, None)
+            if model is None:
+                print(f"Warning: Model {module_name}.{model_name} not found, skipping")
+                continue
+
+            schemas[model_name] = get_model_schema(model)
 
     return schemas
 
