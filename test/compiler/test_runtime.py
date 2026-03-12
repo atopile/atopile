@@ -2934,6 +2934,181 @@ class TestUnitConflicts:
             )
 
 
+class TestAssertWithComputedVariableInArithmetic:
+    """Regression tests for using computed variables in assert arithmetic.
+
+    Bug: using a literal directly in assert subtraction works, but using
+    a variable that holds a computed value (e.g. product of parameters) fails.
+
+    Example from ti-tps82130 package:
+        dropout_resistance = 69mohm
+        dropout_voltage = power_out.max_current * dropout_resistance
+        # This works:
+        assert power_out.voltage <= power_in.voltage - 69mohm
+        # This fails:
+        assert power_out.voltage <= power_in.voltage - dropout_voltage
+    """
+
+    def test_assert_subtraction_with_literal_works(self):
+        """Baseline: assert with literal subtraction should work."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                input_voltage = 5V to 17V
+                output_voltage = 0.9V to 6V
+                assert output_voltage <= input_voltage - 207mV
+            """,
+            "App",
+        )
+
+    def test_assert_subtraction_with_assigned_literal_works(self):
+        """Assert with a simple assigned literal in subtraction should work."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                input_voltage = 5V to 17V
+                output_voltage = 0.9V to 6V
+                dropout_voltage = 207mV
+                assert output_voltage <= input_voltage - dropout_voltage
+            """,
+            "App",
+        )
+
+    def test_assert_subtraction_with_computed_variable(self):
+        """Regression: assert with computed variable in subtraction should work.
+
+        This is the core bug: dropout_voltage is computed as
+        max_current * dropout_resistance, then used in a subtraction
+        inside an assert. Using the literal directly works, but using
+        the computed variable fails.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                input_voltage = 5V to 17V
+                output_voltage = 0.9V to 6V
+                max_current = 3A
+                dropout_resistance = 69mohm
+                dropout_voltage = max_current * dropout_resistance
+                assert output_voltage <= input_voltage - dropout_voltage
+            """,
+            "App",
+        )
+
+    def test_assert_addition_with_computed_variable(self):
+        """Regression: assert with computed variable in addition should work."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                input_voltage = 5V to 17V
+                output_voltage = 0.9V to 6V
+                max_current = 3A
+                dropout_resistance = 69mohm
+                dropout_voltage = max_current * dropout_resistance
+                assert input_voltage >= output_voltage + dropout_voltage
+            """,
+            "App",
+        )
+
+    def test_assert_subtraction_computed_variable_with_solver(self):
+        """Regression: solver should handle computed variable in assert subtraction.
+
+        Runs the full solver pipeline to verify the constraint can be resolved.
+        Models the ti-tps82130 pattern where dropout_voltage is computed from
+        max_current * dropout_resistance.
+        """
+        g, tg, _, _, app_instance = build_instance(
+            """
+            module App:
+                input_voltage = 5V to 17V
+                output_voltage = 0.9V to 6V
+                max_current = 3A
+                dropout_resistance = 69mohm
+                dropout_voltage = max_current * dropout_resistance
+                assert output_voltage <= input_voltage - dropout_voltage
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_assert_subtraction_computed_variable_child_module_with_solver(self):
+        """Regression: solver should handle computed variable from child module params.
+
+        This closely mirrors the ti-tps82130 regulator pattern where:
+        - power_in/power_out are sub-interfaces with voltage/max_current params
+        - dropout_voltage is computed from power_out.max_current * dropout_resistance
+        - assert uses the computed variable in subtraction
+        """
+        g, tg, _, _, app_instance = build_instance(
+            """
+            interface Power:
+                voltage = 0V to 100V
+                max_current = 0A to 10A
+
+            module App:
+                power_in = new Power
+                power_out = new Power
+                assert power_in.voltage within 3V to 17V
+                assert power_out.voltage within 0.9V to 6V
+                power_out.max_current = 3A
+                dropout_resistance = 69mohm
+                dropout_voltage = power_out.max_current * dropout_resistance
+                assert power_out.voltage <= power_in.voltage - dropout_voltage
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_assert_with_inline_param_multiply_literal_with_solver(self):
+        """Param * literal inline in assert works with solver (simple case)."""
+        g, tg, _, _, app_instance = build_instance(
+            """
+            module App:
+                output_voltage = 3.3V +/- 5%
+                cap_max_voltage = 10V to 25V
+                assert cap_max_voltage >= output_voltage * 2
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+    def test_assert_with_child_param_multiply_literal_with_solver(self):
+        """Child_module.param * literal inline in assert works with solver."""
+        g, tg, _, _, app_instance = build_instance(
+            """
+            interface Power:
+                voltage = 0V to 100V
+
+            module Cap:
+                max_voltage = 0V to 100V
+
+            module App:
+                power_out = new Power
+                assert power_out.voltage within 3.3V +/- 5%
+                cap = new Cap
+                assert cap.max_voltage >= power_out.voltage * 2
+            """,
+            "App",
+        )
+        app = fabll.Node.bind_instance(app_instance)
+        F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+        solver = Solver()
+        solver.simplify(tg, g, terminal=True)
+
+
 class TestParameterConstraintTypes:
     """Tests for Is vs IsSubset constraint types based on block type."""
 
