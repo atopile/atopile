@@ -85,9 +85,7 @@ def test_performance_pick_rc_formulas():
     timings.add("construct")
 
     # Create the increase factor literal (dimensionless)
-    dl_unit = (
-        F.Units.Dimensionless.bind_typegraph(tg).create_instance(g=g).is_unit.get()
-    )
+    dl_unit = F.Units.Dimensionless.bind_typegraph(tg).as_type_node().is_unit.get()
     increase_lit = (
         F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)

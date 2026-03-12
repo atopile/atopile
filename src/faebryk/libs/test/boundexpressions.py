@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 import string
 from enum import Enum
-from typing import cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -215,22 +214,18 @@ class BoundExpressions:
         def make_dl(self) -> "F.Units.is_unit":
             return (
                 F.Units.Dimensionless.bind_typegraph(tg=self.E.tg)
-                .create_instance(g=self.E.g)
+                .as_type_node()
                 .is_unit.get()
             )
 
         def make_H(self) -> "F.Units.is_unit":
             return (
-                F.Units.Henry.bind_typegraph(tg=self.E.tg)
-                .create_instance(g=self.E.g)
-                .is_unit.get()
+                F.Units.Henry.bind_typegraph(tg=self.E.tg).as_type_node().is_unit.get()
             )
 
         def make_Hz(self) -> "F.Units.is_unit":
             return (
-                F.Units.Hertz.bind_typegraph(tg=self.E.tg)
-                .create_instance(g=self.E.g)
-                .is_unit.get()
+                F.Units.Hertz.bind_typegraph(tg=self.E.tg).as_type_node().is_unit.get()
             )
 
     def __init__(
@@ -243,18 +238,7 @@ class BoundExpressions:
         self._letters = (letter for letter in string.ascii_uppercase)
 
     def _resolve_unit(self, unit: type[fabll.Node]) -> F.Units.is_unit | None:
-        instance = unit.bind_typegraph(tg=self.tg).create_instance(g=self.g)
-
-        if is_unit_expr := instance.try_get_trait(F.Units.is_unit_expression):
-            is_unit_expr.get_obj().setup(cast(type[F.Units.UnitExpression], unit))
-            resolved = F.Units.resolve_unit_expression(
-                g=self.g, tg=self.tg, expr=instance.instance
-            )
-            if resolved is None:
-                return None
-            return resolved.get_trait(F.Units.is_unit)
-
-        return instance.get_trait(F.Units.is_unit)
+        return unit.bind_typegraph(tg=self.tg).as_type_node().is_unit.get()
 
     def parameter_op(
         self,

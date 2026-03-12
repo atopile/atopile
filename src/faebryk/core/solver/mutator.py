@@ -2621,7 +2621,7 @@ def test_mutator_basic_bootstrap():
             1,
             5,
             unit=F.Units.Dimensionless.bind_typegraph(tg=tg)
-            .create_instance(g=g)
+            .as_type_node()
             .is_unit.get(),
         ),
     )

@@ -136,22 +136,14 @@ def eval_pure_literal_expression(
 
 def lit(*values: float) -> F.Parameters.can_be_operand:
     if len(values) == 1:
-        dimless = (
-            F.Units.Dimensionless.bind_typegraph(tg=global_tg)
-            .create_instance(g=global_g)
-            .setup()
-        )
+        dimless = F.Units.Dimensionless.bind_typegraph(tg=global_tg).as_type_node()
         return (
             F.Literals.Numbers.bind_typegraph(tg=global_tg)
             .create_instance(g=global_g)
             .setup_from_singleton(value=values[0], unit=dimless.is_unit.get())
         ).can_be_operand.get()
     elif len(values) == 2:
-        dimless = (
-            F.Units.Dimensionless.bind_typegraph(tg=global_tg)
-            .create_instance(g=global_g)
-            .setup()
-        )
+        dimless = F.Units.Dimensionless.bind_typegraph(tg=global_tg).as_type_node()
         return (
             F.Literals.Numbers.bind_typegraph(tg=global_tg)
             .create_instance(g=global_g)
@@ -164,11 +156,7 @@ def lit(*values: float) -> F.Parameters.can_be_operand:
 
 
 def lit_op_single(val: float) -> F.Parameters.can_be_operand:
-    dimless = (
-        F.Units.Dimensionless.bind_typegraph(tg=global_tg)
-        .create_instance(g=global_g)
-        .setup()
-    )
+    dimless = F.Units.Dimensionless.bind_typegraph(tg=global_tg).as_type_node()
     return (
         F.Literals.Numbers.bind_typegraph(tg=global_tg)
         .create_instance(g=global_g)
@@ -185,11 +173,7 @@ def lit_op_range_op(
 
 def lit_op_range(*values: float) -> F.Parameters.can_be_operand:
     lower, upper = sorted(values)
-    dimless = (
-        F.Units.Dimensionless.bind_typegraph(tg=global_tg)
-        .create_instance(g=global_g)
-        .setup()
-    )
+    dimless = F.Units.Dimensionless.bind_typegraph(tg=global_tg).as_type_node()
     return (
         F.Literals.Numbers.bind_typegraph(tg=global_tg)
         .create_instance(g=global_g)

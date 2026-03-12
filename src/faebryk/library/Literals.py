@@ -3261,34 +3261,32 @@ class Numbers(fabll.Node):
         if unit is not None and unit is not Dimensionless:
             from faebryk.library.Units import has_display_unit
 
-            # Store display unit (user's original unit, e.g., mV)
-            display_unit_child = unit.MakeChild()
-            out.add_dependant(display_unit_child)
-            out.add_dependant(
-                fabll.Traits.MakeEdge(
-                    has_display_unit.MakeChild([display_unit_child]), [out]
-                )
-            )
-
             unit_info = extract_unit_info(unit)
             if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
-                # Base unit - use same child as has_unit (display and base are the same)
+                # Base unit - point to shared type-level is_unit (no copies)
                 out.add_dependant(
                     fabll.Traits.MakeEdge(
-                        has_unit.MakeChild([display_unit_child]), [out]
+                        has_display_unit.MakeChild_FromType(unit), [out]
                     )
                 )
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(has_unit.MakeChild_FromType(unit), [out])
+                )
             else:
-                # Prefixed unit - create base unit for has_unit
-                # Values are stored in base units, so has_unit must reflect this
+                # Prefixed unit - point to type-level is_unit singletons
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(
+                        has_display_unit.MakeChild_FromType(unit), [out]
+                    )
+                )
+
                 from faebryk.library.Parameters import NumericParameter
 
-                base_unit_child = NumericParameter._make_1_0_unit(
-                    unit_info.basis_vector
-                ).MakeChild()
-                out.add_dependant(base_unit_child)
+                base_unit_type = NumericParameter._make_1_0_unit(unit_info.basis_vector)
                 out.add_dependant(
-                    fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
+                    fabll.Traits.MakeEdge(
+                        has_unit.MakeChild_FromType(base_unit_type), [out]
+                    )
                 )
 
         return out
@@ -3646,19 +3644,25 @@ class Numbers(fabll.Node):
 
         g = g or self.g
         tg = tg or self.tg
-        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
+
+        self_unit = self.get_is_unit()
+        other_unit = other.get_is_unit()
+
+        if not is_unit.is_commensurable_with(self_unit, other_unit):
             raise UnitsNotCommensurableError(
                 "Cannot intersect quantity sets: units are not commensurable",
-                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+                incommensurable_items=[self_unit, other_unit],
             )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+        other_numeric = other_converted.get_numeric_set()
+
         out_numeric_set = self.get_numeric_set().op_intersect_intervals(
-            g=g, tg=tg, other=other_converted.get_numeric_set()
+            g=g, tg=tg, other=other_numeric
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
-            unit=self.get_is_unit(),
+            unit=self_unit,
         )
 
     @staticmethod
@@ -3769,9 +3773,15 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import is_unit
 
-        scale, offset = is_unit.get_conversion_to(self.get_is_unit(), unit)
+        self_unit = self.get_is_unit()
+
+        # Same is_unit node — skip all conversion work
+        if self_unit is not None and unit is not None and self_unit.is_same(unit):
+            return self
+
+        scale, offset = is_unit.get_conversion_to(self_unit, unit)
+        # Identity conversion — no graph work needed
         if scale == 1.0 and offset == 0.0:
-            # Already in the target unit, return self
             return self
 
         # Generate a numeric set for the scale
@@ -4174,13 +4184,11 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_sin(g=g, tg=tg)
         # Result is dimensionless
-        from faebryk.library.Units import Dimensionless
 
-        dimensionless_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
-            unit=dimensionless_unit.is_unit.get(),
+            unit=None,
         )
 
     def op_cos(
@@ -4320,16 +4328,8 @@ class Numbers(fabll.Node):
 
             if max_val == 0:
                 # Avoid division by zero - both are zero, so relative deviation is 0
-                from faebryk.library.Units import Dimensionless
-
-                dimensionless_unit = Dimensionless.bind_typegraph(
-                    tg=tg
-                ).create_instance(g=g)
                 result = Numbers.create_instance(g=g, tg=tg)
-                dimensionless_is_unit = dimensionless_unit.is_unit.get()
-                return result.setup_from_min_max(
-                    min=0.0, max=0.0, unit=dimensionless_is_unit
-                )
+                return result.setup_from_min_max(min=0.0, max=0.0, unit=None)
 
             # Create divisor quantity set
             divisor = Numbers.create_instance(g=g, tg=tg)
@@ -5056,7 +5056,7 @@ class TestNumbers:
         )
 
         # Create mV is_unit instance
-        mv_instance = MilliVolt.bind_typegraph(tg=tg).create_instance(g=g)
+        mv_instance = MilliVolt.bind_typegraph(tg=tg).as_type_node()
         mv_is_unit = mv_instance.is_unit.get()
 
         # Create Numbers using setup_from_min_max with 80mV
@@ -5096,7 +5096,7 @@ class TestNumbers:
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set.setup_from_min_max(
             min=0.0, max=1.0, unit=meter_instance.is_unit.get()
         )
@@ -5110,7 +5110,7 @@ class TestNumbers:
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set.setup_from_singleton(value=1.0, unit=meter_instance.is_unit.get())
         assert quantity_set.get_numeric_set().get_min_value() == 1.0
 
@@ -5131,7 +5131,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=0.0, max=1.0, unit=meter_instance.is_unit.get()
@@ -5147,7 +5147,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=0.0, max=1.0, unit=meter_instance.is_unit.get()
@@ -5163,7 +5163,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
             min=0.0, max=1.0, unit=meter_instance.is_unit.get()
@@ -5185,8 +5185,8 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import DegreeCelsius, Kelvin
 
-        celsius = DegreeCelsius.bind_typegraph(tg=tg).create_instance(g=g)
-        kelvin = Kelvin.bind_typegraph(tg=tg).create_instance(g=g)
+        celsius = DegreeCelsius.bind_typegraph(tg=tg).as_type_node()
+        kelvin = Kelvin.bind_typegraph(tg=tg).as_type_node()
         quantity_celsius = Numbers.create_instance(g=g, tg=tg)
         quantity_celsius.setup_from_min_max(
             min=0.0, max=0.0, unit=celsius.is_unit.get()
@@ -5207,7 +5207,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
             min=2.0, max=4.0, unit=meter_instance.is_unit.get()
@@ -5232,12 +5232,12 @@ class TestNumbers:
         quantity_meter = Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
             min=1.0,
             max=2.0,
-            unit=Meter.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+            unit=Meter.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
         )
         quantity_newton = Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
             min=3.0,
             max=4.0,
-            unit=Newton.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+            unit=Newton.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
         )
         result = quantity_meter.op_mul_intervals(quantity_newton, g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 3.0
@@ -5251,7 +5251,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
             min=2.0, max=4.0, unit=meter_instance.is_unit.get()
@@ -5280,7 +5280,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.0, max=5.0, unit=meter_instance.is_unit.get()
@@ -5300,7 +5300,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
             min=5.0, max=10.0, unit=meter_instance.is_unit.get()
@@ -5326,7 +5326,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.0, max=4.0, unit=meter_instance.is_unit.get()
@@ -5347,7 +5347,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
             min=4.0, max=8.0, unit=meter_instance.is_unit.get()
@@ -5372,8 +5372,8 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter, Second
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
-        second_instance = Second.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
+        second_instance = Second.bind_typegraph(tg=tg).as_type_node()
         quantity_distance = Numbers.create_instance(g=g, tg=tg)
         quantity_distance.setup_from_min_max(
             min=10.0, max=20.0, unit=meter_instance.is_unit.get()
@@ -5396,20 +5396,15 @@ class TestNumbers:
 
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import BasisVector, Dimensionless, Meter
+        from faebryk.library.Units import BasisVector, Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
-        dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).create_instance(
-            g=g
-        )
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.0, max=3.0, unit=meter_instance.is_unit.get()
         )
         exponent = Numbers.create_instance(g=g, tg=tg)
-        exponent.setup_from_min_max(
-            min=2.0, max=2.0, unit=dimensionless_instance.is_unit.get()
-        )
+        exponent.setup_from_min_max(min=2.0, max=2.0, unit=None)
         result = quantity_set.op_pow_intervals(exponent, g=g, tg=tg)
         # [2, 3]^2 = [4, 9]
         assert result.get_numeric_set().get_min_value() == 4.0
@@ -5426,7 +5421,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.345, max=5.678, unit=meter_instance.is_unit.get()
@@ -5471,7 +5466,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=min_val, max=max_val, unit=meter_instance.is_unit.get()
@@ -5490,7 +5485,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.345, max=5.678, unit=meter_instance.is_unit.get()
@@ -5509,7 +5504,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Test with all-negative interval
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
@@ -5526,15 +5521,9 @@ class TestNumbers:
         """Test natural log of a quantity set."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import Dimensionless
 
-        dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).create_instance(
-            g=g
-        )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
-        quantity_set.setup_from_min_max(
-            min=1.0, max=math.e, unit=dimensionless_instance.is_unit.get()
-        )
+        quantity_set.setup_from_min_max(min=1.0, max=math.e, unit=None)
         result = quantity_set.op_log(g=g, tg=tg)
         # log([1, e]) = [0, 1]
         assert abs(result.get_numeric_set().get_min_value() - 0.0) < 1e-10
@@ -5548,7 +5537,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Radian
 
-        radian_instance = Radian.bind_typegraph(tg=tg).create_instance(g=g)
+        radian_instance = Radian.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=0.0, max=math.pi / 2, unit=radian_instance.is_unit.get()
@@ -5587,7 +5576,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Radian
 
-        radian_instance = Radian.bind_typegraph(tg=tg).create_instance(g=g)
+        radian_instance = Radian.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=0.0, max=0.0, unit=radian_instance.is_unit.get()
@@ -5607,7 +5596,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.0, max=7.0, unit=meter_instance.is_unit.get()
@@ -5625,7 +5614,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5654,7 +5643,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5680,7 +5669,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5706,7 +5695,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set: [0, 3]
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
@@ -5726,7 +5715,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=0.0, max=3.0, unit=meter_instance.is_unit.get()
@@ -5743,7 +5732,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 10] - larger
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5765,7 +5754,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [5, 5] singleton
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5791,7 +5780,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5814,7 +5803,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5836,7 +5825,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5865,7 +5854,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5887,7 +5876,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5916,7 +5905,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
@@ -5940,7 +5929,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # Single element
         single = Numbers.create_instance(g=g, tg=tg)
         single.setup_from_min_max(min=5.0, max=5.0, unit=meter_instance.is_unit.get())
@@ -5958,7 +5947,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         finite = Numbers.create_instance(g=g, tg=tg)
         finite.setup_from_min_max(min=0.0, max=5.0, unit=meter_instance.is_unit.get())
         assert finite.is_finite() is True
@@ -5970,7 +5959,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=0.0, max=5.0, unit=meter_instance.is_unit.get()
@@ -5984,7 +5973,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=3.0, max=7.0, unit=meter_instance.is_unit.get()
@@ -6005,7 +5994,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.0, max=8.0, unit=meter_instance.is_unit.get()
@@ -6022,7 +6011,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.0, max=5.0, unit=meter_instance.is_unit.get()
@@ -6038,25 +6027,23 @@ class TestNumbers:
         """Test bit set operation."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import Dimensionless
 
-        dimensionless = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
         # Value 5 = 0b101 (bits 0 and 2 are set)
         value = Numbers.create_instance(g=g, tg=tg)
-        value.setup_from_min_max(min=5.0, max=5.0, unit=dimensionless.is_unit.get())
+        value.setup_from_min_max(min=5.0, max=5.0, unit=None)
         # Check bit 0
         bit0 = Numbers.create_instance(g=g, tg=tg)
-        bit0.setup_from_min_max(min=0.0, max=0.0, unit=dimensionless.is_unit.get())
+        bit0.setup_from_min_max(min=0.0, max=0.0, unit=None)
         result0 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit0)
         assert True in result0.get_boolean_values()  # bit 0 is set
         # Check bit 1
         bit1 = Numbers.create_instance(g=g, tg=tg)
-        bit1.setup_from_min_max(min=1.0, max=1.0, unit=dimensionless.is_unit.get())
+        bit1.setup_from_min_max(min=1.0, max=1.0, unit=None)
         result1 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit1)
         assert False in result1.get_boolean_values()  # bit 1 is not set
         # Check bit 2
         bit2 = Numbers.create_instance(g=g, tg=tg)
-        bit2.setup_from_min_max(min=2.0, max=2.0, unit=dimensionless.is_unit.get())
+        bit2.setup_from_min_max(min=2.0, max=2.0, unit=None)
         result2 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit2)
         assert True in result2.get_boolean_values()  # bit 2 is set
 
@@ -6066,7 +6053,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
             min=2.0, max=5.0, unit=meter_instance.is_unit.get()
@@ -6080,7 +6067,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.is_unit.get())
         qs2 = Numbers.create_instance(g=g, tg=tg)
@@ -6093,7 +6080,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.is_unit.get())
         qs2 = Numbers.create_instance(g=g, tg=tg)
@@ -6106,8 +6093,8 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter, Second
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
-        second_instance = Second.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
+        second_instance = Second.bind_typegraph(tg=tg).as_type_node()
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.is_unit.get())
         qs2 = Numbers.create_instance(g=g, tg=tg)
@@ -6127,7 +6114,7 @@ class TestNumbers:
 
         # Values are already in base units (ohms), so we use base Ohm unit
         # 8000-12000 ohms = 8k-12k ohms, which represents "10kohm +/- 20%"
-        ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
+        ohm_instance = Ohm.bind_typegraph(tg=tg).as_type_node()
 
         qs = Numbers.create_instance(g=g, tg=tg)
         qs.setup_from_min_max(min=8000.0, max=12000.0, unit=ohm_instance.is_unit.get())
@@ -6161,7 +6148,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Watt
 
-        watt_instance = Watt.bind_typegraph(tg=tg).create_instance(g=g)
+        watt_instance = Watt.bind_typegraph(tg=tg).as_type_node()
 
         # Create singleton value (min == max)
         qs = Numbers.create_instance(g=g, tg=tg)
@@ -6193,7 +6180,7 @@ class TestNumbers:
         from faebryk.library.Units import Watt
 
         # Instantiate Watt so it can be decoded
-        _ = Watt.bind_typegraph(tg=tg).create_instance(g=g)
+        _ = Watt.bind_typegraph(tg=tg).as_type_node()
 
         # This is the format from the component API (using symbol "W" for watt)
         discrete_data = {
@@ -6224,7 +6211,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Watt
 
-        watt_instance = Watt.bind_typegraph(tg=tg).create_instance(g=g)
+        watt_instance = Watt.bind_typegraph(tg=tg).as_type_node()
 
         # Create original singleton
         original = Numbers.create_instance(g=g, tg=tg)
@@ -6246,7 +6233,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # [5, 10] >= [0, 3] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(min=5.0, max=10.0, unit=meter_instance.is_unit.get())
@@ -6261,7 +6248,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # [0, 3] >= [5, 10] is definitely False
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(min=0.0, max=3.0, unit=meter_instance.is_unit.get())
@@ -6276,7 +6263,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # [0, 5] >= [3, 10] is uncertain
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(min=0.0, max=5.0, unit=meter_instance.is_unit.get())
@@ -6291,7 +6278,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # [5, 10] > [0, 3] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(min=5.0, max=10.0, unit=meter_instance.is_unit.get())
@@ -6306,7 +6293,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # [0, 3] <= [5, 10] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(min=0.0, max=3.0, unit=meter_instance.is_unit.get())
@@ -6321,7 +6308,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
         # [0, 3] < [5, 10] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(min=0.0, max=3.0, unit=meter_instance.is_unit.get())
@@ -6391,12 +6378,12 @@ class TestNumbers:
 
         # Get the unit class dynamically
         unit_cls = getattr(Units, unit_name)
-        unit_instance = unit_cls.bind_typegraph(tg=tg).create_instance(g=g)
+        unit_type_node = unit_cls.bind_typegraph(tg=tg).as_type_node()
 
         # Create original Numbers with an interval
         original = Numbers.create_instance(g=g, tg=tg)
         original.setup_from_min_max(
-            min=min_val, max=max_val, unit=unit_instance.is_unit.get()
+            min=min_val, max=max_val, unit=unit_type_node.is_unit.get()
         )
 
         # Serialize and deserialize
@@ -6449,11 +6436,11 @@ class TestNumbers:
         )
 
         # Instantiate base units so prefixed versions can be decoded
-        _ = Meter.bind_typegraph(tg=tg).create_instance(g=g)
-        _ = Ampere.bind_typegraph(tg=tg).create_instance(g=g)
-        _ = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
-        _ = Farad.bind_typegraph(tg=tg).create_instance(g=g)
-        _ = Volt.bind_typegraph(tg=tg).create_instance(g=g)
+        _ = Meter.bind_typegraph(tg=tg).as_type_node()
+        _ = Ampere.bind_typegraph(tg=tg).as_type_node()
+        _ = Ohm.bind_typegraph(tg=tg).as_type_node()
+        _ = Farad.bind_typegraph(tg=tg).as_type_node()
+        _ = Volt.bind_typegraph(tg=tg).as_type_node()
 
         prefixed_unit = decode_symbol_runtime(g=g, tg=tg, symbol=symbol)
 
@@ -6480,7 +6467,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        meter_instance = Meter.bind_typegraph(tg=tg).as_type_node()
 
         # Create original Numbers
         original = Numbers.create_instance(g=g, tg=tg)
@@ -6506,7 +6493,7 @@ class TestNumbers:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        farad_instance = Farad.bind_typegraph(tg=tg).create_instance(g=g)
+        farad_instance = Farad.bind_typegraph(tg=tg).as_type_node()
         farad_unit = farad_instance.is_unit.get()
 
         # 220nF = 2.2e-7 F, with 20% tolerance
@@ -6527,7 +6514,7 @@ class TestNumbers:
         tg = fbrk.TypeGraph.create(g=g)
 
         # Must bind Farad to typegraph before decode_symbol_runtime can resolve "uF"
-        Farad.bind_typegraph(tg=tg).create_instance(g=g)
+        Farad.bind_typegraph(tg=tg).as_type_node()
         ufarad_is_unit = not_none(decode_symbol_runtime(g=g, tg=tg, symbol="uF"))
 
         # 470nF = 0.470uF with 20% tolerance
@@ -7753,7 +7740,7 @@ class AbstractEnums(fabll.Node):
                 return v
             try:
                 return int(v)
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 return str(v)
 
         parsed_values = {k: _try_parse_int(v) for k, v in enum_values.items()}
@@ -7980,18 +7967,11 @@ def make_singleton(
         )
     match value:
         case float() | int():
-            from faebryk.library.Units import Dimensionless
-
             value = float(value)
             return (
                 Numbers.bind_typegraph(tg=tg)
                 .create_instance(g=g)
-                .setup_from_singleton(
-                    value=value,
-                    unit=Dimensionless.bind_typegraph(tg=tg)
-                    .create_instance(g=g)
-                    .is_unit.get(),
-                )
+                .setup_from_singleton(value=value, unit=None)
             )
         case Enum():
             return AbstractEnums.bind_typegraph(tg=tg).create_instance(
@@ -8101,7 +8081,7 @@ def test_bound_context():
     ctx = BoundLiteralContext(tg=tg, g=g)
     from faebryk.library.Units import Ohm
 
-    ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
+    ohm_instance = Ohm.bind_typegraph(tg=tg).as_type_node()
 
     my_number = ctx.Numbers.setup_from_singleton(
         value=1.0, unit=ohm_instance.is_unit.get()

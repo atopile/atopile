@@ -8,7 +8,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, not_none, once
+from faebryk.libs.util import KeyErrorAmbiguous, not_none
 
 if TYPE_CHECKING:
     import faebryk.library.Literals as Literals
@@ -913,26 +913,10 @@ class NumericParameter(fabll.Node):
         return out
 
     @staticmethod
-    @once
     def _make_1_0_unit(basis_vector: "F.Units.BasisVector") -> type[fabll.Node]:
-        from faebryk.library.Units import is_unit, is_unit_type
+        from faebryk.library.Units import get_base_unit_type
 
-        is_unit_trait_child = is_unit.MakeChild(
-            symbols=(),
-            basis_vector=basis_vector,
-            multiplier=1.0,
-            offset=0.0,
-        )
-
-        class _BaseUnit(fabll.Node):
-            _override_type_identifier = f"BaseUnit<{basis_vector}>"
-            is_unit_type_trait = fabll.Traits.MakeEdge(
-                is_unit_type.MakeChild(())
-            ).put_on_type()
-            is_unit = fabll.Traits.MakeEdge(is_unit_trait_child)
-            can_be_operand_trait = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
-
-        return _BaseUnit
+        return get_base_unit_type(basis_vector)
 
     @classmethod
     def MakeChild(  # type: ignore[invalid-method-override]
@@ -954,30 +938,29 @@ class NumericParameter(fabll.Node):
         out = fabll._ChildField(cls)
 
         if unit is not None:
-            # Create display unit from the provided type
-            display_unit_child = unit.MakeChild()
-            out.add_dependant(display_unit_child)
-            out.add_dependant(
-                fabll.Traits.MakeEdge(
-                    has_display_unit.MakeChild([display_unit_child]), [out]
-                )
-            )
-
             unit_info = extract_unit_info(unit)
             if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
-                # Base unit - use same child for has_unit
+                # Base unit - point to shared type-level is_unit (no copies)
                 out.add_dependant(
                     fabll.Traits.MakeEdge(
-                        has_unit.MakeChild([display_unit_child]), [out]
+                        has_display_unit.MakeChild_FromType(unit), [out]
                     )
                 )
-            else:
-                base_unit_child = NumericParameter._make_1_0_unit(
-                    unit_info.basis_vector
-                ).MakeChild()
-                out.add_dependant(base_unit_child)
                 out.add_dependant(
-                    fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
+                    fabll.Traits.MakeEdge(has_unit.MakeChild_FromType(unit), [out])
+                )
+            else:
+                # Prefixed unit - point to type-level is_unit singletons
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(
+                        has_display_unit.MakeChild_FromType(unit), [out]
+                    )
+                )
+                base_unit_type = NumericParameter._make_1_0_unit(unit_info.basis_vector)
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(
+                        has_unit.MakeChild_FromType(base_unit_type), [out]
+                    )
                 )
 
         if domain is not NumericParameter.DOMAIN_SKIP:
@@ -1079,11 +1062,8 @@ class NumericParameter(fabll.Node):
             param_unit = -1
             for operand_op in constraining_operands:
                 op_obj = operand_op.get_obj_raw()
-                operand_unit_node = resolve_unit_expression(
+                operand_unit = resolve_unit_expression(
                     g=param.g, tg=param.tg, expr=op_obj.instance
-                )
-                operand_unit = (
-                    operand_unit_node.get_is_unit() if operand_unit_node else None
                 )
                 if isinstance(param_unit, int) and param_unit == -1:
                     param_unit = operand_unit
@@ -1137,10 +1117,9 @@ class NumericParameter(fabll.Node):
             for operand in operands:
                 op_obj = operand.get_obj_raw()
                 try:
-                    unit_node = resolve_unit_expression(
+                    unit = resolve_unit_expression(
                         g=root.g, tg=root.tg, expr=op_obj.instance
                     )
-                    unit = unit_node.get_is_unit() if unit_node else None
                 except Exception:
                     # If we can't resolve the unit, skip this operand
                     unit = None
@@ -1450,7 +1429,7 @@ def test_new_definitions():
     parameters = BoundParameterContext(tg, g)
 
     parameters.NumericParameter.setup(
-        is_unit=Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        is_unit=Ohm.bind_typegraph(tg=tg).as_type_node().is_unit.get(),
     )
 
 
@@ -1622,9 +1601,7 @@ def test_expression_congruence():
 
     # Create literals context
     literals = BoundLiteralContext(tg=tg, g=g)
-    dimensionless = (
-        Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
-    )
+    dimensionless = Dimensionless.bind_typegraph(tg=tg).as_type_node().is_unit.get()
 
     # Test singleton literal hash equality
     zero_lit_1 = literals.create_numbers_from_singleton(value=0.0, unit=dimensionless)
@@ -1779,7 +1756,7 @@ def test_can_be_operand_pretty_print():
 
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    ohm_is_unit = Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+    ohm_is_unit = Ohm.bind_typegraph(tg=tg).as_type_node().is_unit.get()
 
     singleton = (
         F.Literals.Numbers.bind_typegraph(tg=tg)
@@ -1831,7 +1808,7 @@ def test_is_discrete_set():
     tg = fbrk.TypeGraph.create(g=g)
     from faebryk.library.Units import Dimensionless
 
-    dl_is_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+    dl_is_unit = Dimensionless.bind_typegraph(tg=tg).as_type_node().is_unit.get()
     discrete_set = (
         F.Literals.Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
@@ -1973,7 +1950,7 @@ def test_display_unit_normalization():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance to register it in the typegraph
-    _ = Volt.bind_typegraph(tg=tg).create_instance(g=g)
+    _ = Volt.bind_typegraph(tg=tg).as_type_node()
 
     # Get mV unit (millivolt) via decode_symbol_runtime
     mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")
@@ -2011,8 +1988,8 @@ def test_display_unit_compact_repr():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance
-    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
-    volt_unit = volt_instance.is_unit.get()
+    volt_type = Volt.bind_typegraph(tg=tg).as_type_node()
+    volt_unit = volt_type.is_unit.get()
 
     # Create a numeric parameter with V as display unit
     param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
@@ -2036,8 +2013,8 @@ def test_display_unit_literal_conversion():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance to register it
-    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
-    volt_unit = volt_instance.is_unit.get()
+    volt_type = Volt.bind_typegraph(tg=tg).as_type_node()
+    volt_unit = volt_type.is_unit.get()
 
     # Get mV unit
     mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")
@@ -2082,8 +2059,8 @@ def test_display_unit_fallback():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance
-    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
-    volt_unit = volt_instance.is_unit.get()
+    volt_type = Volt.bind_typegraph(tg=tg).as_type_node()
+    volt_unit = volt_type.is_unit.get()
 
     # Create a numeric parameter with base unit (V)
     # When using base unit, has_unit and has_display_unit should be the same
@@ -2131,8 +2108,8 @@ def test_display_unit_lit_suffix_conversion():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a Volt instance
-    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
-    volt_unit = volt_instance.is_unit.get()
+    volt_type = Volt.bind_typegraph(tg=tg).as_type_node()
+    volt_unit = volt_type.is_unit.get()
 
     # Get mV unit
     mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")

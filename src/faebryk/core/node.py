@@ -1059,6 +1059,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     source_chunk_node=source_chunk_node,
                 )
         elif isinstance(field, _EdgeField):
+            # Ensure any type references in edge paths are registered in tg
+            for path in [field.lhs, field.rhs]:
+                for segment in path:
+                    if isinstance(segment, type) and issubclass(segment, Node):
+                        TypeNodeBoundTG.get_or_create_type_in_tg(tg=t.tg, t=segment)
             if type_field:
                 type_node = t.get_or_create_type()
                 edge_instance = field.edge.create_edge(
@@ -1880,7 +1885,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             ).edge()
         )
 
-    def as_type_node(self) -> "NodeT":
+    def as_type_node(self) -> N:
         return self.t.bind_instance(instance=self.get_or_create_type())
 
     def create_instance(self, g: graph.GraphView, attributes: A | None = None) -> N:
