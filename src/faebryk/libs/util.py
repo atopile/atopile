@@ -167,6 +167,12 @@ def flatten(obj: Iterable, depth=1) -> List:
     return [nested for top in obj for nested in flatten(top, depth=depth - 1)]
 
 
+def prefixes[T](seq: Sequence[T]) -> Iterable[Sequence[T]]:
+    """Yield all non-empty prefixes of a sliceable sequence."""
+    for prefix_len in range(1, len(seq) + 1):
+        yield seq[:prefix_len]
+
+
 def get_key[T, U](haystack: dict[T, U], needle: U) -> T:
     return find(haystack.items(), lambda x: x[1] == needle)[0]
 

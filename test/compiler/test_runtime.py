@@ -2517,6 +2517,403 @@ class TestRetypeRuntime:
             f"inner should be Specialized, got {inner_type}"
         )
 
+    def test_retype_indexed_child_instance(self):
+        """Retype can target a single indexed child."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module SlotA:
+                a = new Electrical
+
+            module SlotB:
+                b = new Electrical
+
+            module Holder:
+                slots = new SlotA[2]
+
+            module App:
+                holder = new Holder
+                holder.slots[1] -> SlotB
+            """,
+            "App",
+        )
+
+        holder = _get_child(app_instance, "holder")
+        slot0_type = _get_type_name(_get_child(holder, "slots[0]"))
+        slot1_type = _get_type_name(_get_child(holder, "slots[1]"))
+
+        assert "SlotA" in slot0_type, (
+            f"holder.slots[0] should remain SlotA, got {slot0_type}"
+        )
+        assert "SlotB" in slot1_type, (
+            f"holder.slots[1] should be SlotB, got {slot1_type}"
+        )
+
+    def test_retype_applies_in_source_order(self):
+        """Later retypes on the same field should win."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module TypeA:
+                a = new Electrical
+
+            module TypeB:
+                b = new Electrical
+
+            module TypeC:
+                c = new Electrical
+
+            module App:
+                part = new TypeA
+                part -> TypeB
+                part -> TypeC
+            """,
+            "App",
+        )
+
+        part_type = _get_type_name(_get_child(app_instance, "part"))
+        assert "TypeC" in part_type, (
+            f"part should be TypeC after the later retype, got {part_type}"
+        )
+
+    def test_later_ancestor_retype_overrides_earlier_nested_retype(self):
+        """
+        Source order should let a later ancestor retype replace an earlier nested one.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module LeafA:
+                a = new Electrical
+
+            module LeafB:
+                b = new Electrical
+
+            module LeafC:
+                c = new Electrical
+
+            module InnerA:
+                leaf = new LeafA
+
+            module InnerB:
+                leaf = new LeafB
+
+            module Outer:
+                inner = new InnerA
+
+            module App:
+                item = new Outer
+                item.inner.leaf -> LeafC
+                item.inner -> InnerB
+            """,
+            "App",
+        )
+
+        item = _get_child(app_instance, "item")
+        inner_type = _get_type_name(_get_child(item, "inner"))
+        leaf_type = _get_type_name(_get_child(_get_child(item, "inner"), "leaf"))
+
+        assert "InnerB" in inner_type, (
+            f"item.inner should be InnerB after the later retype, got {inner_type}"
+        )
+        assert "LeafB" in leaf_type, (
+            "item.inner.leaf should come from InnerB after the later ancestor retype, "
+            f"got {leaf_type}"
+        )
+
+    def test_triple_nested_retype_outermost_wins(self):
+        """Three nested modules each retype the same field.
+
+        The outermost (highest in hierarchy) cross-instance retype should
+        be the one that sticks at runtime, and independent instances of
+        the inner modules should retain their own retypes.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module SlotBase:
+                x = new Electrical
+
+            module SlotA:
+                a = new Electrical
+
+            module SlotB:
+                b = new Electrical
+
+            module SlotC:
+                c = new Electrical
+
+            module Level1:
+                slot = new SlotBase
+                slot -> SlotA
+
+            module Level2:
+                l1 = new Level1
+                l1.slot -> SlotB
+
+            module App:
+                l2 = new Level2
+                l2.l1.slot -> SlotC
+
+                # Independent instances to verify isolation
+                standalone_l1 = new Level1
+                standalone_l2 = new Level2
+            """,
+            "App",
+        )
+
+        # Outermost retype (SlotC) should win at l2.l1.slot
+        slot = _get_child(_get_child(_get_child(app_instance, "l2"), "l1"), "slot")
+        slot_type = _get_type_name(slot)
+        assert "SlotC" in slot_type, (
+            f"Outermost retype (SlotC) should win, got {slot_type}"
+        )
+
+        # standalone Level1 should still have SlotA (its own retype)
+        standalone_l1_slot = _get_child(
+            _get_child(app_instance, "standalone_l1"), "slot"
+        )
+        standalone_l1_type = _get_type_name(standalone_l1_slot)
+        assert "SlotA" in standalone_l1_type, (
+            f"standalone_l1.slot should be SlotA, got {standalone_l1_type}"
+        )
+
+        # standalone Level2 should have SlotB (its own retype, not SlotC)
+        standalone_l2_slot = _get_child(
+            _get_child(_get_child(app_instance, "standalone_l2"), "l1"), "slot"
+        )
+        standalone_l2_type = _get_type_name(standalone_l2_slot)
+        assert "SlotB" in standalone_l2_type, (
+            f"standalone_l2.l1.slot should be SlotB, got {standalone_l2_type}"
+        )
+
+
+class TestRetypeInstanceIsolation:
+    """Tests that retype on one instance does NOT affect sibling instances.
+
+    Bug: when retyping a nested field on one instance (e.g., inst2.slot -> SlotB),
+    the retype modifies the shared type definition rather than creating an
+    instance-level specialization. This causes ALL instances of that type to
+    get the retyped child.
+    """
+
+    def test_retype_one_instance_does_not_affect_sibling(self):
+        """Retyping inst2.slot -> SlotB should NOT change inst1.slot's type.
+
+        Regression test for: retyping a nested field on one instance pollutes
+        the shared type definition, affecting all instances of the same type.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module SlotA:
+                a = new Electrical
+
+            module SlotB:
+                b = new Electrical
+
+            module Assembly:
+                slot = new SlotA
+
+            module App:
+                inst1 = new Assembly
+                inst2 = new Assembly
+                inst2.slot -> SlotB
+            """,
+            "App",
+        )
+
+        inst1 = _get_child(app_instance, "inst1")
+        inst2 = _get_child(app_instance, "inst2")
+        slot1 = _get_child(inst1, "slot")
+        slot2 = _get_child(inst2, "slot")
+
+        slot1_type = _get_type_name(slot1)
+        slot2_type = _get_type_name(slot2)
+
+        # inst2.slot should be SlotB (retyped)
+        assert "SlotB" in slot2_type, f"inst2.slot should be SlotB, got {slot2_type}"
+
+        # inst1.slot should still be SlotA (NOT affected by inst2's retype)
+        assert "SlotA" in slot1_type, (
+            f"inst1.slot should remain SlotA, got {slot1_type}"
+            " — retype on inst2 polluted the shared type definition"
+        )
+
+    def test_retype_one_instance_with_three_siblings(self):
+        """Only the retyped instance should change; other siblings stay original."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module TypeA:
+                x = new Electrical
+
+            module TypeB:
+                y = new Electrical
+
+            module Container:
+                child = new TypeA
+
+            module App:
+                c1 = new Container
+                c2 = new Container
+                c3 = new Container
+                c2.child -> TypeB
+            """,
+            "App",
+        )
+
+        c1 = _get_child(app_instance, "c1")
+        c2 = _get_child(app_instance, "c2")
+        c3 = _get_child(app_instance, "c3")
+
+        c1_child_type = _get_type_name(_get_child(c1, "child"))
+        c2_child_type = _get_type_name(_get_child(c2, "child"))
+        c3_child_type = _get_type_name(_get_child(c3, "child"))
+
+        assert "TypeB" in c2_child_type, (
+            f"c2.child should be TypeB, got {c2_child_type}"
+        )
+        assert "TypeA" in c1_child_type, (
+            f"c1.child should remain TypeA, got {c1_child_type}"
+        )
+        assert "TypeA" in c3_child_type, (
+            f"c3.child should remain TypeA, got {c3_child_type}"
+        )
+
+    def test_retype_two_level_nested_path_is_isolated(self):
+        """Deep nested retypes should only affect the targeted instance branch."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module LeafA:
+                a = new Electrical
+
+            module LeafB:
+                b = new Electrical
+
+            module Mid:
+                leaf = new LeafA
+
+            module Assembly:
+                mid = new Mid
+
+            module App:
+                inst1 = new Assembly
+                inst2 = new Assembly
+                inst2.mid.leaf -> LeafB
+            """,
+            "App",
+        )
+
+        inst1_leaf_type = _get_type_name(
+            _get_child(_get_child(_get_child(app_instance, "inst1"), "mid"), "leaf")
+        )
+        inst2_leaf_type = _get_type_name(
+            _get_child(_get_child(_get_child(app_instance, "inst2"), "mid"), "leaf")
+        )
+
+        assert "LeafA" in inst1_leaf_type, (
+            f"inst1.mid.leaf should remain LeafA, got {inst1_leaf_type}"
+        )
+        assert "LeafB" in inst2_leaf_type, (
+            f"inst2.mid.leaf should be LeafB, got {inst2_leaf_type}"
+        )
+
+    def test_retype_isolation_across_linked_modules(self):
+        """
+        Nested retypes in separate imported files stay isolated and avoid collisions.
+        """
+        g = GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        stdlib = StdlibRegistry(tg, allowlist=STDLIB_ALLOWLIST)
+
+        with tempfile.TemporaryDirectory() as temp_dir_str:
+            temp_dir_path = Path(temp_dir_str)
+
+            (temp_dir_path / "shared.ato").write_text(
+                textwrap.dedent(
+                    """
+                    import Electrical
+
+                    module SlotA:
+                        a = new Electrical
+
+                    module SlotB:
+                        b = new Electrical
+
+                    module Assembly:
+                        slot = new SlotA
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            for filename, module_name in (
+                ("left.ato", "Left"),
+                ("right.ato", "Right"),
+            ):
+                (temp_dir_path / filename).write_text(
+                    textwrap.dedent(
+                        f"""
+                        from "shared.ato" import Assembly
+                        from "shared.ato" import SlotB
+
+                        module {module_name}:
+                            inst1 = new Assembly
+                            inst2 = new Assembly
+                            inst2.slot -> SlotB
+                        """
+                    ),
+                    encoding="utf-8",
+                )
+
+            main_path = temp_dir_path / "main.ato"
+            main_path.write_text(
+                textwrap.dedent(
+                    """
+                    from "left.ato" import Left
+                    from "right.ato" import Right
+
+                    module App:
+                        left = new Left
+                        right = new Right
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            result = build_file(g=g, tg=tg, import_path="main.ato", path=main_path)
+            linker = Linker(NULL_CONFIG, stdlib, tg)
+            build_stage_2(g=g, tg=tg, linker=linker, result=result)
+
+        app_instance = tg.instantiate_node(
+            type_node=result.state.type_roots["App"], attributes={}
+        )
+
+        for branch_name in ("left", "right"):
+            branch = _get_child(app_instance, branch_name)
+            inst1_slot_type = _get_type_name(
+                _get_child(_get_child(branch, "inst1"), "slot")
+            )
+            inst2_slot_type = _get_type_name(
+                _get_child(_get_child(branch, "inst2"), "slot")
+            )
+
+            assert "SlotA" in inst1_slot_type, (
+                f"{branch_name}.inst1.slot should remain SlotA, got {inst1_slot_type}"
+            )
+            assert "SlotB" in inst2_slot_type, (
+                f"{branch_name}.inst2.slot should be SlotB, got {inst2_slot_type}"
+            )
+
 
 class TestImplicitParameterUnitInference:
     """Tests for implicit parameter unit inference from arithmetic expressions."""

@@ -97,6 +97,10 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[Path
 
     This function scans for modules with the is_ato_module trait and matches them
     against build targets to find associated PCB layout files.
+
+    Cloned types (created by cross-instance retype) share the same definition
+    pointer as their source type.  After matching original types to build targets,
+    we propagate layout paths to every type that shares the same definition node
     """
     from atopile.compiler import ast_types as AST
     from atopile.compiler.ast_visitor import AnyAtoBlock
@@ -104,20 +108,27 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[Path
     entries: "dict[graph.BoundNode, set[Path]]" = defaultdict(set)
     modules_by_address: "dict[AddrStr, graph.BoundNode]" = {}
 
+    # Group type nodes by their definition pointer so we can propagate
+    # layout paths from the original type to all its cloned variants.
+    types_by_definition: "dict[graph.BoundNode, list[graph.BoundNode]]" = defaultdict(
+        list
+    )
+
     modules = fabll.Traits.get_implementor_objects(
         is_ato_module.bind_typegraph(tg), g=tg.get_graph_view()
     )
 
     for module in modules:
         type_node = not_none(module.get_type_node())
-        definition = fabll.Node.bind_instance(
-            not_none(
-                fbrk.EdgePointer.get_pointed_node_by_identifier(
-                    bound_node=not_none(type_node),
-                    identifier=AnyAtoBlock._definition_identifier,
-                )
-            )
+        definition_bound = fbrk.EdgePointer.get_pointed_node_by_identifier(
+            bound_node=not_none(type_node),
+            identifier=AnyAtoBlock._definition_identifier,
         )
+        if definition_bound is None:
+            continue
+
+        types_by_definition[definition_bound].append(type_node)
+        definition = fabll.Node.bind_instance(definition_bound)
 
         try:
             _, path_trait = definition.get_parent_with_trait(AST.has_path)
@@ -157,6 +168,17 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[Path
                     match_addr = AddrStr.from_parts(entry_path, build.entry_section)
                     if type_node := modules_by_address.get(match_addr):
                         entries[type_node].add(build.paths.layout)
+
+    for definition_node, sibling_types in types_by_definition.items():
+        # Collect layout paths from any sibling that matched a build target
+        layout_paths: "set[Path]" = set()
+        for t in sibling_types:
+            if t in entries:
+                layout_paths |= entries[t]
+        if layout_paths:
+            for t in sibling_types:
+                if t not in entries:
+                    entries[t] = set(layout_paths)
 
     return entries
 
