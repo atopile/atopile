@@ -8,7 +8,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, not_none, once
+from faebryk.libs.util import KeyErrorAmbiguous, not_none
 
 if TYPE_CHECKING:
     import faebryk.library.Literals as Literals
@@ -912,28 +912,6 @@ class NumericParameter(fabll.Node):
         out.add_dependant(fabll.Traits.MakeEdge(waits_for_unit.MakeChild(), [out]))
         return out
 
-    @staticmethod
-    @once
-    def _make_1_0_unit(basis_vector: "F.Units.BasisVector") -> type[fabll.Node]:
-        from faebryk.library.Units import is_unit, is_unit_type
-
-        is_unit_trait_child = is_unit.MakeChild(
-            symbols=(),
-            basis_vector=basis_vector,
-            multiplier=1.0,
-            offset=0.0,
-        )
-
-        class _BaseUnit(fabll.Node):
-            _override_type_identifier = f"BaseUnit<{basis_vector}>"
-            is_unit_type_trait = fabll.Traits.MakeEdge(
-                is_unit_type.MakeChild(())
-            ).put_on_type()
-            is_unit = fabll.Traits.MakeEdge(is_unit_trait_child)
-            can_be_operand_trait = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
-
-        return _BaseUnit
-
     @classmethod
     def MakeChild(  # type: ignore[invalid-method-override]
         cls,
@@ -944,6 +922,7 @@ class NumericParameter(fabll.Node):
         from faebryk.library.Units import (
             Dimensionless,
             extract_unit_info,
+            find_base_unit_type,
             has_display_unit,
             has_unit,
         )
@@ -966,19 +945,13 @@ class NumericParameter(fabll.Node):
             unit_info = extract_unit_info(unit)
             if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
                 # Base unit - use same child for has_unit
-                out.add_dependant(
-                    fabll.Traits.MakeEdge(
-                        has_unit.MakeChild([display_unit_child]), [out]
-                    )
-                )
+                base_unit_child = display_unit_child
             else:
-                base_unit_child = NumericParameter._make_1_0_unit(
-                    unit_info.basis_vector
-                ).MakeChild()
+                base_unit_child = find_base_unit_type(unit).MakeChild()
                 out.add_dependant(base_unit_child)
-                out.add_dependant(
-                    fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
-                )
+            out.add_dependant(
+                fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
+            )
 
         if domain is not NumericParameter.DOMAIN_SKIP:
             assert (domain is None) or isinstance(domain, NumberDomain.Args)

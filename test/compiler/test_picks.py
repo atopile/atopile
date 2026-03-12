@@ -58,24 +58,53 @@ def test_ato_pick_capacitor():
             import Capacitor
 
             module A:
-                r1 = new Capacitor
-                r1.package = "C0402"
-                r1.capacitance = 100nF +/- 20%
+                cap = new Capacitor
+                cap.package = "C0402"
+                cap.capacitance = 100nF +/- 20%
             """,
         "A",
     )
 
-    r1 = F.Capacitor.bind_instance(_get_child(app_instance, "r1"))
+    cap = F.Capacitor.bind_instance(_get_child(app_instance, "cap"))
     assert (
-        r1.get_trait(F.has_package_requirements)
+        cap.get_trait(F.has_package_requirements)
         .size.get()
         .force_extract_singleton_typed(SMDSize)
         == SMDSize.I0402
     )
 
-    pick_parts_recursively(r1, Solver())
+    pick_parts_recursively(cap, Solver())
 
-    assert r1.has_trait(F.Pickable.has_part_picked)
+    assert cap.has_trait(F.Pickable.has_part_picked)
+
+
+@pytest.mark.usefixtures("setup_project_config")
+def test_ato_pick_capacitor_subtype():
+    _, _, _, result, app_instance = build_instance(
+        """
+            import Capacitor
+
+            module MyCapacitor from Capacitor:
+                package = "C0402"
+                capacitance = 100nF +/- 20%
+
+            module App:
+                cap = new MyCapacitor
+            """,
+        "App",
+    )
+
+    cap = F.Capacitor.bind_instance(_get_child(app_instance, "cap"))
+    assert (
+        cap.get_trait(F.has_package_requirements)
+        .size.get()
+        .force_extract_singleton_typed(SMDSize)
+        == SMDSize.I0402
+    )
+
+    pick_parts_recursively(cap, Solver())
+
+    assert cap.has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
