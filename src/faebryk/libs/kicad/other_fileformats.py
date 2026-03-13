@@ -38,7 +38,11 @@ class JSON_File(DataClassJsonMixin):
 
     def dumps(self, path: PathLike | None = None):
         path = Path(path) if path else None
-        text = self.to_json(indent=4)  # type: ignore
+        # KiCad uses 2-space indentation
+        text = self.to_json(indent=2)  # type: ignore
+        # Add a trailing newline
+        if not text.endswith("\n"):
+            text += "\n"
         if path:
             path.write_text(text, encoding="utf-8")
         return text
@@ -175,30 +179,33 @@ class C_kicad_project_file(JSON_File):
 
     @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass
-    class C_pcbnew:
+    class C_board:
         @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
-        class C_last_paths:
-            gencad: str = ""
-            idf: str = ""
-            netlist: str = ""
-            plot: str = ""
-            pos_files: str = ""
-            specctra_dsn: str = ""
-            step: str = ""
-            svg: str = ""
-            vrml: str = ""
+        class C_3d_viewport:
+            name: str = ""
+            xx: float = 0.0
+            xy: float = 0.0
+            xz: float = 0.0
+            xw: float = 0.0
+            yx: float = 0.0
+            yy: float = 0.0
+            yz: float = 0.0
+            yw: float = 0.0
+            zx: float = 0.0
+            zy: float = 0.0
+            zz: float = 0.0
+            zw: float = 0.0
+            wx: float = 0.0
+            wy: float = 0.0
+            wz: float = 0.0
+            ww: float = 0.0
             unknown: CatchAll = None
 
-        last_paths: C_last_paths = field(default_factory=C_last_paths)
-        page_layout_descr_file: str = ""
-        unknown: CatchAll = None
+        three_d_viewports: list[C_3d_viewport] = field(
+            metadata=config(field_name="3dviewports"), default_factory=list
+        )
 
-    pcbnew: C_pcbnew = field(default_factory=C_pcbnew)
-
-    @dataclass_json(undefined=Undefined.INCLUDE)
-    @dataclass
-    class C_board:
         @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
         class C_design_settings:
@@ -263,10 +270,10 @@ class C_kicad_project_file(JSON_File):
                 @dataclass_json(undefined=Undefined.INCLUDE)
                 @dataclass
                 class C_zones:
-                    min_clearance: float = 0.5
                     forty_five_degree_only: Optional[bool] = field(
                         metadata=config(field_name="45_degree_only"), default=None
                     )
+                    min_clearance: float = 0.5
                     unknown: CatchAll = None
 
                 zones: C_zones = field(default_factory=C_zones)
@@ -397,15 +404,15 @@ class C_kicad_project_file(JSON_File):
             @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
             class C_teardrop_options:
+                # current field names
+                td_onpthpad: bool = True
+                td_onroundshapesonly: bool = False
+                td_onsmdpad: bool = True
+                td_ontrackend: bool = False
+                td_onvia: bool = True
                 # legacy field names (pre-v9)
                 td_onpadsmd: Optional[bool] = None
                 td_onviapad: Optional[bool] = None
-                # current field names
-                td_onpthpad: bool = True
-                td_onsmdpad: bool = True
-                td_onvia: bool = True
-                td_onroundshapesonly: bool = False
-                td_ontrackend: bool = False
                 unknown: CatchAll = None
 
             teardrop_options: list[C_teardrop_options] = field(default_factory=list)
@@ -544,32 +551,6 @@ class C_kicad_project_file(JSON_File):
 
         @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
-        class C_3d_viewport:
-            name: str = ""
-            xx: float = 0.0
-            xy: float = 0.0
-            xz: float = 0.0
-            xw: float = 0.0
-            yx: float = 0.0
-            yy: float = 0.0
-            yz: float = 0.0
-            yw: float = 0.0
-            zx: float = 0.0
-            zy: float = 0.0
-            zz: float = 0.0
-            zw: float = 0.0
-            wx: float = 0.0
-            wy: float = 0.0
-            wz: float = 0.0
-            ww: float = 0.0
-            unknown: CatchAll = None
-
-        three_d_viewports: list[C_3d_viewport] = field(
-            metadata=config(field_name="3dviewports"), default_factory=list
-        )
-
-        @dataclass_json(undefined=Undefined.INCLUDE)
-        @dataclass
         class C_viewports:
             name: str = ""
             x: float = 0.0
@@ -595,10 +576,76 @@ class C_kicad_project_file(JSON_File):
 
     @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass
+    class C_erc:
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_rule_severities:
+            bus_definition_conflict: str = "error"
+            bus_entry_needed: str = "error"
+            bus_label_syntax: Optional[str] = None
+            bus_to_bus_conflict: str = "error"
+            bus_to_net_conflict: str = "error"
+            conflicting_netclasses: str = "error"
+            different_unit_footprint: str = "error"
+            different_unit_net: str = "error"
+            duplicate_reference: str = "error"
+            duplicate_sheet_names: str = "error"
+            endpoint_off_grid: str = "warning"
+            extra_units: str = "error"
+            footprint_filter: Optional[str] = None
+            footprint_link_issues: Optional[str] = None
+            four_way_junction: Optional[str] = None
+            global_label_dangling: str = "warning"
+            hier_label_mismatch: str = "error"
+            label_dangling: str = "error"
+            label_multiple_wires: Optional[str] = None
+            lib_symbol_issues: str = "warning"
+            lib_symbol_mismatch: Optional[str] = None
+            missing_bidi_pin: str = "warning"
+            missing_input_pin: str = "warning"
+            missing_power_pin: Optional[str] = None
+            missing_unit: str = "warning"
+            multiple_net_names: str = "warning"
+            net_not_bus_member: str = "warning"
+            no_connect_connected: str = "warning"
+            no_connect_dangling: str = "warning"
+            pin_not_connected: str = "error"
+            pin_not_driven: str = "error"
+            pin_to_pin: str = "warning"
+            power_pin_not_driven: str = "error"
+            same_local_global_label: Optional[str] = None
+            similar_label_and_power: Optional[str] = None
+            similar_labels: str = "warning"
+            similar_power: Optional[str] = None
+            simulation_model_issue: str = "ignore"
+            single_global_label: Optional[str] = None
+            unannotated: str = "error"
+            unconnected_wire_endpoint: Optional[str] = None
+            unit_value_mismatch: str = "error"
+            unresolved_variable: str = "error"
+            wire_dangling: Optional[str] = None
+            unknown: CatchAll = None
+
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_meta:
+            version: int = 0
+            unknown: CatchAll = None
+
+        erc_exclusions: list[str] = field(default_factory=list)
+        meta: C_meta = field(default_factory=C_meta)
+        pin_map: list[list[int]] = field(default_factory=list)
+        rule_severities: Optional[C_rule_severities] = None
+        unknown: CatchAll = None
+
+    erc: Optional[C_erc] = None
+
+    @dataclass_json(undefined=Undefined.INCLUDE)
+    @dataclass
     class C_libraries:
+        pinned_design_block_libs: Optional[list[str]] = None
         pinned_footprint_libs: list[str] = field(default_factory=list)
         pinned_symbol_libs: list[str] = field(default_factory=list)
-        pinned_design_block_libs: Optional[list[str]] = None
         unknown: CatchAll = None
 
     libraries: C_libraries = field(default_factory=C_libraries)
@@ -659,6 +706,29 @@ class C_kicad_project_file(JSON_File):
         unknown: CatchAll = None
 
     net_settings: C_net_settings = field(default_factory=C_net_settings)
+
+    @dataclass_json(undefined=Undefined.INCLUDE)
+    @dataclass
+    class C_pcbnew:
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_last_paths:
+            gencad: str = ""
+            idf: str = ""
+            netlist: str = ""
+            plot: str = ""
+            pos_files: str = ""
+            specctra_dsn: str = ""
+            step: str = ""
+            svg: str = ""
+            vrml: str = ""
+            unknown: CatchAll = None
+
+        last_paths: C_last_paths = field(default_factory=C_last_paths)
+        page_layout_descr_file: str = ""
+        unknown: CatchAll = None
+
+    pcbnew: C_pcbnew = field(default_factory=C_pcbnew)
 
     @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass
@@ -770,72 +840,6 @@ class C_kicad_project_file(JSON_File):
         unknown: CatchAll = None
 
     schematic: C_schematic = field(default_factory=C_schematic)
-
-    @dataclass_json(undefined=Undefined.INCLUDE)
-    @dataclass
-    class C_erc:
-        @dataclass_json(undefined=Undefined.INCLUDE)
-        @dataclass
-        class C_rule_severities:
-            bus_definition_conflict: str = "error"
-            bus_entry_needed: str = "error"
-            bus_label_syntax: Optional[str] = None
-            bus_to_bus_conflict: str = "error"
-            bus_to_net_conflict: str = "error"
-            conflicting_netclasses: str = "error"
-            different_unit_footprint: str = "error"
-            different_unit_net: str = "error"
-            duplicate_reference: str = "error"
-            duplicate_sheet_names: str = "error"
-            endpoint_off_grid: str = "warning"
-            extra_units: str = "error"
-            footprint_filter: Optional[str] = None
-            footprint_link_issues: Optional[str] = None
-            four_way_junction: Optional[str] = None
-            global_label_dangling: str = "warning"
-            hier_label_mismatch: str = "error"
-            label_dangling: str = "error"
-            label_multiple_wires: Optional[str] = None
-            lib_symbol_issues: str = "warning"
-            lib_symbol_mismatch: Optional[str] = None
-            missing_bidi_pin: str = "warning"
-            missing_input_pin: str = "warning"
-            missing_power_pin: Optional[str] = None
-            missing_unit: str = "warning"
-            multiple_net_names: str = "warning"
-            net_not_bus_member: str = "warning"
-            no_connect_connected: str = "warning"
-            no_connect_dangling: str = "warning"
-            pin_not_connected: str = "error"
-            pin_not_driven: str = "error"
-            pin_to_pin: str = "warning"
-            power_pin_not_driven: str = "error"
-            same_local_global_label: Optional[str] = None
-            similar_label_and_power: Optional[str] = None
-            similar_labels: str = "warning"
-            similar_power: Optional[str] = None
-            simulation_model_issue: str = "ignore"
-            single_global_label: Optional[str] = None
-            unannotated: str = "error"
-            unconnected_wire_endpoint: Optional[str] = None
-            unit_value_mismatch: str = "error"
-            unresolved_variable: str = "error"
-            wire_dangling: Optional[str] = None
-            unknown: CatchAll = None
-
-        @dataclass_json(undefined=Undefined.INCLUDE)
-        @dataclass
-        class C_meta:
-            version: int = 0
-            unknown: CatchAll = None
-
-        erc_exclusions: list[str] = field(default_factory=list)
-        meta: C_meta = field(default_factory=C_meta)
-        pin_map: list[list[int]] = field(default_factory=list)
-        rule_severities: Optional[C_rule_severities] = None
-        unknown: CatchAll = None
-
-    erc: Optional[C_erc] = None
 
     # Each element is a [uuid, title] pair
     sheets: list[list[str]] = field(default_factory=list)
