@@ -24,7 +24,7 @@ def export_parameters_to_file(
     """
     from faebryk.exporters.parameters.json_parameters import write_variables_to_file
 
-    logger.info(f"Writing JSON variables to {path}")
+    logger.debug(f"Writing JSON variables to {path}")
     write_variables_to_file(
         module, solver, path, build_id=build_id, formats=("json", "markdown", "txt")
     )

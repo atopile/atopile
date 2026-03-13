@@ -228,7 +228,7 @@ def _build_all_projects(
         logger.error("No ato projects found in %s", root)
         raise typer.Exit(1)
 
-    logger.info("Found %d projects", len(projects))
+    logger.debug("Found %d projects", len(projects))
 
     # Collect build tasks from all projects
     # Format: (build_name, project_root, project_name)
@@ -262,7 +262,7 @@ def _build_all_projects(
         logger.error("No builds to run")
         raise typer.Exit(1)
 
-    logger.info(
+    logger.debug(
         "Building %d targets across %d projects (max %d concurrent)",
         len(build_tasks),
         len(projects),
