@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Self
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
     from faebryk.libs.picker.picker import PickedPart
@@ -114,11 +113,22 @@ class is_pickable_by_type(fabll.Node):
 
     @property
     def pick_type(self) -> graph.BoundNode:
-        parent_info = self.get_parent()
-        if parent_info is None:
-            raise Exception("is_pickable_by_type has no parent")
-        parent, _ = parent_info
-        return not_none(parent.get_type_node())
+        # Classify by canonical family type so inherited modules
+        # (e.g. `module X from Capacitor`) remain pickable as capacitors.
+        endpoint = self.endpoint
+        if endpoint == self.Endpoint.RESISTORS:
+            from faebryk.library.Resistor import Resistor
+
+            return Resistor.bind_typegraph(self.tg).get_or_create_type()
+        if endpoint == self.Endpoint.CAPACITORS:
+            from faebryk.library.Capacitor import Capacitor
+
+            return Capacitor.bind_typegraph(self.tg).get_or_create_type()
+        if endpoint == self.Endpoint.INDUCTORS:
+            from faebryk.library.Inductor import Inductor
+
+            return Inductor.bind_typegraph(self.tg).get_or_create_type()
+        raise ValueError(f"Unsupported pick endpoint: {endpoint}")
 
     @classmethod
     def MakeChild(cls, endpoint: Endpoint, params: dict[str, fabll._ChildField]):

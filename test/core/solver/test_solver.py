@@ -1509,6 +1509,29 @@ def test_find_contradiction_by_gt():
         solver.simplify(E.tg, E.g)
 
 
+def test_predicate_mixed_estimation_converges():
+    """
+    Regression: predicate with only one bounded operand must converge.
+
+    When upper estimation sees GE(A, B) where A has a superset but B does not,
+    the mixed estimation path (creating GE(superset, B)) must be skipped for
+    predicates. Otherwise the _no_predicate_operands invariant normalizes
+    IsSubset(predicate_result, R) to IsSubset(True, R), which can't be
+    deduplicated across algorithm boundaries and causes an infinite loop.
+    """
+    E = BoundExpressions()
+    A = E.parameter_op()
+    B = E.parameter_op()
+
+    # Only A is bounded; B has no superset literal
+    E.is_subset(A, E.lit_op_range((0, 10)), assert_=True)
+    E.greater_or_equal(A, B, assert_=True)
+
+    solver = Solver()
+    # Should converge without hitting max iterations
+    solver.simplify(E.tg, E.g)
+
+
 def test_can_add_parameters():
     E = BoundExpressions()
     A = E.parameter_op()
