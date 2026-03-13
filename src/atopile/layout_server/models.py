@@ -59,6 +59,10 @@ class HoleModel(BaseModel):
     plated: bool | None = None
 
 
+class PadPrimitivePolygon(BaseModel):
+    points: list[PointXY]
+
+
 class PadModel(BaseModel):
     name: str
     at: PointXYR
@@ -69,6 +73,7 @@ class PadModel(BaseModel):
     net: int = 0
     hole: HoleModel | None = None
     roundrect_rratio: float | None = None
+    primitives: list[PadPrimitivePolygon] | None = None
 
 
 class _DrawingBase(BaseModel):

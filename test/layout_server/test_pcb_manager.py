@@ -9,6 +9,7 @@ import pytest
 from atopile.layout_server.models import (
     FootprintSummary,
     HoleModel,
+    PadPrimitivePolygon,
     RenderModel,
 )
 from atopile.layout_server.pcb_manager import (
@@ -421,3 +422,106 @@ def test_pad_number_text_layers_track_pad_copper_layers():
     assert (
         _pad_number_text_layers(["F.Mask", "F.Paste"], all_copper_layers=copper) == []
     )
+
+
+# --- Custom pad (polygon primitives) tests ---
+
+CUSTOM_PADS_FP = Path(
+    "test/common/resources/fileformats/kicad/v8/fp/custom_pads.kicad_mod"
+)
+
+# Minimal PCB shell used to wrap a standalone footprint for PcbManager.
+_PCB_WRAPPER = """\
+(kicad_pcb
+  (version 20240108)
+  (generator "test")
+  (generator_version "8.0")
+  (general (thickness 1.6) (legacy_teardrops no))
+  (paper "A4")
+  (layers
+    (0 "F.Cu" signal)
+    (31 "B.Cu" signal)
+    (36 "B.SilkS" user "B.Silkscreen")
+    (37 "F.SilkS" user "F.Silkscreen")
+    (38 "B.Mask" user "B.Mask")
+    (39 "F.Mask" user "F.Mask")
+    (44 "Edge.Cuts" user)
+    (46 "B.CrtYd" user "B.Courtyard")
+    (47 "F.CrtYd" user "F.Courtyard")
+    (48 "B.Fab" user "B.Fab")
+    (49 "F.Fab" user "F.Fab")
+  )
+  (setup (pad_to_mask_clearance 0))
+  (net 0 "")
+  {footprint}
+)
+"""
+
+
+def _wrap_footprint_in_pcb(fp_path: Path) -> str:
+    """Read a .kicad_mod footprint and embed it in a minimal PCB."""
+    fp_text = fp_path.read_text()
+    # Add placement coordinates needed inside a PCB.
+    fp_text = fp_text.replace(
+        '(layer "F.Cu")',
+        '(layer "F.Cu")\n    (uuid "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")\n    (at 100 100)',
+        1,
+    )
+    return _PCB_WRAPPER.format(footprint=fp_text)
+
+
+@pytest.fixture
+def manager_custom_pads():
+    with tempfile.NamedTemporaryFile(suffix=".kicad_pcb", mode="w", delete=False) as f:
+        f.write(_wrap_footprint_in_pcb(CUSTOM_PADS_FP))
+        tmp_path = Path(f.name)
+    try:
+        mgr = PcbManager()
+        mgr.load(tmp_path)
+        yield mgr
+    finally:
+        tmp_path.unlink()
+
+
+def test_custom_pad_primitives_extracted(manager_custom_pads: PcbManager):
+    """Custom polygon pads (like TPSM863257 pads 1-4) should have primitives."""
+    model = manager_custom_pads.get_render_model()
+    assert len(model.footprints) == 1
+
+    fp = model.footprints[0]
+    assert len(fp.pads) == 7
+
+    # Pads 1-4 are custom with polygon primitives
+    for pad in fp.pads:
+        if pad.name in ("1", "2", "3", "4"):
+            assert pad.shape == "custom", f"Pad {pad.name} should be custom"
+            assert pad.primitives is not None, f"Pad {pad.name} should have primitives"
+            assert len(pad.primitives) >= 1, (
+                f"Pad {pad.name} should have at least one polygon"
+            )
+            for poly in pad.primitives:
+                assert isinstance(poly, PadPrimitivePolygon)
+                assert len(poly.points) >= 3, (
+                    f"Pad {pad.name} polygon should have >= 3 points"
+                )
+        else:
+            # Pads 5-7 are standard rect, no primitives
+            assert pad.shape == "rect", f"Pad {pad.name} should be rect"
+            assert pad.primitives is None
+
+
+def test_custom_pad_polygon_point_counts(manager_custom_pads: PcbManager):
+    """Verify correct number of polygon points for each custom pad."""
+    model = manager_custom_pads.get_render_model()
+    fp = model.footprints[0]
+
+    expected_point_counts = {"1": 6, "2": 4, "3": 4, "4": 7}
+
+    for pad in fp.pads:
+        if pad.name in expected_point_counts:
+            assert pad.primitives is not None
+            actual = len(pad.primitives[0].points)
+            expected = expected_point_counts[pad.name]
+            assert actual == expected, (
+                f"Pad {pad.name}: expected {expected} points, got {actual}"
+            )

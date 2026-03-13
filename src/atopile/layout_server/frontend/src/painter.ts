@@ -1304,7 +1304,16 @@ function paintPad(
         }
     }
 
-    if (pad.shape === "circle") {
+    if (pad.shape === "custom" && pad.primitives && pad.primitives.length > 0) {
+        for (const prim of pad.primitives) {
+            if (prim.points.length >= 3) {
+                const polyPoints = prim.points.map(
+                    p => padTransform(fpAt, pad.at, p.x, p.y),
+                );
+                layer.geometry.add_polygon(polyPoints, cr, cg, cb, ca, ownerId);
+            }
+        }
+    } else if (pad.shape === "circle") {
         const center = fpTransform(fpAt, pad.at.x, pad.at.y);
         layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca, ownerId);
     } else if (pad.shape === "oval") {

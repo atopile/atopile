@@ -101,6 +101,10 @@ export interface PadNumberAnnotationModel {
     layer_ids: string[];
 }
 
+export interface PadPrimitivePolygon {
+    points: Point2[];
+}
+
 export interface PadModel {
     name: string;
     at: Point3;
@@ -111,6 +115,7 @@ export interface PadModel {
     net: number;
     hole: HoleModel | null;
     roundrect_rratio: number | null;
+    primitives: PadPrimitivePolygon[] | null;
 }
 
 export interface HoleModel {
