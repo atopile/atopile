@@ -139,10 +139,16 @@ class PartLifecycle:
 
         def get_fp_path(self, partno: str, footprint_name: str) -> Path:
             # public because needed by lcsc.py
-            return self._get_part_path(partno) / f"{footprint_name}.kicad_mod"
+            return (
+                self._get_part_path(partno)
+                / f"{sanitize_filepath_part(footprint_name)}.kicad_mod"
+            )
 
         def _get_sym_path(self, partno: str, sym_name: str) -> Path:
-            return self._get_part_path(partno) / f"{sym_name}.kicad_sym"
+            return (
+                self._get_part_path(partno)
+                / f"{sanitize_filepath_part(sym_name)}.kicad_sym"
+            )
 
         def get_model_path(self, partno: str, model_name: str) -> Path:
             # public because needed by lcsc.py
@@ -151,7 +157,10 @@ class PartLifecycle:
             # 1. filename derived from footprint
             # 2. internal step file name
             # The only way to find out the internal is to download and read the step
-            return self._get_part_path(partno) / f"{model_name}.step"
+            return (
+                self._get_part_path(partno)
+                / f"{sanitize_filepath_part(model_name)}.step"
+            )
 
         def shall_refresh_model(self, part: EasyEDAPart) -> bool:
             # no model in api
