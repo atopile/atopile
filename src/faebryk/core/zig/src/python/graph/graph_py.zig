@@ -1543,6 +1543,101 @@ fn wrap_graphview_create_and_insert_node() type {
     };
 }
 
+fn wrap_graphview_dumps() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "dumps",
+            .doc = "Serialize the full graph state to bytes",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const bytes = wrapper.data.dumps(std.heap.c_allocator) catch |err| {
+                py.PyErr_SetString(py.PyExc_ValueError, @errorName(err));
+                return null;
+            };
+            defer std.heap.c_allocator.free(bytes);
+            return py.PyBytes_FromStringAndSize(@ptrCast(bytes.ptr), @intCast(bytes.len));
+        }
+    };
+}
+
+fn wrap_graphview_loads() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "loads",
+            .doc = "Deserialize bytes into a new GraphView",
+            .args_def = struct {
+                data: ?*py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
+
+            const data_obj = kwarg_obj.data orelse {
+                py.PyErr_SetString(py.PyExc_TypeError, "data argument is required");
+                return null;
+            };
+
+            const data_ptr = py.PyBytes_AsString(data_obj);
+            if (data_ptr == null) {
+                py.PyErr_SetString(py.PyExc_TypeError, "data must be bytes");
+                return null;
+            }
+            const data_len = py.PyBytes_Size(data_obj);
+            if (data_len < 0) {
+                py.PyErr_SetString(py.PyExc_ValueError, "Invalid bytes object");
+                return null;
+            }
+            const data_slice: []const u8 = data_ptr.?[0..@intCast(data_len)];
+
+            const allocator = std.heap.c_allocator;
+            const graph_ptr = graph.graph.GraphView.loads(allocator, data_slice) catch |err| {
+                py.PyErr_SetString(py.PyExc_ValueError, @errorName(err));
+                return null;
+            };
+
+            const pyobj = bind.wrap_obj("GraphView", &graph_view_type, GraphViewWrapper, graph_ptr);
+            if (pyobj == null) {
+                graph_ptr.deinit();
+                allocator.destroy(graph_ptr);
+            }
+            return pyobj;
+        }
+    };
+}
+
+fn wrap_graphview_clone() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "clone",
+            .doc = "Create an independent deep copy of this GraphView",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+
+            const cloned_ptr = wrapper.data.clone() catch |err| {
+                py.PyErr_SetString(py.PyExc_ValueError, @errorName(err));
+                return null;
+            };
+
+            const pyobj = bind.wrap_obj("GraphView", &graph_view_type, GraphViewWrapper, cloned_ptr);
+            if (pyobj == null) {
+                cloned_ptr.deinit();
+                std.heap.c_allocator.destroy(cloned_ptr);
+            }
+            return pyobj;
+        }
+    };
+}
+
 fn graphview_repr(self: ?*py.PyObject) callconv(.c) ?*py.PyObject {
     const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
     const node_count = wrapper.data.get_node_count();
@@ -1573,6 +1668,9 @@ fn wrap_graphview(root: *py.PyObject) void {
         wrap_graphview_insert_subgraph(),
         wrap_graphview_destroy(),
         wrap_graphview_create_and_insert_node(),
+        wrap_graphview_dumps(),
+        wrap_graphview_loads(),
+        wrap_graphview_clone(),
     };
     bind.wrap_namespace_struct(root, graph.graph.GraphView, extra_methods);
     graph_view_type = type_registry.getRegisteredTypeObject("GraphView");

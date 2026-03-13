@@ -231,6 +231,9 @@ pub extern fn PyLong_AsLongLong(obj: ?*PyObject) c_longlong;
 pub extern fn PyUnicode_FromString(str: [*:0]const u8) ?*PyObject;
 pub extern fn PyUnicode_FromStringAndSize(str: [*c]const u8, size: isize) ?*PyObject;
 pub extern fn PyUnicode_AsUTF8(obj: ?*PyObject) ?[*:0]const u8;
+pub extern fn PyBytes_FromStringAndSize(v: ?[*]const u8, len: isize) ?*PyObject;
+pub extern fn PyBytes_AsString(obj: ?*PyObject) ?[*]const u8;
+pub extern fn PyBytes_Size(obj: ?*PyObject) isize;
 pub extern fn PyRun_StringFlags(code: [*:0]const u8, start: c_int, globals: ?*PyObject, locals: ?*PyObject, flags: ?*anyopaque) ?*PyObject;
 pub extern fn PyRun_SimpleString(code: [*:0]const u8) c_int;
 
