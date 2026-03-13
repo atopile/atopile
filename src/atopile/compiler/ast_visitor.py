@@ -109,6 +109,10 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.TestPoint,
         F.MountingHole,
         F.NetTie,
+        F.PCBManu.PCBLayer,
+        F.PCBManu.PCBoard,
+        F.PCBManu.PCBManufacturer,
+        F.PCBManu.Manufacturer,
     }
 ) | (
     # Traits
