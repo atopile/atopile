@@ -1404,45 +1404,127 @@ pub const GraphView = struct {
             _ = g.create_and_insert_node();
         }
 
-        // Step 6: Read edges from three separate u32 columns, translate via arithmetic
-        for (0..edge_count) |ei| {
-            const source: u32 = @bitCast(bytes[src_start + ei * 4 ..][0..4].*);
-            const target: u32 = @bitCast(bytes[tgt_start + ei * 4 ..][0..4].*);
-            const flags: u32 = @bitCast(bytes[flg_start + ei * 4 ..][0..4].*);
+        // Step 6: Pre-sized edge insertion
+        // Pre-counts exact per-(node,type) degrees, then batch-allocates all
+        // ArrayList backing buffers in one allocation. Uses pre-sized ArrayLists
+        // with appendAssumeCapacity to eliminate reallocation and capacity checks.
+        {
+            // Phase 0: Discover distinct edge types (compress u8 keyspace)
+            var type_to_slot: [256]u8 = .{0xFF} ** 256;
+            var slot_to_type: [256]u8 = undefined;
+            var num_types: u8 = 0;
 
-            // Bounds-check packed indices
-            if (source >= node_count) return error.InvalidNodeReference;
-            if (target >= node_count) return error.InvalidNodeReference;
-
-            // Implicit translation: packed index → global UUID
-            const src = base_node_uuid + 1 + source;
-            const tgt = base_node_uuid + 1 + target;
-
-            // Allocate and insert edge
-            Edge.counter += 1;
-            const new_edge = EdgeReference{ .uuid = Edge.counter };
-            Edges[new_edge.uuid] = .{
-                .source = .{ .uuid = src },
-                .target = .{ .uuid = tgt },
-                .flags = @bitCast(flags),
-            };
-            g.edge_set.add(new_edge.uuid);
-
-            const edge_type = new_edge.get_attribute_edge_type();
-            const from_neighbors = g.nodes.getPtr(.{ .uuid = src }).?;
-            const to_neighbors = g.nodes.getPtr(.{ .uuid = tgt }).?;
-
-            const from_gop = from_neighbors.getOrPut(edge_type) catch @panic("OOM");
-            if (!from_gop.found_existing) {
-                from_gop.value_ptr.* = std.array_list.Managed(EdgeReference).init(g.allocator);
+            for (0..edge_count) |ei| {
+                const flags: u32 = @bitCast(bytes[flg_start + ei * 4 ..][0..4].*);
+                const edge_type: u8 = @truncate(flags);
+                if (type_to_slot[edge_type] == 0xFF) {
+                    type_to_slot[edge_type] = num_types;
+                    slot_to_type[num_types] = edge_type;
+                    num_types += 1;
+                }
             }
-            from_gop.value_ptr.append(new_edge) catch @panic("OOM");
+            const K: usize = num_types;
 
-            const to_gop = to_neighbors.getOrPut(edge_type) catch @panic("OOM");
-            if (!to_gop.found_existing) {
-                to_gop.value_ptr.* = std.array_list.Managed(EdgeReference).init(g.allocator);
+            // Phase A: Count degrees + validate bounds
+            const degree_table = allocator.alloc(u32, node_count * K) catch return error.OutOfMemory;
+            defer allocator.free(degree_table);
+            @memset(degree_table, 0);
+
+            for (0..edge_count) |ei| {
+                const source: u32 = @bitCast(bytes[src_start + ei * 4 ..][0..4].*);
+                const target: u32 = @bitCast(bytes[tgt_start + ei * 4 ..][0..4].*);
+                const flags: u32 = @bitCast(bytes[flg_start + ei * 4 ..][0..4].*);
+
+                if (source >= node_count) return error.InvalidNodeReference;
+                if (target >= node_count) return error.InvalidNodeReference;
+
+                const slot: usize = type_to_slot[@as(u8, @truncate(flags))];
+                degree_table[source * K + slot] += 1;
+                degree_table[target * K + slot] += 1;
             }
-            to_gop.value_ptr.append(new_edge) catch @panic("OOM");
+
+            // Compute prefix-sum offsets for batch buffer allocation
+            const offset_table = allocator.alloc(u32, node_count * K) catch return error.OutOfMemory;
+            defer allocator.free(offset_table);
+            {
+                var running: u32 = 0;
+                for (0..node_count * K) |i| {
+                    offset_table[i] = running;
+                    running += degree_table[i];
+                }
+            }
+
+            // Batch-allocate all ArrayList backing buffers in one allocation
+            const all_edge_items = g.allocator.alloc(EdgeReference, edge_count * 2) catch @panic("OOM");
+
+            // Phase C: Edge insertion with cached list pointers
+            // First access per (node, type) does HashMap lookup + pre-sized ArrayList setup.
+            // Subsequent accesses use the cached pointer — zero HashMap lookups.
+            const ListPtr = *std.array_list.Managed(EdgeReference);
+            const list_cache = allocator.alloc(?ListPtr, node_count * K) catch return error.OutOfMemory;
+            defer allocator.free(list_cache);
+            @memset(list_cache, null);
+
+            for (0..edge_count) |ei| {
+                const source: u32 = @bitCast(bytes[src_start + ei * 4 ..][0..4].*);
+                const target: u32 = @bitCast(bytes[tgt_start + ei * 4 ..][0..4].*);
+                const flags: u32 = @bitCast(bytes[flg_start + ei * 4 ..][0..4].*);
+
+                const src = base_node_uuid + 1 + source;
+                const tgt = base_node_uuid + 1 + target;
+
+                Edge.counter += 1;
+                const new_edge = EdgeReference{ .uuid = Edge.counter };
+                Edges[new_edge.uuid] = .{
+                    .source = .{ .uuid = src },
+                    .target = .{ .uuid = tgt },
+                    .flags = @bitCast(flags),
+                };
+                g.edge_set.add(new_edge.uuid);
+
+                const slot: usize = type_to_slot[@as(u8, @truncate(flags))];
+
+                // Source side
+                {
+                    const cache_idx = source * K + slot;
+                    if (list_cache[cache_idx]) |list| {
+                        list.appendAssumeCapacity(new_edge);
+                    } else {
+                        const inner_map = g.nodes.getPtr(.{ .uuid = src }).?;
+                        const gop = inner_map.getOrPut(slot_to_type[slot]) catch @panic("OOM");
+                        const off = offset_table[cache_idx];
+                        const deg = degree_table[cache_idx];
+                        gop.value_ptr.* = .{
+                            .items = all_edge_items[off..off],
+                            .capacity = deg,
+                            .allocator = g.allocator,
+                        };
+                        gop.value_ptr.appendAssumeCapacity(new_edge);
+                        list_cache[cache_idx] = gop.value_ptr;
+                    }
+                }
+
+                // Target side
+                {
+                    const cache_idx = target * K + slot;
+                    if (list_cache[cache_idx]) |list| {
+                        list.appendAssumeCapacity(new_edge);
+                    } else {
+                        const inner_map = g.nodes.getPtr(.{ .uuid = tgt }).?;
+                        const gop = inner_map.getOrPut(slot_to_type[slot]) catch @panic("OOM");
+                        const off = offset_table[cache_idx];
+                        const deg = degree_table[cache_idx];
+                        gop.value_ptr.* = .{
+                            .items = all_edge_items[off..off],
+                            .capacity = deg,
+                            .allocator = g.allocator,
+                        };
+                        gop.value_ptr.appendAssumeCapacity(new_edge);
+                        list_cache[cache_idx] = gop.value_ptr;
+                    }
+                }
+            }
+
         }
 
         // === Data Phase ===
