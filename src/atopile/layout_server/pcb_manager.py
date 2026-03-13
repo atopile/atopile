@@ -848,7 +848,7 @@ class PcbManager:
             # are relative to the footprint. Convert rotation to be relative to
             # the footprint so the frontend can treat it as a sub-coordinate system.
             pad_relative_r = ((pad.at.r or 0) - fp_rotation) % 360
-            primitives = None
+            primitives: list[PadPrimitivePolygon] = None
             if pad.primitives is not None:
                 primitives = [
                     PadPrimitivePolygon(
