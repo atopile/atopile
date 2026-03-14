@@ -777,9 +777,15 @@ def part(
             else:
                 if ":" in search_term:
                     mfr, search_term = search_term.split(":", 1)
-                else:
+                elif config.interactive:
                     # TODO: remove this once we have a fuzzy search
                     mfr = questionary.text("Enter the manufacturer").unsafe_ask()
+                else:
+                    raise errors.UserBadParameterError(
+                        f"Non-interactive mode requires LCSC ID (e.g. -s C12345)"
+                        f" or manufacturer prefix (e.g. -s 'Texas Instruments:NE555')."
+                        f" Got: '{search_term}'"
+                    )
                 components = client.fetch_part_by_mfr(mfr, search_term)
         except ApiHTTPError as e:
             if e.response.status_code == 404:
@@ -819,7 +825,16 @@ def part(
 
         if len(components) == 1 and accept_single:
             component = first(components)
+        elif accept_single and not config.interactive:
+            # Non-interactive: pick the first result (highest stock)
+            component = first(components)
         else:
+            if not config.interactive:
+                raise errors.UserBadParameterError(
+                    f"Multiple components found for '{search_term}'."
+                    f" Use -a to auto-select the first result,"
+                    f" or use a more specific LCSC ID."
+                )
             choices = [
                 {
                     "name": f"{component.manufacturer_name} {component.part_number}"
