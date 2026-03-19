@@ -8,6 +8,12 @@
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { postMessage, getVsCodeApi } from '../api/vscodeApi';
+import {
+  agentInitialState,
+  createAgentStoreActions,
+  type AgentStoreActions,
+  type AgentStoreState,
+} from '../agent/store';
 import type {
   AppState,
   Project,
@@ -62,12 +68,14 @@ const _channel: BroadcastChannel | null = (() => {
 // Restore last selection from VS Code webview state (survives reloads)
 const persistedState = getVsCodeApi()?.getState() as {
   selectedProjectRoot?: string | null;
+  selectedTargetRoot?: string | null;
   selectedProjectName?: string | null;
   selectedTargetNames?: string[];
 } | undefined;
 
-// Initial state for the store
-const initialState: AppState = {
+type StoreState = AppState & AgentStoreState;
+
+const initialState: StoreState = {
   // Connection
   isConnected: false,
   hasEverConnected: false,
@@ -77,6 +85,7 @@ const initialState: AppState = {
   isLoadingProjects: false,
   projectsError: null,
   selectedProjectRoot: persistedState?.selectedProjectRoot ?? null,
+  selectedTargetRoot: persistedState?.selectedTargetRoot ?? null,
   selectedTargetNames: persistedState?.selectedTargetNames ?? [],
   migratingProjectRoots: [] as string[],
   migrationErrors: {} as Record<string, string>,
@@ -186,6 +195,8 @@ const initialState: AppState = {
 
   // Manufacturing Wizard
   manufacturingWizard: null as ManufacturingWizardState | null,
+
+  ...agentInitialState,
 };
 
 // Store actions interface
@@ -201,6 +212,8 @@ interface StoreActions {
   setLoadingProjects: (loading: boolean) => void;
   setProjectsError: (error: string | null) => void;
   selectProject: (projectRoot: string | null) => void;
+  selectTarget: (projectRoot: string, targetName: string, targetRoot?: string | null) => void;
+  setSelectedTargetRoot: (targetRoot: string | null) => void;
   setSelectedTargets: (targetNames: string[]) => void;
   toggleTarget: (targetName: string) => void;
   toggleTargetExpanded: (targetName: string) => void;
@@ -304,7 +317,7 @@ interface StoreActions {
 }
 
 // Combined store type
-type Store = AppState & StoreActions;
+type Store = StoreState & StoreActions & AgentStoreActions;
 
 export const useStore = create<Store>()(
   subscribeWithSelector(
@@ -423,6 +436,7 @@ export const useStore = create<Store>()(
 
         // Validate current selection against discovered projects
         let selectedProjectRoot = state.selectedProjectRoot;
+        let selectedTargetRoot = state.selectedTargetRoot;
         let selectedProjectName = state.selectedProjectName;
         let selectedTargetNames = state.selectedTargetNames;
 
@@ -433,14 +447,32 @@ export const useStore = create<Store>()(
         if (selectedProject) {
           // Selection is still valid — update name in case it changed
           selectedProjectName = selectedProject.name;
+          const selectedTargetName = selectedTargetNames[0] ?? null;
+          const selectedTarget = selectedTargetName
+            ? selectedProject.targets.find((target) =>
+              target.name === selectedTargetName &&
+              (!selectedTargetRoot || target.root === selectedTargetRoot)
+            ) ?? selectedProject.targets.find((target) => target.name === selectedTargetName)
+            : null;
+
+          if (selectedTarget) {
+            selectedTargetNames = [selectedTarget.name];
+            selectedTargetRoot = selectedTarget.root;
+          } else {
+            const fallbackTarget = selectedProject.targets?.[0] ?? null;
+            selectedTargetNames = fallbackTarget?.name ? [fallbackTarget.name] : [];
+            selectedTargetRoot = fallbackTarget?.root ?? selectedProject.root;
+          }
         } else if (projects.length > 0) {
           // No valid selection — auto-select first project + its first target
           const first = projects[0];
           selectedProjectRoot = first.root;
+          selectedTargetRoot = first.targets?.[0]?.root ?? first.root;
           selectedProjectName = first.name;
           selectedTargetNames = first.targets?.[0]?.name ? [first.targets[0].name] : [];
         } else {
           selectedProjectRoot = null;
+          selectedTargetRoot = null;
           selectedProjectName = null;
           selectedTargetNames = [];
         }
@@ -448,6 +480,14 @@ export const useStore = create<Store>()(
         if (!_readySignalled && projects.length > 0) {
           _readySignalled = true;
           postMessage({ type: 'webviewReady' });
+          // Always sync the current selection to the extension host on startup
+          // (the subscribe-based selectionChanged only fires on *changes*, so
+          // persisted-state restoration would otherwise be invisible).
+          postMessage({
+            type: 'selectionChanged',
+            projectRoot: selectedProjectRoot,
+            targetNames: selectedTargetNames,
+          });
         }
 
         return {
@@ -455,6 +495,7 @@ export const useStore = create<Store>()(
           isLoadingProjects: false,
           migratingProjectRoots: stillMigrating,
           selectedProjectRoot,
+          selectedTargetRoot,
           selectedProjectName,
           selectedTargetNames,
         };
@@ -482,15 +523,49 @@ export const useStore = create<Store>()(
         }
       },
 
-      selectProject: (projectRoot) => set((state) => ({
-        selectedProjectRoot: projectRoot,
-        selectedProjectName: projectRoot
-          ? state.projects.find((p) => p.root === projectRoot)?.name ?? state.selectedProjectName
-          : null,
-      })),
+      selectProject: (projectRoot) => set((state) => {
+        const project = projectRoot
+          ? state.projects.find((p) => p.root === projectRoot) ?? null
+          : null;
+        const defaultTarget = project?.targets?.[0] ?? null;
+        return {
+          selectedProjectRoot: projectRoot,
+          selectedTargetRoot: defaultTarget?.root ?? projectRoot,
+          selectedProjectName: project?.name ?? null,
+          selectedTargetNames: defaultTarget?.name ? [defaultTarget.name] : [],
+        };
+      }),
+
+      selectTarget: (projectRoot, targetName, targetRoot) =>
+        set((state) => ({
+          selectedProjectRoot: projectRoot,
+          selectedTargetRoot: targetRoot ?? projectRoot,
+          selectedProjectName: state.projects.find((p) => p.root === projectRoot)?.name ?? null,
+          selectedTargetNames: [targetName],
+        })),
+
+      setSelectedTargetRoot: (targetRoot) => set({ selectedTargetRoot: targetRoot }),
 
       setSelectedTargets: (targetNames) =>
-        set({ selectedTargetNames: targetNames }),
+        set((state) => {
+          const selectedProject = state.selectedProjectRoot
+            ? state.projects.find((project) => project.root === state.selectedProjectRoot) ?? null
+            : null;
+          const firstTargetName = targetNames[0] ?? null;
+          const matchedTarget = firstTargetName && selectedProject
+            ? selectedProject.targets.find((target) =>
+              target.name === firstTargetName &&
+              (!state.selectedTargetRoot || target.root === state.selectedTargetRoot)
+            ) ?? selectedProject.targets.find((target) => target.name === firstTargetName)
+            : null;
+          return {
+            selectedTargetNames: targetNames,
+            selectedTargetRoot:
+              targetNames.length === 1
+                ? matchedTarget?.root ?? state.selectedTargetRoot ?? state.selectedProjectRoot
+                : state.selectedProjectRoot,
+          };
+        }),
 
       toggleTarget: (targetName) =>
         set((state) => {
@@ -723,20 +798,13 @@ export const useStore = create<Store>()(
 
       // atopile config
       setAtopileConfig: (update) => {
-        console.log('[Store] setAtopileConfig update:', update);
         set((state) => {
-          const newAtopile = {
-            ...state.atopile,
-            ...update,
+          return {
+            atopile: {
+              ...state.atopile,
+              ...update,
+            },
           };
-          console.log('[Store] setAtopileConfig new state:', {
-            actualBinaryPath: newAtopile.actualBinaryPath,
-            localPath: newAtopile.localPath,
-            source: newAtopile.source,
-            actualVersion: newAtopile.actualVersion,
-            fromBranch: newAtopile.fromBranch,
-          });
-          return { atopile: newAtopile };
         });
       },
 
@@ -1006,6 +1074,8 @@ export const useStore = create<Store>()(
           };
         }),
 
+      ...createAgentStoreActions(set),
+
       // Reset
       reset: () => set(initialState),
       }),
@@ -1025,18 +1095,21 @@ _channel?.addEventListener('message', (event: MessageEvent) => {
 useStore.subscribe(
   (state) => ({
     projectRoot: state.selectedProjectRoot,
+    targetRoot: state.selectedTargetRoot,
     projectName: state.selectedProjectName,
     targetNames: state.selectedTargetNames,
   }),
   (current, previous) => {
     const selectionChanged =
       current.projectRoot !== previous.projectRoot ||
+      current.targetRoot !== previous.targetRoot ||
       !arraysEqual(current.targetNames, previous.targetNames);
 
     if (selectionChanged) {
       postMessage({
         type: 'selectionChanged',
         projectRoot: current.projectRoot,
+        targetRoot: current.targetRoot,
         targetNames: current.targetNames,
       });
     }
@@ -1047,6 +1120,7 @@ useStore.subscribe(
       const api = getVsCodeApi();
       api?.setState({
         selectedProjectRoot: current.projectRoot,
+        selectedTargetRoot: current.targetRoot,
         selectedProjectName: current.projectName,
         selectedTargetNames: current.targetNames,
       });

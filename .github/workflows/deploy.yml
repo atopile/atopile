@@ -64,6 +64,8 @@ jobs:
 
       - uses: pypa/cibuildwheel@v3.3
         env:
+          # Force portable x86_64 wheels for Linux builds during packaging.
+          ATOPILE_ZIG_CPU: baseline
           CIBW_ARCHS_LINUX: x86_64
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28

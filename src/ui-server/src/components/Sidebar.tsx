@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { Files, Package, Cpu, Library, GitBranch, SlidersHorizontal, ClipboardList } from 'lucide-react';
+import { Files, Package, Cpu, Library, GitBranch, SlidersHorizontal, ClipboardList, ListChecks } from 'lucide-react';
 import { ActiveProjectPanel, BuildQueueItem } from './ActiveProjectPanel';
 import { StandardLibraryPanel } from './StandardLibraryPanel';
 import { VariablesPanel } from './VariablesPanel';
@@ -29,6 +29,8 @@ import {
   type SelectedPart,
 } from './sidebar-modules';
 import { ManufacturingPanel } from './manufacturing';
+import { AgentChatPanel } from '../agent/AgentChatPanel';
+import { ENABLE_CHAT } from '../api/config';
 import './Sidebar.css';
 import '../styles.css';
 
@@ -52,6 +54,7 @@ export function Sidebar() {
   const hasEverConnected = useStore((s) => s.hasEverConnected);
   const projects = useStore((s) => s.projects);
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
+  const selectedTargetRoot = useStore((s) => s.selectedTargetRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
   const isLoadingPackages = useStore((s) => s.isLoadingPackages);
   const installingPackageIds = useStore((s) => s.installingPackageIds);
@@ -89,7 +92,7 @@ export function Sidebar() {
   const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
-  const [activeTab, setActiveTab] = useState<'files' | 'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'builds' | 'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
   const [showDisconnectedOverlay, setShowDisconnectedOverlay] = useState(false);
 
   useEffect(() => {
@@ -113,12 +116,6 @@ export function Sidebar() {
     };
   }, [isConnected, hasEverConnected]);
 
-  // Build queue panel state
-  const [buildQueueCollapsed, setBuildQueueCollapsed] = useState(false);
-  const [buildQueueHeight, setBuildQueueHeight] = useState(120);
-  const buildQueueResizing = useRef(false);
-  const buildQueueStartY = useRef(0);
-  const buildQueueStartHeight = useRef(0);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -193,32 +190,11 @@ export function Sidebar() {
   // Filter builds by selected project
   const filteredBuilds = useMemo(() => {
     if (!selectedProjectRoot) return queuedBuilds;
-    return queuedBuilds.filter((build) => build.projectRoot === selectedProjectRoot);
+    return queuedBuilds.filter((build) => {
+      const buildRoot = build.projectRoot;
+      return buildRoot === selectedProjectRoot || buildRoot?.startsWith(`${selectedProjectRoot}/`);
+    });
   }, [queuedBuilds, selectedProjectRoot]);
-
-  // Build queue resize handlers
-  const handleBuildQueueResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    buildQueueResizing.current = true;
-    buildQueueStartY.current = e.clientY;
-    buildQueueStartHeight.current = buildQueueHeight;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!buildQueueResizing.current) return;
-      const deltaY = buildQueueStartY.current - moveEvent.clientY;
-      const newHeight = Math.max(60, Math.min(400, buildQueueStartHeight.current + deltaY));
-      setBuildQueueHeight(newHeight);
-    };
-
-    const handleMouseUp = () => {
-      buildQueueResizing.current = false;
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [buildQueueHeight]);
 
   // Unified panel sizing - all panels start collapsed, auto-expand on events
   const panels = usePanelSizing({
@@ -229,6 +205,7 @@ export function Sidebar() {
   // Use effects hook for side effects (data fetching, etc.)
   useSidebarEffects({
     selectedProjectRoot,
+    selectedTargetRoot,
     selectedTargetName,
     panels,
     action,
@@ -246,6 +223,7 @@ export function Sidebar() {
 
   // Memoized callbacks for event handlers (avoid new function references each render)
   const handleBuildTarget = useCallback((projectRoot: string, targetName: string) => {
+    setActiveTab('builds');
     panels.collapseAllExceptProjects();
     action('build', { projectRoot, targets: [targetName] });
   }, [panels]);
@@ -413,6 +391,7 @@ export function Sidebar() {
           <ActiveProjectPanel
             projects={projects || []}
             selectedProjectRoot={selectedProjectRoot}
+            selectedTargetRoot={selectedTargetRoot}
             selectedTargetName={selectedTargetName}
             projectModules={selectedProjectRoot ? projectModules?.[selectedProjectRoot] : undefined}
             onSelectProject={handlers.handleSelectProject}
@@ -449,6 +428,14 @@ export function Sidebar() {
           >
             <Files size={14} />
             {showTabLabels && <span className="tab-label">Files</span>}
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'builds' ? 'active' : ''}`}
+            onClick={() => setActiveTab('builds')}
+            data-tooltip="Build Queue"
+          >
+            <ListChecks size={14} />
+            {showTabLabels && <span className="tab-label">Builds</span>}
           </button>
           <button
             className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
@@ -509,6 +496,21 @@ export function Sidebar() {
                 projectRoot={selectedProjectRoot}
               />
             )}
+            {activeTab === 'builds' && (
+              <div className="builds-tab-content">
+                {filteredBuilds.length === 0 ? (
+                  <div className="build-queue-empty">No recent builds</div>
+                ) : (
+                  filteredBuilds.map((build) => (
+                    <BuildQueueItem
+                      key={build.buildId}
+                      build={build}
+                      onCancel={handlers.handleCancelQueuedBuild}
+                    />
+                  ))
+                )}
+              </div>
+            )}
             {activeTab === 'packages' && (
               <PackagesPanel
                 packages={packages || []}
@@ -559,6 +561,7 @@ export function Sidebar() {
                 isLoading={isLoadingBom}
                 error={bomError}
                 selectedProjectRoot={selectedProjectRoot}
+                selectedTargetRoot={selectedTargetRoot}
                 selectedTargetNames={selectedTargetNames}
                 onGoToSource={handleGoToSource}
                 isExpanded={activeTab === 'bom'}
@@ -567,56 +570,12 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Build Queue Panel - Collapsible and resizable at bottom */}
-        <div
-          className={`build-queue-panel-container ${buildQueueCollapsed ? 'collapsed' : ''}`}
-          style={buildQueueCollapsed ? undefined : { height: buildQueueHeight }}
-        >
-          {/* Resize handle - only when expanded */}
-          {!buildQueueCollapsed && (
-            <div
-              className="build-queue-resize-handle"
-              onMouseDown={handleBuildQueueResizeStart}
-            />
-          )}
-          <div
-            className="build-queue-panel-header"
-            onClick={() => setBuildQueueCollapsed(!buildQueueCollapsed)}
-          >
-            <svg
-              className={`build-queue-chevron ${buildQueueCollapsed ? '' : 'open'}`}
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-            <span className="build-queue-panel-title">Build Queue</span>
-            {filteredBuilds.length > 0 && (
-              <span className="build-queue-panel-badge">{filteredBuilds.length}</span>
-            )}
-          </div>
-          {!buildQueueCollapsed && (
-            <div className="build-queue-panel-content">
-              {filteredBuilds.length === 0 ? (
-                <div className="build-queue-empty">No recent builds</div>
-              ) : (
-                filteredBuilds.map((build) => (
-                  <BuildQueueItem
-                    key={build.buildId}
-                    build={build}
-                    onCancel={handlers.handleCancelQueuedBuild}
-                  />
-                ))
-              )}
-            </div>
-          )}
-        </div>
+        {ENABLE_CHAT && (
+          <AgentChatPanel
+            projectRoot={selectedProjectRoot}
+            selectedTargets={selectedTargetNames}
+          />
+        )}
       </div>
 
       {/* Detail Panel (slides in when package/part/manufacturing selected) */}
