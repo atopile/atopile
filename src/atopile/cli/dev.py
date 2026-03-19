@@ -5,12 +5,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import webbrowser
 from collections import Counter
+from importlib import metadata as _metadata
 from pathlib import Path
 
 import typer
 
+from atopile import version as ato_version
 from atopile.logging import get_logger
 from atopile.telemetry import capture
 from faebryk.libs.util import ConfigFlag
@@ -46,6 +49,14 @@ def _spawn_shell_with_venv(worktree_path: Path) -> None:
 
     cmd = f". {shlex.quote(str(activate))} && exec {shlex.quote(shell)} -i"
     subprocess.run([shell, "-i", "-c", cmd], cwd=worktree_path, check=False)
+
+
+def _get_compiler_version_for_extension() -> str | None:
+    """Return the current `ato --version` value in semver-compatible form."""
+    try:
+        return str(ato_version.parse(_metadata.version("atopile")))
+    except Exception:
+        return None
 
 
 @dev_app.command()
@@ -214,8 +225,6 @@ def compile(
         subprocess.run([_npm, "run", "build"], cwd=viz_dir, check=True)
 
     if target in {"all", "vscode"}:
-        import time
-
         print("compiling vscode extension")
         repo_root = Path(__file__).resolve().parents[3]
         vscode_dir = repo_root / "src" / "vscode-atopile"
@@ -233,14 +242,18 @@ def compile(
         if needs_install:
             subprocess.run([_npm, "install"], cwd=vscode_dir, check=True)
 
-        # Update version with timestamp for dev builds
+        # Update version with the installed `atopile` version for dev builds.
         package_json_path = vscode_dir / "package.json"
         package_json = json.loads(package_json_path.read_text())
         original_version = package_json["version"]
-
-        # Create dev version: X.Y.Z -> X.Y.Z-dev.TIMESTAMP
-        timestamp = int(time.time())
-        dev_version = f"{original_version}-dev.{timestamp}"
+        dev_version = _get_compiler_version_for_extension()
+        if dev_version is None:
+            # Preserve existing behavior when metadata isn't available.
+            dev_version = f"{original_version}-dev.{int(time.time())}"
+            print(
+                "Warning: could not read installed atopile version; using fallback"
+                f" version {dev_version}"
+            )
         package_json["version"] = dev_version
         package_json_path.write_text(json.dumps(package_json, indent=4) + "\n")
         print(f"version: {dev_version}")
@@ -270,7 +283,7 @@ def compile(
 def install(
     ide: str = typer.Argument(
         None,
-        help="IDE to install the extension for: 'cursor' or 'vscode'",
+        help="IDE to install the extension for: 'cursor', 'vscode', or 'antigravity'",
     ),
 ):
     """
@@ -282,9 +295,11 @@ def install(
         cli = shutil.which("code") or "code"
     elif ide == "cursor":
         cli = shutil.which("cursor") or "cursor"
+    elif ide == "antigravity":
+        cli = shutil.which("antigravity") or "antigravity"
     else:
         typer.secho(
-            "Usage: ato dev install <cursor|vscode>",
+            "Usage: ato dev install <cursor|vscode|antigravity>",
             fg=typer.colors.RED,
         )
         raise typer.Exit(1)

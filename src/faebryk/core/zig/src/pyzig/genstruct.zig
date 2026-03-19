@@ -5,6 +5,30 @@ const pyzig = @import("pyzig.zig");
 const util = @import("util.zig");
 const linked_list = @import("linked_list.zig");
 
+fn expectStructWrapper(comptime ChildType: type, value: ?*py.PyObject) ?*pyzig.PyObjectWrapper(ChildType) {
+    if (value == null) {
+        py.PyErr_SetString(py.PyExc_TypeError, "Expected object");
+        return null;
+    }
+
+    const type_name_for_registry = @typeName(ChildType) ++ "\x00";
+    const expected_type = pyzig.ensureTypeObject(
+        ChildType,
+        type_name_for_registry,
+        "Failed to initialize nested type",
+    );
+    const actual_type = py.Py_TYPE(value);
+
+    if (actual_type == null or actual_type.? != expected_type) {
+        var error_msg: [256]u8 = undefined;
+        const msg = std.fmt.bufPrintZ(&error_msg, "Expected {s}", .{@typeName(ChildType)}) catch "Invalid object type";
+        py.PyErr_SetString(py.PyExc_TypeError, msg);
+        return null;
+    }
+
+    return @as(*pyzig.PyObjectWrapper(ChildType), @ptrCast(@alignCast(value.?)));
+}
+
 pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
     const info = @typeInfo(T);
     if (info != .@"struct") {
@@ -12,10 +36,19 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
     }
     const struct_info = info.@"struct";
     return struct {
+        inline fn cleanupOwned(wrapper_obj: *WrapperType) void {
+            if (wrapper_obj.owned) {
+                wrapper_obj.owned = false;
+                std.heap.c_allocator.destroy(wrapper_obj.data);
+            }
+        }
+
         // Generate the __init__ function using a truly generic approach
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) c_int {
             const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
+            wrapper_obj.owned = false;
             wrapper_obj.data = std.heap.c_allocator.create(T) catch return -1;
+            wrapper_obj.owned = true;
 
             // Use a generic approach inspired by ziggy-pydust
             // Parse arguments directly from the Python tuple and dict
@@ -27,7 +60,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
             // For keyword-only arguments (like dataclasses), all args must be keywords
             if (num_pos > 0) {
                 py.PyErr_SetString(py.PyExc_TypeError, "__init__() takes 0 positional arguments");
-                std.heap.c_allocator.destroy(wrapper_obj.data);
+                cleanupOwned(wrapper_obj);
                 return -1;
             }
 
@@ -58,11 +91,11 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                         var error_msg: [256]u8 = undefined;
                         const msg = std.fmt.bufPrintZ(&error_msg, "__init__() missing required keyword-only argument: '{s}'", .{field.name}) catch {
                             py.PyErr_SetString(py.PyExc_TypeError, "__init__() missing required argument");
-                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                            cleanupOwned(wrapper_obj);
                             return -1;
                         };
                         py.PyErr_SetString(py.PyExc_TypeError, msg);
-                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                        cleanupOwned(wrapper_obj);
                         return -1;
                     }
                 } else {
@@ -72,7 +105,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                         .int => {
                             const int_val = py.PyLong_AsLong(value);
                             if (int_val == -1 and py.PyErr_Occurred() != null) {
-                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                cleanupOwned(wrapper_obj);
                                 return -1;
                             }
                             @field(wrapper_obj.data.*, field.name) = @intCast(int_val);
@@ -80,7 +113,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                         .float => {
                             const float_val = py.PyFloat_AsDouble(value);
                             if (float_val == -1.0 and py.PyErr_Occurred() != null) {
-                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                cleanupOwned(wrapper_obj);
                                 return -1;
                             }
                             @field(wrapper_obj.data.*, field.name) = @floatCast(float_val);
@@ -88,7 +121,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                         .bool => {
                             const bool_val = py.PyObject_IsTrue(value);
                             if (bool_val == -1) {
-                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                cleanupOwned(wrapper_obj);
                                 return -1;
                             }
                             @field(wrapper_obj.data.*, field.name) = bool_val == 1;
@@ -97,7 +130,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                             if (ptr.size == .slice and ptr.child == u8 and ptr.is_const) {
                                 const str_val = py.PyUnicode_AsUTF8(value);
                                 if (str_val == null) {
-                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    cleanupOwned(wrapper_obj);
                                     return -1;
                                 }
                                 // IMPORTANT: Duplicate the string data!
@@ -105,7 +138,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                 // We need our own copy that lives as long as the struct.
                                 const str_slice = std.mem.span(str_val.?);
                                 const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch {
-                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    cleanupOwned(wrapper_obj);
                                     return -1;
                                 };
                                 @field(wrapper_obj.data.*, field.name) = str_copy;
@@ -113,20 +146,20 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                 // Handle slices (lists)
                                 if (py.PyList_Check(value) == 0) {
                                     py.PyErr_SetString(py.PyExc_TypeError, "Expected a list");
-                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    cleanupOwned(wrapper_obj);
                                     return -1;
                                 }
 
                                 const list_size = py.PyList_Size(value);
                                 if (list_size < 0) {
-                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    cleanupOwned(wrapper_obj);
                                     return -1;
                                 }
 
                                 // Allocate memory for the slice
                                 const slice = std.heap.c_allocator.alloc(ptr.child, @intCast(list_size)) catch {
                                     py.PyErr_SetString(py.PyExc_ValueError, "Failed to allocate memory for list");
-                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    cleanupOwned(wrapper_obj);
                                     return -1;
                                 };
 
@@ -135,7 +168,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     const item = py.PyList_GetItem(value, @intCast(i));
                                     if (item == null) {
                                         std.heap.c_allocator.free(slice);
-                                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                                        cleanupOwned(wrapper_obj);
                                         return -1;
                                     }
 
@@ -144,7 +177,11 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     switch (child_info) {
                                         .@"struct" => {
                                             // Handle struct items
-                                            const nested_wrapper = @as(*pyzig.PyObjectWrapper(ptr.child), @ptrCast(@alignCast(item)));
+                                            const nested_wrapper = expectStructWrapper(ptr.child, item) orelse {
+                                                std.heap.c_allocator.free(slice);
+                                                cleanupOwned(wrapper_obj);
+                                                return -1;
+                                            };
                                             slice[i] = nested_wrapper.data.*;
                                         },
                                         .@"enum" => {
@@ -152,13 +189,13 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                             const str_val = py.PyUnicode_AsUTF8(item);
                                             if (str_val == null) {
                                                 std.heap.c_allocator.free(slice);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             }
                                             const enum_str = std.mem.span(str_val.?);
                                             slice[i] = std.meta.stringToEnum(ptr.child, enum_str) orelse {
                                                 std.heap.c_allocator.free(slice);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value in list");
                                                 return -1;
                                             };
@@ -172,14 +209,18 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                 const opt_child_info = @typeInfo(opt.child);
                                                 switch (opt_child_info) {
                                                     .@"struct" => {
-                                                        const nested_wrapper = @as(*pyzig.PyObjectWrapper(opt.child), @ptrCast(@alignCast(item)));
+                                                        const nested_wrapper = expectStructWrapper(opt.child, item) orelse {
+                                                            std.heap.c_allocator.free(slice);
+                                                            cleanupOwned(wrapper_obj);
+                                                            return -1;
+                                                        };
                                                         slice[i] = nested_wrapper.data.*;
                                                     },
                                                     .int => {
                                                         const int_val = py.PyLong_AsLong(item);
                                                         if (int_val == -1 and py.PyErr_Occurred() != null) {
                                                             std.heap.c_allocator.free(slice);
-                                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                            cleanupOwned(wrapper_obj);
                                                             return -1;
                                                         }
                                                         slice[i] = @intCast(int_val);
@@ -189,13 +230,13 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                             const str_val = py.PyUnicode_AsUTF8(item);
                                                             if (str_val == null) {
                                                                 std.heap.c_allocator.free(slice);
-                                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                                cleanupOwned(wrapper_obj);
                                                                 return -1;
                                                             }
                                                             const str_slice = std.mem.span(str_val.?);
                                                             const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch {
                                                                 std.heap.c_allocator.free(slice);
-                                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                                cleanupOwned(wrapper_obj);
                                                                 return -1;
                                                             };
                                                             slice[i] = str_copy;
@@ -213,7 +254,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                             const int_val = py.PyLong_AsLong(item);
                                             if (int_val == -1 and py.PyErr_Occurred() != null) {
                                                 std.heap.c_allocator.free(slice);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             }
                                             slice[i] = @intCast(int_val);
@@ -222,7 +263,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                             const float_val = py.PyFloat_AsDouble(item);
                                             if (float_val == -1.0 and py.PyErr_Occurred() != null) {
                                                 std.heap.c_allocator.free(slice);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             }
                                             slice[i] = @floatCast(float_val);
@@ -231,7 +272,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                             const bool_val = py.PyObject_IsTrue(item);
                                             if (bool_val == -1) {
                                                 std.heap.c_allocator.free(slice);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             }
                                             slice[i] = bool_val == 1;
@@ -241,20 +282,20 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                 const str_val = py.PyUnicode_AsUTF8(item);
                                                 if (str_val == null) {
                                                     std.heap.c_allocator.free(slice);
-                                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                    cleanupOwned(wrapper_obj);
                                                     return -1;
                                                 }
                                                 const str_slice = std.mem.span(str_val.?);
                                                 const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch {
                                                     std.heap.c_allocator.free(slice);
-                                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                    cleanupOwned(wrapper_obj);
                                                     return -1;
                                                 };
                                                 slice[i] = str_copy;
                                             } else {
                                                 // Unsupported nested pointer type
                                                 std.heap.c_allocator.free(slice);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 py.PyErr_SetString(py.PyExc_TypeError, "Unsupported list pointer item type");
                                                 return -1;
                                             }
@@ -262,7 +303,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                         else => {
                                             // Unsupported type
                                             std.heap.c_allocator.free(slice);
-                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            cleanupOwned(wrapper_obj);
                                             py.PyErr_SetString(py.PyExc_TypeError, "Unsupported list item type (unknown)");
                                             return -1;
                                         },
@@ -284,7 +325,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     .int => {
                                         const int_val = py.PyLong_AsLong(value);
                                         if (int_val == -1 and py.PyErr_Occurred() != null) {
-                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            cleanupOwned(wrapper_obj);
                                             return -1;
                                         }
                                         @field(wrapper_obj.data.*, field.name) = @intCast(int_val);
@@ -292,7 +333,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     .float => {
                                         const float_val = py.PyFloat_AsDouble(value);
                                         if (float_val == -1.0 and py.PyErr_Occurred() != null) {
-                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            cleanupOwned(wrapper_obj);
                                             return -1;
                                         }
                                         @field(wrapper_obj.data.*, field.name) = @floatCast(float_val);
@@ -300,7 +341,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     .bool => {
                                         const bool_val = py.PyObject_IsTrue(value);
                                         if (bool_val == -1) {
-                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            cleanupOwned(wrapper_obj);
                                             return -1;
                                         }
                                         @field(wrapper_obj.data.*, field.name) = bool_val == 1;
@@ -309,13 +350,13 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                         if (p.size == .slice and p.child == u8) {
                                             const str_val = py.PyUnicode_AsUTF8(value);
                                             if (str_val == null) {
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             }
                                             // IMPORTANT: Duplicate the string data for optional strings too!
                                             const str_slice = std.mem.span(str_val.?);
                                             const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch {
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             };
                                             @field(wrapper_obj.data.*, field.name) = str_copy;
@@ -325,20 +366,23 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     },
                                     .@"struct" => {
                                         // Handle optional struct fields
-                                        const nested_wrapper = @as(*pyzig.PyObjectWrapper(opt.child), @ptrCast(@alignCast(value)));
+                                        const nested_wrapper = expectStructWrapper(opt.child, value) orelse {
+                                            cleanupOwned(wrapper_obj);
+                                            return -1;
+                                        };
                                         @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
                                     },
                                     .@"enum" => {
                                         // Handle optional enum as string
                                         const str_val = py.PyUnicode_AsUTF8(value);
                                         if (str_val == null) {
-                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            cleanupOwned(wrapper_obj);
                                             return -1;
                                         }
                                         const enum_str = std.mem.span(str_val.?);
                                         @field(wrapper_obj.data.*, field.name) = std.meta.stringToEnum(opt.child, enum_str) orelse {
                                             py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value");
-                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            cleanupOwned(wrapper_obj);
                                             return -1;
                                         };
                                     },
@@ -355,7 +399,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                 const seq_len = py.PySequence_Size(value);
                                 if (seq_len < 0) {
                                     py.PyErr_SetString(py.PyExc_TypeError, "Expected a sequence for linked list field");
-                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    cleanupOwned(wrapper_obj);
                                     return -1;
                                 }
 
@@ -366,34 +410,39 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     const item = py.PySequence_GetItem(value, i);
                                     if (item == null) {
                                         // clean not needed: constructed nodes owned by struct allocator lifetime
-                                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                                        cleanupOwned(wrapper_obj);
                                         return -1;
                                     }
 
                                     const node = std.heap.c_allocator.create(NodeType) catch {
                                         py.Py_DECREF(item.?);
-                                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                                        cleanupOwned(wrapper_obj);
                                         return -1;
                                     };
                                     // Fill node.data by converting Python item → ChildType
                                     const child_info = @typeInfo(ChildType);
                                     switch (child_info) {
                                         .@"struct" => {
-                                            const nested = @as(*pyzig.PyObjectWrapper(ChildType), @ptrCast(@alignCast(item)));
+                                            const nested = expectStructWrapper(ChildType, item) orelse {
+                                                py.Py_DECREF(item.?);
+                                                std.heap.c_allocator.destroy(node);
+                                                cleanupOwned(wrapper_obj);
+                                                return -1;
+                                            };
                                             node.* = NodeType{ .data = nested.data.* };
                                         },
                                         .@"enum" => {
                                             const s = py.PyUnicode_AsUTF8(item);
                                             if (s == null) {
                                                 py.Py_DECREF(item.?);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             }
                                             const enum_str = std.mem.span(s.?);
                                             const ev = std.meta.stringToEnum(ChildType, enum_str) orelse {
                                                 py.Py_DECREF(item.?);
                                                 std.heap.c_allocator.destroy(node);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value in list");
                                                 return -1;
                                             };
@@ -404,7 +453,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                             if (v == -1 and py.PyErr_Occurred() != null) {
                                                 py.Py_DECREF(item.?);
                                                 std.heap.c_allocator.destroy(node);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             }
                                             node.* = NodeType{ .data = @intCast(v) };
@@ -414,7 +463,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                             if (v == -1.0 and py.PyErr_Occurred() != null) {
                                                 py.Py_DECREF(item.?);
                                                 std.heap.c_allocator.destroy(node);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             }
                                             node.* = NodeType{ .data = @floatCast(v) };
@@ -424,7 +473,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                             if (v == -1) {
                                                 py.Py_DECREF(item.?);
                                                 std.heap.c_allocator.destroy(node);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 return -1;
                                             }
                                             node.* = NodeType{ .data = (v == 1) };
@@ -435,21 +484,21 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                 if (s == null) {
                                                     py.Py_DECREF(item.?);
                                                     std.heap.c_allocator.destroy(node);
-                                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                    cleanupOwned(wrapper_obj);
                                                     return -1;
                                                 }
                                                 const slice = std.mem.span(s.?);
                                                 const dup = std.heap.c_allocator.dupe(u8, slice) catch {
                                                     py.Py_DECREF(item.?);
                                                     std.heap.c_allocator.destroy(node);
-                                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                    cleanupOwned(wrapper_obj);
                                                     return -1;
                                                 };
                                                 node.* = NodeType{ .data = dup };
                                             } else {
                                                 py.Py_DECREF(item.?);
                                                 std.heap.c_allocator.destroy(node);
-                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                cleanupOwned(wrapper_obj);
                                                 py.PyErr_SetString(py.PyExc_TypeError, "Unsupported linked-list child pointer type");
                                                 return -1;
                                             }
@@ -457,7 +506,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                         else => {
                                             py.Py_DECREF(item.?);
                                             std.heap.c_allocator.destroy(node);
-                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            cleanupOwned(wrapper_obj);
                                             py.PyErr_SetString(py.PyExc_TypeError, "Unsupported linked-list child type");
                                             return -1;
                                         },
@@ -470,7 +519,10 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                 @field(wrapper_obj.data.*, field.name) = ll;
                             } else {
                                 // Treat as nested struct
-                                const nested_wrapper = @as(*pyzig.PyObjectWrapper(field.type), @ptrCast(@alignCast(value)));
+                                const nested_wrapper = expectStructWrapper(field.type, value) orelse {
+                                    cleanupOwned(wrapper_obj);
+                                    return -1;
+                                };
                                 @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
                             }
                         },
@@ -478,13 +530,13 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                             // Handle enum as string
                             const str_val = py.PyUnicode_AsUTF8(value);
                             if (str_val == null) {
-                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                cleanupOwned(wrapper_obj);
                                 return -1;
                             }
                             const enum_str = std.mem.span(str_val.?);
                             @field(wrapper_obj.data.*, field.name) = std.meta.stringToEnum(field.type, enum_str) orelse {
                                 py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value");
-                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                cleanupOwned(wrapper_obj);
                                 return -1;
                             };
                         },

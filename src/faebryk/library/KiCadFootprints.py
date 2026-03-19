@@ -1,9 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import ctypes
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Self
+from typing import TYPE_CHECKING, Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -28,117 +28,54 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
 
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
-    # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
-    # Store objects by their id() so ctypes.cast can retrieve them later.
-    _footprint_registry: ClassVar[dict[int, KiCadPCBFootprint]] = {}
-    _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
-
-    footprint_ = F.Parameters.StringParameter.MakeChild()
-    transformer_ = F.Parameters.StringParameter.MakeChild()
-    kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
-    library_name_ = F.Parameters.StringParameter.MakeChild()
-
-    @classmethod
-    def MakeChild(
-        cls, footprint: KiCadPCBFootprint, transformer: "PCB_Transformer"
-    ) -> fabll._ChildField[Self]:
-        # Store objects in registries to prevent garbage collection.
-        cls._footprint_registry[id(footprint)] = footprint
-        cls._transformer_registry[id(transformer)] = transformer
-
-        kicad_identifier = footprint.name
-        library_name = footprint.name.split(":")[0]
-
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_SetSuperset(
-                [out, cls.kicad_identifier_], kicad_identifier
-            )
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_SetSuperset(
-                [out, cls.library_name_], library_name
-            )
-        )
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge([out, cls.footprint_], [str(id(footprint))])
-        )
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge(
-                [out, cls.transformer_], [str(id(transformer))]
-            )
-        )
-        return out
+    @dataclass
+    class Data:
+        # Using python data struct due to python pointers
+        # Could split it up into python/non-python but having only one type
+        # makes perf better
+        # TODO: rearchitect to get rid of this pattern
+        footprint: KiCadPCBFootprint
+        transformer: "PCB_Transformer"
+        kicad_identifier: str
+        library_name: str
 
     def setup(
         self, footprint: KiCadPCBFootprint, transformer: "PCB_Transformer"
     ) -> Self:
-        # Store objects in registries to prevent garbage collection.
-        self._footprint_registry[id(footprint)] = footprint
-        self._transformer_registry[id(transformer)] = transformer
-
-        self.footprint_.get().set_singleton(value=str(id(footprint)))
-        self.transformer_.get().set_singleton(value=str(id(transformer)))
-
-        kicad_identifier = footprint.name
-        library_name = footprint.name.split(":")[0]
-        self.kicad_identifier_.get().set_singleton(value=kicad_identifier)
-        self.library_name_.get().set_singleton(value=library_name)
+        self.instance.store(
+            data=self.Data(
+                footprint=footprint,
+                transformer=transformer,
+                kicad_identifier=footprint.name,
+                library_name=footprint.name.split(":")[0],
+            )
+        )
         return self
 
+    def _data(self) -> Data:
+        return self.instance.load(t=self.Data)
+
     def get_footprint(self) -> KiCadPCBFootprint:
-        footprint_id = int(self.footprint_.get().extract_singleton())
-        return ctypes.cast(footprint_id, ctypes.py_object).value
+        return self._data().footprint
 
     def get_transformer(self) -> "PCB_Transformer":
-        transformer_id = int(self.transformer_.get().extract_singleton())
-        return ctypes.cast(transformer_id, ctypes.py_object).value
+        return self._data().transformer
 
     def get_kicad_identifier(self) -> str:
-        return self.kicad_identifier_.get().extract_singleton()
+        return self._data().kicad_identifier
 
     def get_library_name(self) -> str:
-        return self.library_name_.get().extract_singleton()
+        return self._data().library_name
 
 
 class has_associated_kicad_pcb_pad(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
-    # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
-    # Store objects by their id() so ctypes.cast can retrieve them later.
-    _footprint_registry: ClassVar[dict[int, KiCadPCBFootprint]] = {}
-    _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
-    _pad_registry: ClassVar[dict[int, list[KiCadPCBPad]]] = {}
-
-    footprint_ = F.Parameters.StringParameter.MakeChild()
-    pad_ = F.Parameters.StringParameter.MakeChild()
-    transformer_ = F.Parameters.StringParameter.MakeChild()
-
-    @classmethod
-    def MakeChild(
-        cls,
-        footprint: KiCadPCBFootprint,
-        pad: list[KiCadPCBPad],
-        transformer: "PCB_Transformer",
-    ) -> fabll._ChildField[Self]:
-        # Store objects in registries to prevent garbage collection.
-        cls._footprint_registry[id(footprint)] = footprint
-        cls._pad_registry[id(pad)] = pad
-        cls._transformer_registry[id(transformer)] = transformer
-
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge([out, cls.footprint_], [str(id(footprint))])
-        )
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge([out, cls.pad_], [str(id(pad))])
-        )
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge(
-                [out, cls.transformer_], [str(id(transformer))]
-            )
-        )
-        return out
+    @dataclass
+    class Data:
+        footprint: KiCadPCBFootprint
+        pads: list[KiCadPCBPad]
+        transformer: "PCB_Transformer"
 
     def setup(
         self,
@@ -146,79 +83,54 @@ class has_associated_kicad_pcb_pad(fabll.Node):
         pads: list[KiCadPCBPad],
         transformer: "PCB_Transformer",
     ) -> Self:
-        # Store objects in registries to prevent garbage collection.
-        self._footprint_registry[id(footprint)] = footprint
-        self._pad_registry[id(pads)] = pads
-        self._transformer_registry[id(transformer)] = transformer
-
-        self.footprint_.get().set_singleton(value=str(id(footprint)))
-        self.transformer_.get().set_singleton(value=str(id(transformer)))
-        self.pad_.get().set_singleton(value=str(id(pads)))
+        self.instance.store(
+            data=self.Data(
+                footprint=footprint,
+                pads=pads,
+                transformer=transformer,
+            )
+        )
         return self
 
+    def _data(self) -> Data:
+        return self.instance.load(t=self.Data)
+
     def get_pads(self) -> tuple[KiCadPCBFootprint, list[KiCadPCBPad]]:
-        footprint_id = int(self.footprint_.get().extract_singleton())
-        pad_id = int(self.pad_.get().extract_singleton())
-        return (
-            ctypes.cast(footprint_id, ctypes.py_object).value,
-            ctypes.cast(pad_id, ctypes.py_object).value,
-        )
+        d = self._data()
+        return (d.footprint, d.pads)
 
     def get_pad(self) -> KiCadPCBPad:
-        pad_id = int(self.pad_.get().extract_singleton())
-        return ctypes.cast(pad_id, ctypes.py_object).value[0]
+        return self._data().pads[0]
 
     def get_transformer(self) -> "PCB_Transformer":
-        transformer_id = int(self.transformer_.get().extract_singleton())
-        return ctypes.cast(transformer_id, ctypes.py_object).value
+        return self._data().transformer
 
 
 class has_associated_kicad_pcb_net(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
-    # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
-    # Store objects by their id() so ctypes.cast can retrieve them later.
-    _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
-    _net_registry: ClassVar[dict[int, "KiCadPCBNet"]] = {}
-
-    net_ = F.Parameters.StringParameter.MakeChild()
-    transformer_ = F.Parameters.StringParameter.MakeChild()
-
-    @classmethod
-    def MakeChild(
-        cls, net: "KiCadPCBNet", transformer: "PCB_Transformer"
-    ) -> fabll._ChildField[Self]:
-        # Store objects in registries to prevent garbage collection.
-        cls._net_registry[id(net)] = net
-        cls._transformer_registry[id(transformer)] = transformer
-
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge([out, cls.net_], [str(id(net))])
-        )
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge(
-                [out, cls.transformer_], [str(id(transformer))]
-            )
-        )
-        return out
+    @dataclass
+    class Data:
+        net: KiCadPCBNet
+        transformer: "PCB_Transformer"
 
     def setup(self, net: "KiCadPCBNet", transformer: "PCB_Transformer") -> Self:
-        # Store objects in registries to prevent garbage collection.
-        self._net_registry[id(net)] = net
-        self._transformer_registry[id(transformer)] = transformer
-
-        self.net_.get().set_singleton(value=str(id(net)))
-        self.transformer_.get().set_singleton(value=str(id(transformer)))
+        self.instance.store(
+            data=self.Data(
+                net=net,
+                transformer=transformer,
+            )
+        )
         return self
 
+    def _data(self) -> Data:
+        return self.instance.load(t=self.Data)
+
     def get_net(self) -> KiCadPCBNet:
-        net_id = int(self.net_.get().extract_singleton())
-        return ctypes.cast(net_id, ctypes.py_object).value
+        return self._data().net
 
     def get_transformer(self) -> "PCB_Transformer":
-        transformer_id = int(self.transformer_.get().extract_singleton())
-        return ctypes.cast(transformer_id, ctypes.py_object).value
+        return self._data().transformer
 
 
 class has_associated_kicad_library_footprint(fabll.Node):

@@ -3,6 +3,7 @@
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,34 @@ import typer
 logger = logging.getLogger(__name__)
 app = typer.Typer()
 artifact_dir = Path(__file__).parent.parent / "artifacts" / "perf"
+_flamegraph_dir = Path(__file__).parent.parent / "artifacts" / "FlameGraph"
+
+
+def _get_flamegraph_scripts() -> tuple[Path, Path]:
+    """Return paths to stackcollapse-perf.pl and flamegraph.pl, cloning if needed."""
+    stackcollapse = shutil.which("stackcollapse-perf.pl")
+    flamegraph = shutil.which("flamegraph.pl")
+    if stackcollapse and flamegraph:
+        return Path(stackcollapse), Path(flamegraph)
+
+    if not (_flamegraph_dir / "flamegraph.pl").exists():
+        print("FlameGraph tools not found, cloning...")
+        _flamegraph_dir.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                "--depth=1",
+                "https://github.com/brendangregg/FlameGraph.git",
+                str(_flamegraph_dir),
+            ],
+            check=True,
+        )
+
+    return (
+        _flamegraph_dir / "stackcollapse-perf.pl",
+        _flamegraph_dir / "flamegraph.pl",
+    )
 
 
 def is_running_in_vscode_terminal() -> bool:
@@ -313,8 +342,9 @@ def perf(
         )
 
     print("Generating flamegraph...")
+    stackcollapse_pl, flamegraph_pl = _get_flamegraph_scripts()
     subprocess.run(
-        f"cat {perf_i} | stackcollapse-perf.pl | flamegraph.pl > {fg_svg_file}",
+        f"cat {perf_i} | {stackcollapse_pl} | {flamegraph_pl} > {fg_svg_file}",
         check=True,
         shell=True,
     )

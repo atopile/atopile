@@ -57,18 +57,32 @@ function TraceDetails({
   label,
   content,
   className,
-  defaultOpen = false
+  defaultOpen = false,
+  onToggle,
 }: {
   label: string;
   content: string;
   className: string;
   defaultOpen?: boolean;
+  onToggle?: (isOpen: boolean) => void;
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
+  const handleToggle = () => {
+    const next = !isOpen;
+    setIsOpen(next);
+    onToggle?.(next);
+  };
+
+  // Notify parent of initial state
+  useEffect(() => {
+    if (defaultOpen) onToggle?.(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className={`lv-trace ${className}`}>
-      <button className="lv-trace-summary" onClick={() => setIsOpen(!isOpen)}>
+      <button className="lv-trace-summary" onClick={handleToggle}>
         <span className={`lv-trace-arrow ${isOpen ? 'open' : ''}`}>▸</span>
         {label}
       </button>
@@ -85,14 +99,22 @@ function TraceDetails({
 // Collapsible wrapper for StackInspector
 function CollapsibleStackTrace({
   traceback,
+  onToggle,
 }: {
   traceback: Parameters<typeof StackInspector>[0]['traceback'];
+  onToggle?: (isOpen: boolean) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
+  const handleToggle = () => {
+    const next = !isOpen;
+    setIsOpen(next);
+    onToggle?.(next);
+  };
+
   return (
     <div className="lv-trace lv-trace-python">
-      <button className="lv-trace-summary" onClick={() => setIsOpen(!isOpen)}>
+      <button className="lv-trace-summary" onClick={handleToggle}>
         <span className={`lv-trace-arrow ${isOpen ? 'open' : ''}`}>▸</span>
         python traceback
       </button>
@@ -106,27 +128,40 @@ function TracebacksInline({
 }: {
   entry: LogEntry;
 }) {
+  const [anyExpanded, setAnyExpanded] = useState(!!entry.ato_traceback);
+  const expandedRef = useRef({ ato: !!entry.ato_traceback, python: false });
+
   if (!entry.ato_traceback && !entry.python_traceback) return null;
 
   const structuredTb = tryParseStructuredTraceback(entry.python_traceback);
 
+  const updateExpanded = (key: 'ato' | 'python', isOpen: boolean) => {
+    expandedRef.current[key] = isOpen;
+    setAnyExpanded(expandedRef.current.ato || expandedRef.current.python);
+  };
+
   return (
-    <div className="lv-tracebacks lv-tracebacks-inline">
+    <div className={`lv-tracebacks lv-tracebacks-inline${anyExpanded ? ' lv-tracebacks-expanded' : ''}`}>
       {entry.ato_traceback && (
         <TraceDetails
           label="ato traceback"
           content={entry.ato_traceback}
           className="lv-trace-ato"
           defaultOpen
+          onToggle={(open) => updateExpanded('ato', open)}
         />
       )}
       {structuredTb && structuredTb.frames.length > 0 ? (
-        <CollapsibleStackTrace traceback={structuredTb} />
+        <CollapsibleStackTrace
+          traceback={structuredTb}
+          onToggle={(open) => updateExpanded('python', open)}
+        />
       ) : entry.python_traceback ? (
         <TraceDetails
           label="python traceback"
           content={entry.python_traceback}
           className="lv-trace-python"
+          onToggle={(open) => updateExpanded('python', open)}
         />
       ) : null}
     </div>

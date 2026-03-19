@@ -154,7 +154,7 @@ def _prepare_query(
             trait.get_params(),
         )
         cmp_params = {
-            fabll.Traits(p).get_obj_raw(): solver.extract_superset(
+            fabll.Traits(p).get_obj_raw(): solver.try_extract_superset(
                 # FIXME g
                 p  # , g=g, tg=tg
             )
@@ -166,6 +166,8 @@ def _prepare_query(
         # TODO: More robust validation against API contract
         # Check for singleton literals
         for param, is_lit in cmp_params.items():
+            if is_lit is None:
+                continue
             literal_node = is_lit.switch_cast()
             if literal_node.isinstance(F.Literals.Numbers):
                 if literal_node.is_singleton():

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="{{baseUri}}">
+  <meta http-equiv="Content-Security-Policy" content="{{csp}}">
+  <title>atopile</title>
+  {{baseCssLink}}
+  {{cssLink}}
+  <script nonce="{{nonce}}">
+    window.__ATOPILE_API_URL__ = {{apiUrlJson}};
+    window.__ATOPILE_WS_URL__ = {{wsOriginJson}};
+    window.__ATOPILE_ICON_URL__ = {{iconUriJson}};
+    window.__ATOPILE_EXTENSION_VERSION__ = {{extensionVersionJson}};
+    window.__ATOPILE_WASM_URL__ = {{wasmUriJson}};
+    window.__ATOPILE_MODEL_VIEWER_URL__ = {{modelViewerUriJson}};
+    window.__ATOPILE_ENABLE_CHAT__ = {{enableChatLiteral}};
+    window.__ATOPILE_IS_WEB_IDE__ = {{isWebIdeLiteral}};
+    window.__ATOPILE_WORKSPACE_ROOT__ = {{workspaceRootJson}};
+  </script>
+  <script id="{{bridgeConfigElementId}}" type="application/json">{{bridgeConfigJson}}</script>
+  <script src="{{bridgeRuntimeUri}}"></script>
+  <script nonce="{{nonce}}">
+    document.addEventListener('DOMContentLoaded', function() {
+      var loading = document.getElementById('atopile-loading');
+      var root = document.getElementById('root');
+      function showFailure(message) {
+        if (!loading) return;
+        loading.textContent = message;
+      }
+      function maybeHideLoading() {
+        if (!loading || !root) return;
+        if (root.childNodes.length > 0) {
+          loading.style.display = 'none';
+        }
+      }
+      window.addEventListener('error', function(event) {
+        if (event && event.message) {
+          showFailure('atopile UI failed to load: ' + event.message);
+        } else {
+          showFailure('atopile UI failed to load.');
+        }
+      });
+      if (root && typeof MutationObserver !== 'undefined') {
+        var observer = new MutationObserver(maybeHideLoading);
+        observer.observe(root, { childList: true, subtree: true });
+      }
+      setTimeout(function() {
+        if (root && root.childNodes.length === 0) {
+          showFailure('atopile UI failed to initialize. If you are on Firefox, disable strict tracking protection for this site or try Chromium.');
+        }
+      }, 7000);
+    });
+  </script>
+</head>
+<body>
+  <div id="atopile-loading" style="padding: 8px; font-size: 12px; opacity: 0.8;">Loading atopile...</div>
+  <div id="root"></div>
+  <script nonce="{{nonce}}" type="module" src="{{jsUri}}"></script>
+</body>
+</html>

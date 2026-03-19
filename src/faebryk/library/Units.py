@@ -47,6 +47,7 @@ TODO:
 """
 
 import difflib
+import logging
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, fields
@@ -62,6 +63,8 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
 from faebryk.libs.util import indented_container, not_none, once
+
+logger = logging.getLogger(__name__)
 
 
 class UnitException(Exception): ...
@@ -156,6 +159,15 @@ class BasisVector(DataClassJsonMixin):
 
     def scalar_multiply(self, scalar: int) -> "BasisVector":
         return self._scalar_op(lambda x: x * scalar)
+
+    def __str__(self) -> str:
+        non_zero_fields = ",".join(
+            f"{f.metadata['display_symbol']}={v}"
+            for f in fields(self)
+            if (v := getattr(self, f.name)) != 0
+        )
+
+        return f"BasisVector({non_zero_fields})"
 
 
 def _accurate_div(m1: float, m2: float) -> float:
@@ -566,6 +578,8 @@ class is_unit(fabll.Node):
         v = is_unit._extract_basis_vector(self)
         return v == BasisVector(radian=1)
 
+    _base_unit_cache: ClassVar[dict[tuple[int, BasisVector], "is_unit | None"]] = {}
+
     def to_base_units(
         self: "is_unit | None", g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "is_unit | None":
@@ -577,30 +591,37 @@ class is_unit(fabll.Node):
         Kilometer.to_base_units() -> Meter
         DegreesCelsius.to_base_units() -> Kelvin
         Newton.to_base_units() -> kg*m/s^-2 (anonymous)
-
-        # TODO: lookup and return existing named unit if available
         """
         if self is None:
             return None
+
+        vector = is_unit._extract_basis_vector(self)
+
+        g_uuid = g.get_self_node().node().get_uuid()
+        cache_key = (g_uuid, vector)
+        if cached := is_unit._base_unit_cache.get(cache_key):
+            return cached
+
         all_is_units = fabll.Traits.get_implementors(is_unit.bind_typegraph(tg=tg), g)
         for _is_unit in all_is_units:
-            # Must match basis vector AND have base unit multiplier/offset
             if (
-                is_unit._extract_basis_vector(_is_unit)
-                == is_unit._extract_basis_vector(self)
+                is_unit._extract_basis_vector(_is_unit) == vector
                 and is_unit._extract_multiplier(_is_unit) == 1.0
                 and is_unit._extract_offset(_is_unit) == 0.0
                 and _is_unit._extract_offset() == 0.0
             ):
+                is_unit._base_unit_cache[cache_key] = _is_unit
                 return _is_unit
 
-        return is_unit.new(
+        result = is_unit.new(
             g=g,
             tg=tg,
-            vector=is_unit._extract_basis_vector(self),
+            vector=vector,
             multiplier=1.0,
             offset=0.0,
         )
+        is_unit._base_unit_cache[cache_key] = result
+        return result
 
     @classmethod
     def new(
@@ -1044,18 +1065,26 @@ def decode_symbol(
 
 
 # TODO: remove?
+# Cache keyed by (g_uuid, symbol) for resolved units
+_decode_symbol_cache: dict[tuple[int, str], "is_unit | None"] = {}
+
+
 def decode_symbol_runtime(
     g: graph.GraphView, tg: fbrk.TypeGraph, symbol: str
 ) -> "is_unit | None":
-    # TODO: caching
-    # TODO: optimisation: pre-compute symbol map; build suffix trie
+    g_uuid = g.get_self_node().node().get_uuid()
+    cache_key = (g_uuid, symbol)
 
+    if cached := _decode_symbol_cache.get(cache_key):
+        return cached
+
+    # Build symbol map fresh each cache miss (graph may have grown)
     all_units = fabll.Traits.get_implementors(is_unit.bind_typegraph(tg), g)
-    # TODO: more efficient filtering
     symbol_map = {s: unit for unit in all_units for s in unit.get_symbols()}
 
     # 1. Exact match
     if symbol in symbol_map:
+        _decode_symbol_cache[cache_key] = symbol_map[symbol]
         return symbol_map[symbol]
 
     # 2. Prefixed
@@ -1078,7 +1107,11 @@ def decode_symbol_runtime(
             else:
                 continue
 
-            return unit.scaled_copy(g=g, tg=tg, multiplier=scale_factor, symbol=symbol)
+            result = unit.scaled_copy(
+                g=g, tg=tg, multiplier=scale_factor, symbol=symbol
+            )
+            _decode_symbol_cache[cache_key] = result
+            return result
 
     raise UnitNotFoundError(symbol, _get_close_matches(symbol, list(symbol_map.keys())))
 

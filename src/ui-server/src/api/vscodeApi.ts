@@ -77,6 +77,7 @@ export interface AtopileSettingsMessage {
 export interface SelectionChangedMessage {
   type: 'selectionChanged';
   projectRoot: string | null;
+  targetRoot?: string | null;
   targetNames: string[];
 }
 
@@ -112,6 +113,14 @@ export interface ShowBackendMenuMessage {
 export interface OpenInSimpleBrowserMessage {
   type: 'openInSimpleBrowser';
   url: string;
+}
+
+export interface OpenDiffMessage {
+  type: 'openDiff';
+  path: string;
+  beforeContent: string;
+  afterContent: string;
+  title?: string;
 }
 
 export interface ListFilesMessage {
@@ -180,6 +189,7 @@ export type ExtensionMessage =
   | ShowBuildLogsMessage
   | ShowBackendMenuMessage
   | OpenInSimpleBrowserMessage
+  | OpenDiffMessage
   | ListFilesMessage
   | LoadDirectoryMessage
   | BrowseExportDirectoryMessage
@@ -287,6 +297,18 @@ export interface AtopileSettingsResponseMessage {
   };
 }
 
+export interface BackendStatusMessage {
+  type: 'backendStatus';
+  serverState: string;
+  isConnected: boolean;
+}
+
+export interface SwitchLayoutMessage {
+  type: 'switchLayout';
+  projectRoot: string;
+  targetName: string;
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
@@ -299,7 +321,9 @@ export type ExtensionToWebviewMessage =
   | ServerReadyMessage
   | FilesListedMessage
   | DirectoryLoadedMessage
-  | AtopileSettingsResponseMessage;
+  | AtopileSettingsResponseMessage
+  | BackendStatusMessage
+  | SwitchLayoutMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;
@@ -334,11 +358,14 @@ export function initExtensionMessageListener(): void {
       message.type === 'atopileInstallError' ||
       message.type === 'activeFile' ||
       message.type === 'browseAtopilePathResult' ||
+      message.type === 'browseProjectPathResult' ||
       message.type === 'browseExportDirectoryResult' ||
       message.type === 'serverReady' ||
       message.type === 'filesListed' ||
       message.type === 'directoryLoaded' ||
-      message.type === 'atopileSettingsResponse'
+      message.type === 'atopileSettingsResponse' ||
+      message.type === 'backendStatus' ||
+      message.type === 'switchLayout'
     ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);

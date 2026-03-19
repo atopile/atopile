@@ -62,21 +62,16 @@ export default function GerberViewer({ src, className, style, hideControls = fal
       setError(null);
 
       try {
-        // Fetch the zip file
-        console.log('[GerberViewer] Fetching:', src);
         const response = await fetch(src);
         if (!response.ok) {
           throw new Error(`Failed to fetch gerbers: ${response.status} ${response.statusText}`);
         }
 
         const arrayBuffer = await response.arrayBuffer();
-        console.log('[GerberViewer] Received', arrayBuffer.byteLength, 'bytes');
         const zip = await JSZip.loadAsync(arrayBuffer);
 
         // Extract files from zip as File objects
         const files: File[] = [];
-        const allEntries = Object.keys(zip.files);
-        console.log('[GerberViewer] Zip contains', allEntries.length, 'entries:', allEntries);
 
         for (const [filename, zipEntry] of Object.entries(zip.files)) {
           if (zipEntry.dir) continue;
@@ -104,7 +99,6 @@ export default function GerberViewer({ src, className, style, hideControls = fal
           );
 
           if (!isGerberExt && !isKiCadNaming) {
-            console.log('[GerberViewer] Skipping non-gerber file:', baseName, 'ext:', ext);
             continue;
           }
 
@@ -113,38 +107,21 @@ export default function GerberViewer({ src, className, style, hideControls = fal
           // Create File with text/plain type for proper FileReader handling
           const file = new File([textContent], baseName, { type: 'text/plain' });
           files.push(file);
-          console.log('[GerberViewer] Added file:', baseName, 'size:', textContent.length, 'preview:', textContent.substring(0, 50));
         }
 
         if (files.length === 0) {
           throw new Error('No valid gerber files found in archive');
         }
 
-        console.log('[GerberViewer] Processing', files.length, 'gerber files with tracespace');
-
         // Use tracespace pipeline
         const readResult = await read(files);
-        console.log('[GerberViewer] Read result - layers:', readResult.layers.length, readResult.layers.map(l => `${l.type}:${l.side}`));
-
         const plotResult = plot(readResult);
-        console.log('[GerberViewer] Plot result:', Object.keys(plotResult));
-
         const renderLayersResult = renderLayers(plotResult);
-        console.log('[GerberViewer] Render layers result:', Object.keys(renderLayersResult));
-
         const boardResult = renderBoard(renderLayersResult);
-        console.log('[GerberViewer] Board result - top:', !!boardResult.top, 'bottom:', !!boardResult.bottom);
 
         // Convert to SVG strings
         const topSvgStr = stringifySvg(boardResult.top);
         const bottomSvgStr = stringifySvg(boardResult.bottom);
-
-        console.log('[GerberViewer] SVG lengths - top:', topSvgStr.length, 'bottom:', bottomSvgStr.length);
-
-        // Debug: Log first 500 chars of top SVG to see its structure
-        if (topSvgStr) {
-          console.log('[GerberViewer] Top SVG preview:', topSvgStr.substring(0, 500));
-        }
 
         setTopSvg(topSvgStr);
         setBottomSvg(bottomSvgStr);
@@ -191,11 +168,6 @@ export default function GerberViewer({ src, className, style, hideControls = fal
   }, [hiddenLayers]);
 
   const currentSvg = viewSide === 'top' ? topSvg : bottomSvg;
-
-  // Debug: log when SVG changes
-  useEffect(() => {
-    console.log('[GerberViewer] currentSvg changed, length:', currentSvg?.length || 0, 'viewSide:', viewSide);
-  }, [currentSvg, viewSide]);
 
   if (loading) {
     return (

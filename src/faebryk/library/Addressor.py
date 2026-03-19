@@ -19,19 +19,32 @@ class Addressor(fabll.Node):
     """
     Configures I2C/SPI device addresses via hardware address pins.
 
-    The Addressor creates a number of ElectricLogic address lines based on the
-    address_bits parameter. After the solver resolves the offset value, each
-    address line is connected to either hv (high/1) or lv (low/0) based on the
-    corresponding bit in the offset.
+    The final device address is: address = base + offset, where offset
+    determines the physical pin wiring.
 
-    The final device address is calculated as: address = base + offset
+    Template parameters:
+        address_bits: Number of address pins on the device (e.g. 1, 2, 3).
+        states_per_pin: Number of connection options per pin (default 2).
+            Use 2 for binary high/low pins. Use >2 for multi-state pins
+            (e.g. 4 for TI's GND/VS/SDA/SCL scheme).
 
-    Example usage in ato:
-        addressor = new Addressor<address_bits=2>
-        addressor.base = 0x48  # Device base address from datasheet
-        assert addressor.address is i2c.address
-        addressor.address_lines[0].line ~ device.ADDR0
-        addressor.address_lines[0].reference ~ power
+    Inputs to configure:
+        base: The lowest possible I2C address (e.g. 0x40).
+        address: Link to the bus address with `assert addressor.address is i2c.address`.
+        address_lines[i].line: Connect to the device's address pin (e.g. `package.A0`).
+        address_lines[i].reference: Connect to the pin's power rail.
+        state_options[i] (multi-state only): Connect each index to the electrical
+            node it represents (e.g. `state_options[0] ~ power.lv` for GND).
+            The addressor wires each pin to the correct state_option at solve time.
+
+    Binary mode (states_per_pin=2):
+        ElectricLogics are driven high or low to reference. No state_options needed.
+        Offset is the binary encoding: bit i of offset maps to pin i.
+
+    Multi-state mode (states_per_pin>2):
+        Each pin selects from state_options[0..N-1].
+        Offset encodes in mixed radix: pin i gets
+        `state_options[(offset // states_per_pin**i) % states_per_pin]`.
     """
 
     is_abstract = fabll.Traits.MakeEdge(fabll.is_abstract.MakeChild()).put_on_type()
@@ -49,8 +62,6 @@ class Addressor(fabll.Node):
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
 
-    address_lines: fabll._ChildField[F.Collections.SequenceProtocol]  # type: ignore[assignment]
-
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
     _single_electric_reference = fabll.Traits.MakeEdge(
         F.has_single_electric_reference.MakeChild()
@@ -59,6 +70,9 @@ class Addressor(fabll.Node):
 
     # PointerSequence for address lines - elements are added dynamically by factory()
     address_lines = F.Collections.PointerSequence.MakeChild()
+
+    # PointerSequence for state options (multi-state mode) - elements added by factory()
+    state_options = F.Collections.PointerSequence.MakeChild()
 
     # Design check trait for post-solve address line configuration
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
@@ -109,26 +123,55 @@ class Addressor(fabll.Node):
         # address_lines is a PointerSequence (dynamically added by factory())
         lines = self.address_lines.get().as_list()  # type: ignore[attr-defined]
         address_bits = len(lines)
-        max_offset = (1 << address_bits) - 1
-        if not 0 <= offset <= max_offset:
-            raise ValueError(f"Offset {offset} out of range [0, {max_offset}]")
 
-        for i, line_node in enumerate(lines):
-            line = F.ElectricLogic.bind_instance(line_node.instance)
-            line.set(bool((offset >> i) & 1))
+        # Check if multi-state mode (states exist)
+        state_list = self.state_options.get().as_list()
+
+        if len(state_list) > 0:
+            # Multi-state mode: connect each address line to the correct state
+            states_per_pin = len(state_list)
+            max_offset = states_per_pin**address_bits - 1
+            if not 0 <= offset <= max_offset:
+                raise ValueError(f"Offset {offset} out of range [0, {max_offset}]")
+
+            for i, line_node in enumerate(lines):
+                line = F.ElectricLogic.bind_instance(line_node.instance)
+                pin_state = (offset // (states_per_pin**i)) % states_per_pin
+                destination_node = state_list[pin_state]
+                destination = F.Electrical.bind_instance(destination_node.instance)
+                line.line.get()._is_interface.get().connect_to(destination)
+        else:
+            # Binary mode: set each address line high or low
+            max_offset = (1 << address_bits) - 1
+            if not 0 <= offset <= max_offset:
+                raise ValueError(f"Offset {offset} out of range [0, {max_offset}]")
+
+            for i, line_node in enumerate(lines):
+                line = F.ElectricLogic.bind_instance(line_node.instance)
+                line.set(bool((offset >> i) & 1))
 
     @classmethod
-    def MakeChild(cls, address_bits: int) -> fabll._ChildField[Self]:
+    def MakeChild(
+        cls, address_bits: int, states_per_pin: int = 2
+    ) -> fabll._ChildField[Self]:
         """
         Create an Addressor child field with the specified number of address bits.
 
         Uses factory() to create a concrete type with address_lines as a proper
         list of ElectricLogic children.
+
+        Args:
+            address_bits: Number of address pins.
+            states_per_pin: Number of states per pin (default 2 for binary high/low,
+                use >2 for multi-state pins like TI's GND/VS/SDA/SCL scheme).
         """
-        logger.debug(f"Addressor.MakeChild called: address_bits={address_bits}")
+        logger.debug(
+            f"Addressor.MakeChild called: address_bits={address_bits}, "
+            f"states_per_pin={states_per_pin}"
+        )
 
         # Use factory to create a concrete type with the right number of address lines
-        ConcreteAddressor = cls.factory(address_bits)
+        ConcreteAddressor = cls.factory(address_bits, states_per_pin)
         out = fabll._ChildField(ConcreteAddressor)
 
         # Setup constraint: offset is! address - base
@@ -143,8 +186,8 @@ class Addressor(fabll.Node):
             assert_=True,
         ).add_as_dependant(out)
 
-        # Constrain offset to valid range [0, 2^address_bits - 1]
-        max_offset_value = (1 << address_bits) - 1
+        # Constrain offset to valid range [0, states_per_pin^address_bits - 1]
+        max_offset_value = states_per_pin**address_bits - 1
         F.Expressions.GreaterOrEqual.MakeChild(
             [
                 F.Literals.Numbers.MakeChild(
@@ -164,23 +207,23 @@ class Addressor(fabll.Node):
             example="""
         import Addressor, I2C, ElectricPower
 
-        # For I2C device with 2 address pins (4 possible addresses)
-        addressor = new Addressor<address_bits=2>
-        addressor.base = 0x48  # Base address from datasheet
+        # Binary mode: 2 address pins (4 possible addresses)
+        addressor_binary = new Addressor<address_bits=2>
+        addressor_binary.base = 0x48
+        assert addressor_binary.address is i2c.address
+        addressor_binary.address_lines[0].line ~ device.ADDR0
+        addressor_binary.address_lines[0].reference ~ power
 
-        # Connect power reference for address pins
-        power_3v3 = new ElectricPower
-        for line in addressor.address_lines:
-            line.reference ~ power_3v3
-
-        # Connect address pins to device
-        device.addr0 ~ addressor.address_lines[0].line
-        device.addr1 ~ addressor.address_lines[1].line
-
-        # Connect to I2C interface
-        i2c_bus = new I2C
-        assert i2c_bus.address is addressor.address
-        device.i2c ~ i2c_bus
+        # Multi-state mode: 2 pins x 4 states (16 possible addresses)
+        addressor_multi_state = new Addressor<address_bits=2, states_per_pin=4>
+        addressor_multi_state.base = 0x40
+        assert addressor_multi_state.address is i2c.address
+        addressor_multi_state.state_options[0] ~ power.lv       # GND
+        addressor_multi_state.state_options[1] ~ power.hv       # VS
+        addressor_multi_state.state_options[2] ~ i2c.sda.line   # SDA
+        addressor_multi_state.state_options[3] ~ i2c.scl.line   # SCL
+        addressor_multi_state.address_lines[0].line ~ device.A0
+        addressor_multi_state.address_lines[0].reference ~ power
         """,
             language=F.has_usage_example.Language.ato,
         ).put_on_type()
@@ -188,7 +231,7 @@ class Addressor(fabll.Node):
 
     @classmethod
     @once
-    def factory(cls, address_bits: int) -> type[Self]:
+    def factory(cls, address_bits: int, states_per_pin: int = 2) -> type[Self]:
         """
         Create a concrete Addressor type with a fixed number of address bits.
 
@@ -197,13 +240,27 @@ class Addressor(fabll.Node):
            for direct indexed access
         2. MakeLink edges from the inherited `address_lines` PointerSequence to each
            ElectricLogic element for for-loop iteration in ato
+        3. (Multi-state mode only) Electrical children named `state_options[0]`, etc.
+           and corresponding MakeLink edges from the `state_options` PointerSequence
+
+        Args:
+            address_bits: Number of address pins.
+            states_per_pin: Number of states per pin (default 2 for binary).
         """
         if address_bits <= 0:
             raise ValueError("At least one address bit is required")
+        if states_per_pin < 2:
+            raise ValueError("states_per_pin must be at least 2")
 
-        ConcreteAddressor = fabll.Node._copy_type(
-            cls, name=f"Addressor<address_bits={address_bits}>"
-        )
+        if states_per_pin == 2:
+            name = f"Addressor<address_bits={address_bits}>"
+        else:
+            name = (
+                f"Addressor<address_bits={address_bits}, "
+                f"states_per_pin={states_per_pin}>"
+            )
+
+        ConcreteAddressor = fabll.Node._copy_type(cls, name=name)
 
         # Create ElectricLogic children with indexed names and link to PointerSequence
         # The address_lines PointerSequence is inherited from the base Addressor class
@@ -220,6 +277,19 @@ class Addressor(fabll.Node):
             )
             # Add edge as a class field so it gets processed
             ConcreteAddressor._handle_cls_attr(f"_address_line_link_{i}", edge)
+
+        # Multi-state mode: create Electrical state_options for each pin destination
+        if states_per_pin > 2:
+            for i in range(states_per_pin):
+                state = F.Electrical.MakeChild()
+                ConcreteAddressor._handle_cls_attr(f"state_options[{i}]", state)
+
+                edge = F.Collections.PointerSequence.MakeEdge(
+                    seq_ref=[cls.state_options],
+                    elem_ref=[state],
+                    index=i,
+                )
+                ConcreteAddressor._handle_cls_attr(f"_state_link_{i}", edge)
 
         return ConcreteAddressor
 
@@ -684,3 +754,125 @@ def test_addressor_expression_propagation():
     assert solver_result_num.get_single() == 1.0, (
         f"offset should be 1, got {solver_result_num.get_single()}"
     )
+
+
+# ---------------------------------------------------------------------------
+#                     Multi-state mode tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "address_bits,states_per_pin",
+    [(1, 4), (2, 4), (2, 3), (3, 4)],
+)
+def test_addressor_multi_state_factory(address_bits: int, states_per_pin: int):
+    """Test that multi-state factory creates correct state_options and address lines."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    AppType = fabll.Node._copy_type(
+        fabll.Node,
+        name=f"_App_ms_factory_{address_bits}_{states_per_pin}",
+    )
+    AppType._handle_cls_attr(
+        "addressor",
+        Addressor.MakeChild(address_bits=address_bits, states_per_pin=states_per_pin),
+    )
+
+    app = AppType.bind_typegraph(tg=tg).create_instance(g=g)
+    addressor = app.addressor.get()
+
+    # Verify address lines
+    lines = addressor.address_lines.get().as_list()
+    assert len(lines) == address_bits
+    for line in lines:
+        assert line.try_cast(F.ElectricLogic) is not None
+
+    # Verify state_options
+    state_list = addressor.state_options.get().as_list()
+    assert len(state_list) == states_per_pin
+    for state in state_list:
+        assert state.try_cast(F.Electrical) is not None
+
+
+def test_addressor_binary_mode_has_no_states():
+    """Test that binary mode (states_per_pin=2) creates no state_options."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _App(fabll.Node):
+        addressor = Addressor.MakeChild(address_bits=2)
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+    state_list = app.addressor.get().state_options.get().as_list()
+    assert len(state_list) == 0
+
+
+@pytest.mark.parametrize(
+    "offset,expected_pin_states",
+    [
+        # 2 pins, 4 states: pin_state(i) = (offset // 4^i) % 4
+        (0, [0, 0]),  # A0=GND, A1=GND
+        (1, [1, 0]),  # A0=VS,  A1=GND
+        (2, [2, 0]),  # A0=SDA, A1=GND
+        (3, [3, 0]),  # A0=SCL, A1=GND
+        (4, [0, 1]),  # A0=GND, A1=VS
+        (5, [1, 1]),  # A0=VS,  A1=VS
+        (10, [2, 2]),  # A0=SDA, A1=SDA
+        (15, [3, 3]),  # A0=SCL, A1=SCL
+    ],
+)
+def test_addressor_multi_state_sets_address_lines(
+    offset: int, expected_pin_states: list[int]
+):
+    """Test that multi-state address lines connect to correct state_options."""
+    from faebryk.core.solver.solver import Solver
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        power = F.ElectricPower.MakeChild()
+        addressor = Addressor.MakeChild(address_bits=2, states_per_pin=4)
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+    addressor = app.addressor.get()
+
+    # Connect address line references to power
+    for line_node in addressor.address_lines.get().as_list():
+        el = F.ElectricLogic.bind_instance(line_node.instance)
+        el.reference.get()._is_interface.get().connect_to(app.power.get())
+
+    # Set base and address to derive offset
+    base_value = 0.0
+    addressor.base.get().set_superset(g, base_value)
+    addressor.address.get().set_superset(g, base_value + float(offset))
+
+    # Run solver
+    solver = Solver()
+    solver.simplify(g, tg)
+    fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
+
+    # Run design checks
+    from faebryk.libs.app import checks as checks_mod
+
+    checks_mod.check_design(
+        app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_SETUP
+    )
+
+    # Verify each address line is connected to the expected state
+    address_lines = addressor.address_lines.get().as_list()
+    state_list = addressor.state_options.get().as_list()
+
+    for i, (line_node, expected_state_idx) in enumerate(
+        zip(address_lines, expected_pin_states)
+    ):
+        line = F.ElectricLogic.bind_instance(line_node.instance)
+        expected_state = F.Electrical.bind_instance(
+            state_list[expected_state_idx].instance
+        )
+        assert line.line.get()._is_interface.get().is_connected_to(expected_state), (
+            f"Address line {i} should be connected to "
+            f"state_options[{expected_state_idx}] for offset={offset}"
+        )

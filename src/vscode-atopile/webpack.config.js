@@ -22,10 +22,11 @@ const extensionConfig = {
     externals: {
         vscode: 'commonjs vscode', // the vscode-module is created on-the-fly and must be excluded. Add other modules that cannot be webpack'ed, 📖 -> https://webpack.js.org/configuration/externals/
         // modules added here also need to be added in the .vscodeignore file
+        ws: 'commonjs ws', // ws uses optional native addons (bufferutil) that can't be webpack'd
     },
     resolve: {
         // support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader
-        extensions: ['.ts', '.js'],
+        extensions: ['.ts', '.js', '.hbs'],
         fallback: {
             bufferutil: false,
             'utf-8-validate': false,
@@ -42,6 +43,10 @@ const extensionConfig = {
                         loader: 'ts-loader',
                     },
                 ],
+            },
+            {
+                test: /\.hbs$/,
+                type: 'asset/source',
             },
         ],
     },
