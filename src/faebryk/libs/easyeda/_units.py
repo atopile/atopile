@@ -11,14 +11,6 @@ def to_mm(dim: float) -> float:
     return dim * 0.254
 
 
-def fp_to_ki(dim: str | float) -> float:
-    """Convert EasyEDA raw units (possibly string) to KiCad mm, rounded."""
-    try:
-        return round(to_mm(float(dim)), 2)
-    except (ValueError, TypeError):
-        return 0.0
-
-
 def angle_to_ki(rotation: float) -> float:
     if math.isnan(rotation):
         return 0.0
@@ -28,14 +20,6 @@ def angle_to_ki(rotation: float) -> float:
 def fp_xy(x: float, y: float, bbox_x: float, bbox_y: float) -> tuple[float, float]:
     """Footprint coordinate: subtract bbox origin, round to 2dp."""
     return round(x - bbox_x, 2), round(y - bbox_y, 2)
-
-
-def sym_xy(x: float, y: float, bbox_x: float, bbox_y: float) -> tuple[float, float]:
-    """Symbol coordinate: subtract bbox, flip Y, convert EE→mm, round to 2dp."""
-    return (
-        round(to_mm(int(x) - int(bbox_x)), 2),
-        round(-to_mm(int(y) - int(bbox_y)), 2),
-    )
 
 
 MIN_STROKE_W = 0.01
@@ -55,9 +39,3 @@ def test_to_mm():
 
 def test_to_mm_negative():
     assert to_mm(-100) == pytest.approx(-25.4, abs=0.01)
-
-
-def test_fp_to_ki_conversion():
-    assert fp_to_ki(0) == 0
-    assert fp_to_ki("100") == pytest.approx(25.4, abs=0.01)
-    assert fp_to_ki("invalid") == 0.0

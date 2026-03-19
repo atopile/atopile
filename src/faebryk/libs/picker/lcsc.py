@@ -24,9 +24,9 @@ import faebryk.library._F as F
 from atopile.config import config as Gcfg
 from faebryk.libs.easyeda import api as easyeda_api
 from faebryk.libs.easyeda.api import EasyEDAModelNotFound, EasyEDAPartNotFound
-from faebryk.libs.easyeda.converter import FootprintBuilder, SymbolBuilder
-from faebryk.libs.easyeda.easyeda_types import Ee3dModelInfo, EeFootprint, EeSymbol
-from faebryk.libs.easyeda.parser import parse_footprint, parse_symbol
+from faebryk.libs.easyeda._footprint import FootprintBuilder
+from faebryk.libs.easyeda._symbol import SymbolBuilder
+from faebryk.libs.easyeda._types import Ee3dModelInfo
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.picker.picker import PickedPart, PickSupplier
 from faebryk.libs.util import ConfigFlag, not_none, once
@@ -191,8 +191,8 @@ class EasyEDAFootprint:
         return out
 
     @classmethod
-    def from_api(cls, ee_fp: "EeFootprint", model_path: str | None):
-        fp_file = FootprintBuilder(ee_fp, model_path).build()
+    def from_builder(cls, builder: FootprintBuilder, model_path: str | None):
+        fp_file = builder.build(model_path=model_path)
         return cls(fp_file)
 
     def dump(self, path: Path):
@@ -222,9 +222,8 @@ class EasyEDASymbol:
         self.symbol = symbol
 
     @classmethod
-    def from_api(cls, ee_sym: "EeSymbol"):
-        fp_lib_name = not_none(ee_sym.info.lcsc_id)
-        sym_file = SymbolBuilder(ee_sym, fp_lib_name).build()
+    def from_builder(cls, builder: SymbolBuilder):
+        sym_file = builder.build()
         return cls(sym_file)
 
     def serialize(self) -> bytes:
@@ -319,10 +318,10 @@ class EasyEDAPart:
         lifecycle = PartLifecycle.singleton()
 
         raw = data.raw()
-        ee_fp = parse_footprint(raw)
-        ee_sym = parse_symbol(raw)
+        fp_builder = FootprintBuilder(raw)
+        sym_builder = SymbolBuilder(raw, fp_lib_name=data.lcsc.number)
 
-        easyeda_model = ee_fp.model_3d
+        easyeda_model = fp_builder.model_3d
 
         if easyeda_model is not None:
             model_name = easyeda_model.name
@@ -339,15 +338,15 @@ class EasyEDAPart:
             lcsc_id=data.lcsc.number,
             description=data.description,
             mfn_pn=data.mfn_pn,
-            footprint=EasyEDAFootprint.from_api(ee_fp, kicad_model_path),
-            symbol=EasyEDASymbol.from_api(ee_sym),
+            footprint=EasyEDAFootprint.from_builder(fp_builder, kicad_model_path),
+            symbol=EasyEDASymbol.from_builder(sym_builder),
             # Use direct datasheet URL from atopile API if available
             datasheet_url=data._atopile_datasheet_url,
         )
         part._pre_model = easyeda_model
         # Only set _pre_datasheet for crawling fallback if no direct URL available
         if not data._atopile_datasheet_url:
-            part._pre_datasheet = ee_sym.info.datasheet
+            part._pre_datasheet = sym_builder.datasheet
 
         if download_model and part._pre_model is not None:
             part.load_model()

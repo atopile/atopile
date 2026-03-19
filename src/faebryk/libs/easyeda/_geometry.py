@@ -45,8 +45,7 @@ def _is_point_in_polygon(
 
 # Precomputed unit circle offsets for 12-point circle approximation.
 _CIRCLE_OFFSETS = [
-    (math.cos(2 * math.pi * i / 12), math.sin(2 * math.pi * i / 12))
-    for i in range(12)
+    (math.cos(2 * math.pi * i / 12), math.sin(2 * math.pi * i / 12)) for i in range(12)
 ]
 
 
