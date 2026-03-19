@@ -15,7 +15,7 @@ def convert_kicad_pick_and_place_to_jlcpcb(
     Convert KiCad pick and place file to JLCPCB pick and place file
     """
 
-    logger.info("Converting KiCad p&p file to JLCPCB format")
+    logger.debug("Converting KiCad p&p file to JLCPCB format")
 
     # Rename the following in the csv header and copy contents:
     # Ref to Designator PosX to Mid X PosY to Mid Y Rot to Rotation Side to Layer

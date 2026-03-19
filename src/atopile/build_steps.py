@@ -660,7 +660,7 @@ def pick_parts(ctx: BuildStepContext) -> None:
 def prepare_nets(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     pcb = ctx.require_pcb()
-    logger.info("Preparing nets")
+    logger.debug("Preparing nets")
     attach_random_designators(app.tg)
     nets = bind_electricals_to_fbrk_nets(app.tg, app.g)
 
@@ -669,7 +669,7 @@ def prepare_nets(ctx: BuildStepContext) -> None:
     for net in nets:
         if net.get_name() is None:
             continue
-        logger.info(f"Net with name '{net.get_name()}' found")
+        logger.debug(f"Net with name '{net.get_name()}' found")
     # We have to re-attach the footprints, and subsequently nets, because the first
     # attachment is typically done before the footprints have been created
     # and therefore many nets won't be re-attached properly. Also, we just created
@@ -692,7 +692,7 @@ def prepare_nets(ctx: BuildStepContext) -> None:
 )
 def post_solve_checks(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
-    logger.info("Running checks")
+    logger.debug("Running checks")
     check_design(
         app,
         stage=F.implements_design_check.CheckStage.POST_SOLVE,
@@ -774,14 +774,14 @@ def update_pcb(ctx: BuildStepContext) -> None:
                     title="Frozen failed",
                 )
             else:
-                logger.info("No changes to layout. Passed --frozen check.")
+                logger.debug("No changes to layout. Passed --frozen check.")
         # TODO this is always false
         elif original_pcb_file == pcb_file:
-            logger.info(
+            logger.debug(
                 "No changes to layout. Not writing %s", config.build.paths.layout
             )
         else:
-            logger.info(f"Updating layout {config.build.paths.layout}")
+            logger.debug(f"Updating layout {config.build.paths.layout}")
             sync = LayoutSync(pcb_file.kicad_pcb)
             original_fps = {
                 addr: fp
@@ -836,7 +836,7 @@ def update_pcb(ctx: BuildStepContext) -> None:
     backup_file = (backup_dir / artifact_name).with_suffix(
         f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
     )
-    logger.info(f"Backing up layout to {backup_file}")
+    logger.debug(f"Backing up layout to {backup_file}")
     backup_file.write_bytes(config.build.paths.layout.read_bytes())
     _update_layout(pcb.pcb_file, original_pcb)
 
@@ -1078,7 +1078,7 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
         kicad_pcb_dest = config.build.paths.output_base.with_suffix(".kicad_pcb")
         try:
             shutil.copy2(tmp_layout, kicad_pcb_dest)
-            logger.info(f"Copied KiCad PCB to {kicad_pcb_dest}")
+            logger.debug(f"Copied KiCad PCB to {kicad_pcb_dest}")
         except Exception as e:
             logger.warning(f"Failed to copy KiCad PCB: {e}")
 

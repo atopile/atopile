@@ -108,7 +108,7 @@ def run_build_targets(ctx: BuildStepContext) -> None:
 
     from atopile import build_steps
 
-    logger.info(
+    logger.debug(
         "Build targets config: include=%s exclude=%s env_exclude=%s env_include=%s",
         list(config.build.targets),
         list(config.build.exclude_targets),
@@ -118,7 +118,7 @@ def run_build_targets(ctx: BuildStepContext) -> None:
     targets = ({build_steps.generate_default.name} | set(config.build.targets)) - set(
         config.build.exclude_targets
     )
-    logger.info("Resolved build targets: %s", sorted(targets))
+    logger.debug("Resolved build targets: %s", sorted(targets))
 
     # Count targets from DAG without materializing the generator
     # (the generator yields based on succeeded status which we can't check upfront)

@@ -60,7 +60,7 @@ def export_power_tree(
     if relevant_operands:
         solver.simplify_for(*relevant_operands)
     else:
-        logger.info("No relevant parameters found for power tree solver pass")
+        logger.debug("No relevant parameters found for power tree solver pass")
     mermaid_lines = [
         "graph TD",
         "  classDef source fill:#1b4b36,stroke:#5fd07f,stroke-width:2px,color:#d7f5df;",
@@ -156,4 +156,4 @@ def export_power_tree(
     mermaid_path.write_text(
         "```mermaid\n" + "\n".join(mermaid_lines) + "\n```\n", encoding="utf-8"
     )
-    logger.info("Wrote power tree to %s", mermaid_path)
+    logger.debug("Wrote power tree to %s", mermaid_path)

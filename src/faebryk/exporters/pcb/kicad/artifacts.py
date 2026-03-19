@@ -190,7 +190,7 @@ def export_gerber(pcb_file: Path, gerber_zip_file: Path) -> None:
     Gerber export using the kicad-cli
     """
 
-    logger.info(f"Exporting gerber files to {gerber_zip_file}")
+    logger.debug(f"Exporting gerber files to {gerber_zip_file}")
     gerber_dir = gerber_zip_file.parent
     gerber_dir.mkdir(parents=True, exist_ok=True)
 
@@ -262,7 +262,7 @@ def export_pcb_summary(pcb_file: Path, summary_file: Path) -> None:
     """
     from faebryk.libs.kicad.fileformats import kicad
 
-    logger.info(f"Exporting PCB summary to {summary_file}")
+    logger.debug(f"Exporting PCB summary to {summary_file}")
 
     # Load the PCB file
     pcb = kicad.loads(kicad.pcb.PcbFile, pcb_file)
