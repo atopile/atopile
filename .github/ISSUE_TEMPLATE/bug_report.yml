@@ -13,7 +13,7 @@ body:
       label: Current Behaviour
       description: Describe what went wrong including the steps to reproduce this bug.
       placeholder: Tell us what you see!
-      value: "An exeption occured at line 201 in faebryk/exporters/netlist/kicad/netlist.py when running samples/experiment.py"
+      value: "An exception occurred at line 201 in faebryk/exporters/netlist/kicad/netlist.py when running samples/experiment.py"
     validations:
       required: true
   - type: textarea
