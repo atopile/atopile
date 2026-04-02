@@ -37,7 +37,7 @@ zig, graph, faebryk, fabll, domain-layer, build-server, frontend
 
 # SKILLS
 
-For detailed explanations of submodules read the correspondig skill.
+For detailed explanations of submodules read the corresponding skill.
 Skills are located in `.claude/skills/`.
 
 ```
