@@ -1180,7 +1180,6 @@ fn wrap_bfs_path_get_edges() type {
             for (path.traversed_edges.items, 0..) |traversed_edge, i| {
                 const py_edge = makeEdgePyObject(traversed_edge.edge);
                 if (py_edge == null or py.PyList_SetItem(edges_list, @intCast(i), py_edge) < 0) {
-                    if (py_edge != null) py.Py_DECREF(py_edge.?);
                     py.Py_DECREF(edges_list.?);
                     return null;
                 }
@@ -1478,7 +1477,6 @@ fn wrap_graphview_get_nodes() type {
                 };
                 const py_node = makeBoundNodePyObject(bound_node);
                 if (py_node == null or py.PyList_SetItem(nodes_list, @intCast(i), py_node) < 0) {
-                    if (py_node != null) py.Py_DECREF(py_node.?);
                     py.Py_DECREF(nodes_list.?);
                     return null;
                 }
