@@ -768,7 +768,6 @@ fn wrap_edge_composition_get_children_query() type {
                 };
                 const py_node = graph_py.makeBoundNodePyObject(bound_node);
                 if (py_node == null or py.PyList_SetItem(py_list, @intCast(i), py_node) < 0) {
-                    if (py_node != null) py.Py_DECREF(py_node.?);
                     py.Py_DECREF(py_list);
                     return null;
                 }
@@ -4853,7 +4852,6 @@ fn wrap_typegraph_get_type_instance_overview() type {
 
                 // Set list item (steals reference)
                 if (py.PyList_SetItem(py_list, @intCast(i), py_tuple) < 0) {
-                    py.Py_DECREF(py_tuple);
                     py.Py_DECREF(py_list);
                     return null;
                 }
@@ -6264,7 +6262,6 @@ fn wrap_typegraph_collect_make_links() type {
                 }
 
                 if (py.PyList_SetItem(list_obj, @as(isize, @intCast(idx)), tuple_obj) != 0) {
-                    py.Py_DECREF(tuple_obj.?);
                     py.Py_DECREF(list_obj.?);
                     return null;
                 }
@@ -6579,7 +6576,6 @@ fn wrap_typegraph_collect_pointer_members() type {
                 }
 
                 if (py.PyList_SetItem(list_obj, @as(isize, @intCast(idx)), tuple_obj) != 0) {
-                    py.Py_DECREF(tuple_obj.?);
                     py.Py_DECREF(list_obj.?);
                     return null;
                 }
