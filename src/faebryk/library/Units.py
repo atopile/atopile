@@ -1211,7 +1211,7 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, tuple[str, ...]] = {
     _UnitRegistry.Coulomb: ("C",),
     _UnitRegistry.Volt: ("V", "volt", "voltage"),
     _UnitRegistry.Farad: ("F", "farad"),
-    _UnitRegistry.Ohm: ("Ω", "ohm", "ohms"),
+    _UnitRegistry.Ohm: ("Ω", "ohm", "ohms", "resistance"),
     _UnitRegistry.Siemens: ("S",),
     _UnitRegistry.Weber: ("Wb",),
     _UnitRegistry.Tesla: ("T",),
