@@ -2604,6 +2604,42 @@ class TestModuleTemplating:
         assert "addressor2" in identifiers
         assert "addressor4" in identifiers
 
+    def test_module_templating_mounting_hole(self):
+        """MountingHole accepts the template args from its usage example."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("MODULE_TEMPLATING")
+            import MountingHole
+
+            module App:
+                m3_padded = new MountingHole<metric_screw_size="M3", pad_type="Pad">
+                m6_no_pad = new MountingHole<metric_screw_size="M6", pad_type="NoPad">
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        identifiers = [
+            identifier
+            for identifier, _ in tg.collect_make_children(type_node=app_type)
+            if identifier
+        ]
+
+        assert "m3_padded" in identifiers
+        assert "m6_no_pad" in identifiers
+
+    def test_module_templating_mounting_hole_invalid_size(self):
+        """Invalid metric_screw_size raises a user-facing error."""
+        with pytest.raises(DslException, match="metric_screw_size"):
+            build_type(
+                """
+                #pragma experiment("MODULE_TEMPLATING")
+                import MountingHole
+
+                module App:
+                    bad = new MountingHole<metric_screw_size="M7">
+                """
+            )
+
 
 class TestAssignmentOverride:
     """Test assignment override functionality for legacy sugar syntax."""
