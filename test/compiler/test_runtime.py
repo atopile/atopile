@@ -1729,6 +1729,26 @@ def test_assign_to_child_parameter():
     )
 
 
+def test_resistance_unit_alias():
+    _, _, _, result, app_instance = build_instance(
+        """
+        module App:
+            total_resistance: resistance
+            total_resistance = 10kohm
+        """,
+        "App",
+    )
+    assert "App" in result.state.type_roots
+    res_param = F.Parameters.NumericParameter.bind_instance(
+        _get_child(app_instance, "total_resistance")
+    )
+    assert res_param.get_values() == [10000.0, 10000.0]
+    assert (
+        fabll.Traits(res_param.force_get_display_units()).get_obj_raw().get_type_name()
+        == "Ohm"
+    )
+
+
 def test_slice_non_list():
     with pytest.raises(
         DslException,
