@@ -3617,7 +3617,12 @@ class TestMakeChildDeduplication:
         literal = param.force_extract_superset()
         assert literal is not None
         assert param.get_values() == [10000.0, 10000.0]
-        assert param.force_get_display_units().get_symbols() == ["Ω", "ohm", "ohms"]
+        assert param.force_get_display_units().get_symbols() == [
+            "Ω",
+            "ohm",
+            "ohms",
+            "resistance",
+        ]
         assert (
             fabll.Traits(param.force_get_units()).get_obj_raw().get_type_node()
             == F.Units.Ohm.bind_typegraph(tg=tg).as_type_node().instance
