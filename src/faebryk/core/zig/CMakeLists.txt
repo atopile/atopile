@@ -79,14 +79,21 @@ if (APPLE)
 endif()
 
 # CPU feature level (portability) ------------------------------------------------
-# Set ATOPILE_ZIG_CPU to override the default "native" CPU target.
-# Use "baseline" for portable x86_64 builds (no AVX-512, etc.)
+# Set ATOPILE_ZIG_CPU to a Zig CPU model (e.g. "baseline", "x86_64_v2") to override
+# the default "native" CPU target. Native builds are only safe on the machine that
+# built them: elsewhere they crash with SIGILL / 0xC000001D on the first instruction
+# that CPU lacks (e.g. AVX-512). So wheels built by cibuildwheel default to baseline.
 set(ZIG_CPU_ARG "")
-if(DEFINED ENV{ATOPILE_ZIG_CPU})
-  set(ZIG_CPU_ARG -Dcpu=$ENV{ATOPILE_ZIG_CPU})
-  set(_CPU_TARGET_FOR_STAMP "$ENV{ATOPILE_ZIG_CPU}")
+set(_ZIG_CPU "$ENV{ATOPILE_ZIG_CPU}")
+if("${_ZIG_CPU}" STREQUAL "" AND DEFINED ENV{CIBUILDWHEEL})
+  set(_ZIG_CPU "baseline")
+  message(WARNING "ATOPILE_ZIG_CPU is not set, building this wheel for the baseline CPU")
+endif()
+if(NOT "${_ZIG_CPU}" STREQUAL "")
+  set(ZIG_CPU_ARG -Dcpu=${_ZIG_CPU})
+  set(_CPU_TARGET_FOR_STAMP "${_ZIG_CPU}")
   string(REGEX REPLACE "[^A-Za-z0-9_.-]" "_" _CPU_TARGET_FOR_STAMP "${_CPU_TARGET_FOR_STAMP}")
-  message(STATUS "Zig CPU target: $ENV{ATOPILE_ZIG_CPU}")
+  message(STATUS "Zig CPU target: ${_ZIG_CPU}")
 endif()
 
 # Stamp file includes target architecture and CPU target to keep separate
