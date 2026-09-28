@@ -14,6 +14,12 @@ on:
 
 env:
   FORCE_COLOR: 3
+  # Build the Zig core for the baseline CPU of each wheel's architecture (x86-64-v1,
+  # or core2 / apple_m1 on macOS) instead of the runner's CPU; see "CPU feature
+  # level" in src/faebryk/core/zig/CMakeLists.txt. x86_64_v2 was only ~3% faster,
+  # but would crash on CPUs and VMs without SSE4.2/POPCNT (e.g. QEMU's qemu64).
+  # Also the level scripts/check_wheel_cpu.py enforces, so it must be one it knows.
+  ATOPILE_ZIG_CPU: baseline
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -64,8 +70,9 @@ jobs:
 
       - uses: pypa/cibuildwheel@v3.3
         env:
-          # Force portable x86_64 wheels for Linux builds during packaging.
-          ATOPILE_ZIG_CPU: baseline
+          # Linux wheels are built in a container that only sees the host env vars
+          # listed here
+          CIBW_ENVIRONMENT_PASS_LINUX: ATOPILE_ZIG_CPU
           CIBW_ARCHS_LINUX: x86_64
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
@@ -80,6 +87,14 @@ jobs:
         with:
           name: cibw-wheels-ubuntu-latest
           path: wheelhouse/*.whl
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      # Also checked here (after the upload, so check_wheels sees failing wheels too),
+      # since Docker only waits for this job
+      - name: Check wheel CPU compatibility
+        run: uv run scripts/check_wheel_cpu.py --cpu "$ATOPILE_ZIG_CPU" wheelhouse
 
 
   build_wheels_macos:
@@ -131,13 +146,44 @@ jobs:
           path: wheelhouse/*.whl
 
 
+  # Reject wheels built for the runner's CPU instead of ATOPILE_ZIG_CPU, which crash
+  # with SIGILL / 0xC000001D on CPUs without its extensions (e.g. AVX-512)
+  check_wheels:
+    name: Check Wheel CPU Compatibility
+    needs: [build_wheels_linux, build_wheels_macos, build_wheels_windows]
+    runs-on: ubuntu-latest
+    # Check whatever was built, so that publish_wheels can still ship it
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cibw-wheels-*
+          merge-multiple: true
+          path: wheelhouse
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Check wheel CPU compatibility
+        run: uv run scripts/check_wheel_cpu.py --cpu "$ATOPILE_ZIG_CPU" wheelhouse
+
+
   publish_wheels:
     name: Publish Wheels
-    needs: [build_wheels_linux, build_wheels_macos, build_wheels_windows, build_sdist]
+    needs: [build_wheels_linux, build_wheels_macos, build_wheels_windows, build_sdist, check_wheels]
     runs-on: ubuntu-latest
-    # Run even if some wheel builds failed (will publish whatever succeeded)
+    # Run even if some wheel builds failed (will publish whatever succeeded),
+    # but never if any built wheel failed the CPU check
     if: |
       !cancelled() &&
+      needs.check_wheels.result == 'success' &&
       github.repository == 'atopile/atopile' &&
       (github.event_name == 'release' && github.event.action == 'published' || github.event_name == 'push' && github.ref == 'refs/heads/main')
     environment: pypi
