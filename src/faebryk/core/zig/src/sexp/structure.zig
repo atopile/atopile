@@ -449,7 +449,9 @@ fn handlePositionalFields(comptime T: type, allocator: std.mem.Allocator, items:
                 if (has_default) {
                     const actual_type = if (comptime isOptional(field.type)) @typeInfo(field.type).optional.child else field.type;
                     if (@typeInfo(actual_type) == .@"enum") {
-                        if (ast.getSymbol(items[idx])) |sym| {
+                        while (idx < items.len and !consumed) : (idx += 1) {
+                            if (ast.isList(items[idx])) continue;
+                            const sym = ast.getSymbol(items[idx]) orelse break;
                             var ok = false;
                             inline for (std.meta.fields(actual_type)) |ef| {
                                 if (std.mem.eql(u8, sym, ef.name)) ok = true;
@@ -469,13 +471,10 @@ fn handlePositionalFields(comptime T: type, allocator: std.mem.Allocator, items:
                                 setCtx(T, items[idx], field.name, null);
                                 @field(result.*, field.name) = try decodeWithMetadata(field.type, allocator, items[idx], fm);
                                 fields_set.set(field_idx);
-                                idx += 1;
                                 consumed = true;
-                            } else {
-                                if (comptime isOptional(field.type)) @field(result.*, field.name) = null;
-                                fields_set.set(field_idx);
                             }
-                        } else {
+                        }
+                        if (!consumed) {
                             if (comptime isOptional(field.type)) @field(result.*, field.name) = null;
                             fields_set.set(field_idx);
                         }

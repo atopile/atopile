@@ -214,6 +214,11 @@ class E_Attr(str, Enum):
     EXCLUDE_FROM_BOM = "exclude_from_bom"
     ALLOW_MISSING_COURTYARD = "allow_missing_courtyard"
 
+class E_via_type(str, Enum):
+    BLIND = "blind"
+    MICRO = "micro"
+    BURIED = "buried"
+
 class E_zone_fill_enable(str, Enum):
     YES = "yes"
 
@@ -808,6 +813,7 @@ class ViaTenting:
     def __zig_address__(self) -> int: ...
 
 class Via:
+    type: str | None
     at: Xy
     size: float
     drill: float
@@ -826,6 +832,7 @@ class Via:
     def __init__(
         self,
         *,
+        type: str | None,
         at: Xy,
         size: float,
         drill: float,
