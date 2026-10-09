@@ -702,7 +702,14 @@ pub const ViaTenting = struct {
     back: bool = false,
 };
 
+pub const E_via_type = enum {
+    blind,
+    micro,
+    buried,
+};
+
 pub const Via = struct {
+    type: ?E_via_type = null,
     at: Xy,
     size: f64,
     drill: f64,
@@ -717,6 +724,10 @@ pub const Via = struct {
     free: ?bool = null,
     locked: ?bool = null,
     uuid: ?str = null,
+
+    pub const fields_meta = .{
+        .type = structure.SexpField{ .positional = true },
+    };
 };
 
 // Zone structures

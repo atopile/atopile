@@ -601,6 +601,76 @@ def test_zone_connect_pads_default_mode_roundtrip():
     assert "thermal_reliefs" not in dumped
 
 
+def test_via_type_roundtrip():
+    """Test that via type tokens (blind/micro) survive round-trip."""
+    sexp_template = """
+    (kicad_pcb
+        (generator "test_atopile")
+        (generator_version "latest")
+        (via {via_type}
+            (at 0 0)
+            (size 0.275)
+            (drill 0.1)
+            (layers "F.Cu" "In1.Cu")
+            (net 1)
+            (uuid "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        )
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    for via_type, expected in [
+        ("blind", kicad.pcb.E_via_type.blind),
+        ("micro", kicad.pcb.E_via_type.micro),
+        ("", None),
+    ]:
+        pcb = kicad.loads(kicad.pcb.PcbFile, sexp_template.format(via_type=via_type))
+        via = pcb.kicad_pcb.vias[0]
+        assert via.type == expected
+
+        dumped = kicad.dumps(pcb)
+        if expected is not None:
+            assert f"(via {via_type}" in dumped
+        else:
+            assert "(via" in dumped
+            assert "blind" not in dumped
+            assert "micro" not in dumped
+
+        pcb2 = kicad.loads(kicad.pcb.PcbFile, dumped)
+        assert pcb2.kicad_pcb.vias[0].type == expected
+
+
+def test_via_locked_type_roundtrip():
+    """Test that a locked blind via keeps both tokens (KiCad writes locked before the type)."""
+    from faebryk.libs.kicad.fileformats import kicad
+
+    sexp = """
+    (kicad_pcb
+        (generator "test_atopile")
+        (generator_version "latest")
+        (via locked blind
+            (at 0 0)
+            (size 0.275)
+            (drill 0.1)
+            (layers "F.Cu" "In1.Cu")
+            (net 1)
+            (uuid "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        )
+    )
+    """
+    pcb = kicad.loads(kicad.pcb.PcbFile, sexp)
+    via = pcb.kicad_pcb.vias[0]
+    assert via.locked is True
+    assert via.type == kicad.pcb.E_via_type.blind
+
+    dumped = kicad.dumps(pcb)
+    assert "blind" in dumped
+
+    pcb2 = kicad.loads(kicad.pcb.PcbFile, dumped)
+    assert pcb2.kicad_pcb.vias[0].locked is True
+    assert pcb2.kicad_pcb.vias[0].type == kicad.pcb.E_via_type.blind
+
+
 def test_malformed_sexp_empty_list():
     """Test that parsing empty nested lists doesn't crash (segfault fix)."""
     sexp = """
