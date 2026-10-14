@@ -7,9 +7,8 @@
 </h1>
 
 <p align="center">
-  <a href="https://pypi.org/project/atopile/"><img alt="PyPI" src="https://img.shields.io/pypi/v/atopile.svg"></a>
+  <a href="https://atopile.io"><img alt="Get started" src="https://img.shields.io/badge/get_started-atopile.io-brightgreen"></a>
   <a href="https://docs.atopile.io/"><img alt="Docs" src="https://img.shields.io/badge/docs-atopile.io-blue"></a>
-  <a href="https://packages.atopile.io/"><img alt="Packages" src="https://img.shields.io/badge/packages-registry-brightgreen"></a>
   <a href="https://discord.gg/CRe5xaDBr3"><img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -18,9 +17,11 @@
 
 Write hardware like software. atopile is a language, compiler, and toolchain for electronics—declarative `.ato` files, deep validation, and layout that works natively with KiCad.
 
-<p align="center">
-  <img src="assets/tool.jpeg" alt="atopile editor with a project open" width="1152">
-</p>
+## Get started
+
+**Start at [atopile.io](https://atopile.io)** and choose **Launch atopile** to sign in to the [browser workspace](https://app.atopile.io). Write your circuit in `.ato`, build and validate it, and work on the PCB layout with KiCad in the same workspace. No local editor, extension, or KiCad installation is required.
+
+Follow the quickstart inside the editor, where you'll also find language basics, the standard library reference, and examples. The [documentation landing page](https://docs.atopile.io/) points to the workspace. For existing projects, see the [0.16 transition notes](https://atopile.io/blog/atopile-v16).
 
 ## Why atopile
 
@@ -28,36 +29,11 @@ Write hardware like software. atopile is a language, compiler, and toolchain for
 - Capture intent with equations directly in your design
 - Automatic parametric picking of discrete components
 
-## Install
-
-The easiest way is via the editor extension—it installs and manages `ato` for you:
-
-- VS Code/Cursor extension: https://marketplace.visualstudio.com/items?itemName=atopile.atopile
-
-Advanced setups and CLI installs: https://docs.atopile.io/atopile/guides/install
-
-## Quickstart (2 minutes)
-
-1. Install the extension (link above)
-
-2. In the editor, run “atopile: Open Example” and pick one
-
-3. Press the ▶ in the ato menu bar to build, or run `ato build` from the terminal
-
-4. Open layout when ready
-
-Notes:
-
-- The ato menu bar is in the bottom-left of your VS Code/Cursor window
-- KiCad is optional to get started. Without it, you won’t open the PCB, but builds still run and update the `.kicad_pcb`. Install later when you’re ready for layout: https://docs.atopile.io/atopile/quickstart
-
 ## How it works
 
 - `ato` is a declarative language for electronics: modules, interfaces, units, tolerances, and assertions
 - The compiler solves constraints, picks parts, runs checks, and updates your KiCad layout
-- The extension adds language services and one‑click controls
-  
-Learn more: https://docs.atopile.io/atopile/essentials/1-the-ato-language
+- The browser workspace brings the editor, builds, documentation, and layout tools together
 
 ### Where atopile fits in
 
@@ -73,47 +49,37 @@ High-level steps:
 
 ## Example Projects
 
-- Open examples via the editor (“atopile: Open Example”) https://github.com/atopile/atopile/tree/main/examples
+Browse the [repository examples](examples) and these hardware projects built with atopile:
+
 - NONOS — Open-source smart speaker https://github.com/atopile/nonos
 - DSP - Open-source multi-channel DSP https://github.com/atopile/dsp
 - AI-Pin — Vibe-coded Humane Pin https://github.com/atopile/ai-pin
 - Hyperion — 300K nit display for raves https://github.com/atopile/hyperion
-- Cellsim - 18 channel battery cell simulator https://github.com/atopile/cellsim
 - ESPaper - ESP32 epaper display driver https://github.com/atopile/hivehaus/tree/master/src/products/espaper
-
-## Packages and parts
-
-- Browse and install modules from the registry: https://packages.atopile.io
-- Guide: https://docs.atopile.io/atopile/essentials/4-packages
-- Publish your own: https://docs.atopile.io/atopile/guides/publish
-
-## Compatibility
-
-- OS: macOS, Linux, Windows (WSL recommended)
-- Recommended editors: VS Code / Cursor
-- EDA: KiCad recommended for layout; not required to start
 
 ## Contributing and development
 
-- Development setup: https://docs.atopile.io/atopile/guides/development
-- Editable install (for working on atopile itself): https://docs.atopile.io/atopile/guides/install#editable-installation-best-for-development
-- Run tests:
+This repository contains the open-source compiler and toolchain. The instructions below are for working on atopile itself; start at [atopile.io](https://atopile.io) to design a board.
+
+- Read the [repository overview](AGENTS.md) and [development workflow](.claude/skills/dev/SKILL.md).
+- Source setup: [Python and build requirements](pyproject.toml), and the [dependency installation and build steps used in CI](.github/workflows/pytest.yml).
+- With a development environment activated, compile native bindings and run tests:
 
 ```sh
-pytest -q
+ato dev compile
+ato dev test --llm
 ```
 
-- Fast worktree setup (CoW-clone `.venv` + Zig cache/output, then path rewrite):
+- From an existing development checkout, create a worktree with a copy of its `.venv` and Zig build artifacts:
 
 ```sh
-ato dev worktree <suffix>
+ato dev worktree <suffix> --branch fix/<suffix> --no-cd
 cd ../atopile_<suffix>
 source .venv/bin/activate
 ato --help
 ```
 
-By default this command starts an interactive shell in the new worktree.
-Pass `--no-cd` to skip shell handoff.
+Omit `--no-cd` to enter an interactive shell in the new worktree automatically.
 
 - Issues and feature requests: https://github.com/atopile/atopile/issues
 
@@ -124,4 +90,4 @@ Pass `--no-cd` to skip shell handoff.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](LICENSE).
