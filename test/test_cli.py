@@ -59,3 +59,36 @@ def test_create_project():
     assert (proj_dir / "README.md").is_file()
     assert (proj_dir / "ato.yaml").is_file()
     assert (proj_dir / ".github").is_dir()
+
+
+@pytest.mark.usefixtures("from_temp_dir")
+def test_create_project_path_outside_cwd(tmp_path_factory: pytest.TempPathFactory):
+    # Regression: `create project --path <outside cwd>` used to crash while
+    # printing the final "cd" hint, because relative_to(cwd) raises ValueError
+    # when the project lives outside the current directory.
+    outside_dir = tmp_path_factory.mktemp("outside")
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "atopile",
+            "create",
+            "project",
+            "--path",
+            str(outside_dir),
+        ],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "NONINTERACTIVE": "1"},
+    )
+
+    if process.returncode != 0:
+        pytest.fail(
+            f"Process failed with code {process.returncode}\n"
+            f"STDOUT:\n{process.stdout}\n"
+            f"STDERR:\n{process.stderr}"
+        )
+    assert "is not in the subpath" not in process.stderr
+    proj_dir = outside_dir / "my_first_ato_project"
+    assert proj_dir.exists() and proj_dir.is_dir()
+    assert (proj_dir / "ato.yaml").is_file()
