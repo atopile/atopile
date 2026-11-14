@@ -69,7 +69,14 @@ def _open_in_editor_or_print_path(path: Path):
         # open in vscode / cursor
         subprocess.Popen([code_bin, path])
     else:
-        rich_print_robust(f" \n[cyan]cd {path.relative_to(Path.cwd())}[/cyan]")
+        # Show a relative path when the project is under the current directory,
+        # otherwise the absolute path. relative_to() raises ValueError when the
+        # project was created outside cwd (e.g. `ato create project --path /tmp/x`).
+        try:
+            cd_path = path.relative_to(Path.cwd())
+        except ValueError:
+            cd_path = path
+        rich_print_robust(f" \n[cyan]cd {cd_path}[/cyan]")
 
 
 stuck_user_helper_generator = _stuck_user_helper()
