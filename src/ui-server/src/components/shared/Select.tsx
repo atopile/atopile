@@ -1,5 +1,3 @@
-// TODO: Add keyboard navigation (arrow keys, type-ahead) if used in
-//       VS Code extension webviews where keyboard accessibility matters.
 import {
   createContext,
   useContext,
@@ -7,8 +5,10 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useId,
   type ReactNode,
   type HTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
 import './Select.css'
@@ -29,6 +29,13 @@ interface SelectContextValue {
   onValueChange: (v: string | null) => void
   items: SelectItem[]
   disabled: boolean
+  /** Index of the keyboard-highlighted item, or -1 for none. */
+  highlightedIndex: number
+  setHighlightedIndex: (i: number) => void
+  /** Stable id of the listbox, used to wire aria-activedescendant. */
+  listboxId: string
+  /** Shared keydown handler attached to the trigger (the focused element). */
+  onTriggerKeyDown: (e: ReactKeyboardEvent<HTMLButtonElement>) => void
 }
 
 const SelectCtx = createContext<SelectContextValue | null>(null)
@@ -38,6 +45,8 @@ function useSelectCtx() {
   if (!ctx) throw new Error('Select.* must be used inside <Select>')
   return ctx
 }
+
+const optionId = (listboxId: string, index: number) => `${listboxId}-opt-${index}`
 
 /* ---- Select (root) ---- */
 
@@ -65,6 +74,12 @@ export function Select({
 }: SelectProps) {
   const [open, setOpen] = useState(false)
   const [internalValue, setInternalValue] = useState(defaultValue)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const listboxId = useId()
+  const typeahead = useRef<{ query: string; timer: ReturnType<typeof setTimeout> | null }>({
+    query: '',
+    timer: null,
+  })
 
   const isControlled = valueProp !== undefined
   const value = isControlled ? valueProp : internalValue
@@ -77,8 +92,114 @@ export function Select({
     [isControlled, onValueChange],
   )
 
+  // When the list opens, highlight the selected item (or the first one);
+  // when it closes, clear the highlight. Deliberately keyed on `open` only so
+  // changing the value while open does not move the highlight.
+  useEffect(() => {
+    if (!open) {
+      setHighlightedIndex(-1)
+      return
+    }
+    const selectedIndex = items.findIndex((it) => it.value === value)
+    setHighlightedIndex(selectedIndex >= 0 ? selectedIndex : 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const runTypeahead = useCallback(
+    (char: string) => {
+      const n = items.length
+      if (n === 0) return
+      if (typeahead.current.timer) clearTimeout(typeahead.current.timer)
+      const fresh = typeahead.current.query === ''
+      typeahead.current.query += char.toLowerCase()
+      const query = typeahead.current.query
+      // Fresh single char: search after the current item so repeats cycle.
+      // Continued query: include the current item so it stays put if it matches.
+      const from = fresh ? highlightedIndex : highlightedIndex - 1
+      for (let offset = 1; offset <= n; offset++) {
+        const idx = (((from + offset) % n) + n) % n
+        if (items[idx].label.toLowerCase().startsWith(query)) {
+          setHighlightedIndex(idx)
+          break
+        }
+      }
+      typeahead.current.timer = setTimeout(() => {
+        typeahead.current.query = ''
+      }, 500)
+    },
+    [items, highlightedIndex],
+  )
+
+  const onTriggerKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+      if (disabled) return
+      const n = items.length
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault()
+          if (!open) setOpen(true)
+          else if (n > 0) setHighlightedIndex((highlightedIndex + 1) % n)
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          if (!open) setOpen(true)
+          else if (n > 0) setHighlightedIndex(highlightedIndex <= 0 ? n - 1 : highlightedIndex - 1)
+          break
+        case 'Home':
+          if (open && n > 0) {
+            e.preventDefault()
+            setHighlightedIndex(0)
+          }
+          break
+        case 'End':
+          if (open && n > 0) {
+            e.preventDefault()
+            setHighlightedIndex(n - 1)
+          }
+          break
+        case 'Enter':
+        case ' ':
+          e.preventDefault()
+          if (!open) setOpen(true)
+          else if (highlightedIndex >= 0 && highlightedIndex < n) {
+            handleChange(items[highlightedIndex].value)
+            setOpen(false)
+          }
+          break
+        case 'Escape':
+          if (open) {
+            e.preventDefault()
+            setOpen(false)
+          }
+          break
+        case 'Tab':
+          if (open) setOpen(false)
+          break
+        default:
+          if (open && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault()
+            runTypeahead(e.key)
+          }
+      }
+    },
+    [disabled, items, open, highlightedIndex, handleChange, runTypeahead],
+  )
+
   return (
-    <SelectCtx.Provider value={{ open, setOpen, value, onValueChange: handleChange, items, disabled }}>
+    <SelectCtx.Provider
+      value={{
+        open,
+        setOpen,
+        value,
+        onValueChange: handleChange,
+        items,
+        disabled,
+        highlightedIndex,
+        setHighlightedIndex,
+        listboxId,
+        onTriggerKeyDown,
+      }}
+    >
       <div className="select-root">{children}</div>
     </SelectCtx.Provider>
   )
@@ -95,7 +216,7 @@ export function SelectTrigger({
   className = '',
   ...props
 }: SelectTriggerProps) {
-  const { open, setOpen, disabled } = useSelectCtx()
+  const { open, setOpen, disabled, highlightedIndex, listboxId, onTriggerKeyDown } = useSelectCtx()
   const ref = useRef<HTMLButtonElement>(null)
 
   return (
@@ -104,9 +225,15 @@ export function SelectTrigger({
       type="button"
       role="combobox"
       aria-expanded={open}
+      aria-haspopup="listbox"
+      aria-controls={listboxId}
+      aria-activedescendant={
+        open && highlightedIndex >= 0 ? optionId(listboxId, highlightedIndex) : undefined
+      }
       disabled={disabled}
       className={`select-trigger ${className}`.trim()}
       onClick={() => setOpen(!open)}
+      onKeyDown={onTriggerKeyDown}
       {...props}
     >
       {children}
@@ -140,7 +267,7 @@ export interface SelectContentProps {
 }
 
 export function SelectContent({ children, className = '' }: SelectContentProps) {
-  const { open, setOpen } = useSelectCtx()
+  const { open, setOpen, listboxId } = useSelectCtx()
   const ref = useRef<HTMLDivElement>(null)
 
   // Close on outside click
@@ -155,20 +282,10 @@ export function SelectContent({ children, className = '' }: SelectContentProps) 
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open, setOpen])
 
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [open, setOpen])
-
   if (!open) return null
 
   return (
-    <div ref={ref} className={`select-content ${className}`.trim()} role="listbox">
+    <div ref={ref} id={listboxId} className={`select-content ${className}`.trim()} role="listbox">
       {children}
     </div>
   )
@@ -202,17 +319,41 @@ export interface SelectItemProps {
 }
 
 export function SelectItem({ value, disabled = false, children, className = '' }: SelectItemProps) {
-  const { value: selected, onValueChange, setOpen } = useSelectCtx()
+  const {
+    value: selected,
+    onValueChange,
+    setOpen,
+    items,
+    highlightedIndex,
+    setHighlightedIndex,
+    listboxId,
+  } = useSelectCtx()
+  const ref = useRef<HTMLButtonElement>(null)
   const isSelected = value === selected
+  const index = items.findIndex((i) => i.value === value)
+  const isHighlighted = index >= 0 && index === highlightedIndex
+
+  // Keep the keyboard-highlighted item in view as it moves. Optional call so it
+  // is a no-op where scrollIntoView is unavailable (e.g. jsdom in tests).
+  useEffect(() => {
+    if (isHighlighted) ref.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [isHighlighted])
 
   return (
     <button
+      ref={ref}
       type="button"
       role="option"
+      id={index >= 0 ? optionId(listboxId, index) : undefined}
       aria-selected={isSelected}
       data-selected={isSelected ? 'true' : undefined}
+      data-highlighted={isHighlighted ? 'true' : undefined}
       data-disabled={disabled ? 'true' : undefined}
+      tabIndex={-1}
       className={`select-item ${className}`.trim()}
+      onMouseEnter={() => {
+        if (!disabled && index >= 0) setHighlightedIndex(index)
+      }}
       onClick={() => {
         if (disabled) return
         onValueChange(value)
